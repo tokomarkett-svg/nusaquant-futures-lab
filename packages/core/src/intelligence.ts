@@ -260,12 +260,20 @@ export function evaluateIntelligentSignal({
   equity,
   riskFraction = 0.0025,
   minimumScore = 72,
+  feeRate = 0.0004,
+  slippageRate = 0.0002,
+  fundingRatePerBar = 0.00001,
+  maxBarsInTrade = 96,
 }: {
   higherTimeframe: Candle[];
   entryTimeframe: Candle[];
   equity: number;
   riskFraction?: number;
   minimumScore?: number;
+  feeRate?: number;
+  slippageRate?: number;
+  fundingRatePerBar?: number;
+  maxBarsInTrade?: number;
 }): IntelligentSignal {
   if (higherTimeframe.length < 220 || entryTimeframe.length < 80 || equity <= 0) {
     return emptySignal('Data belum cukup; bot menolak evaluasi agar tidak mengarang sinyal.');
@@ -426,6 +434,10 @@ export function evaluateIntelligentSignal({
   const stopDistance = Math.max(Math.abs(latest.close - rawStop), atrValue * 1.2);
   const stopLoss = isLong ? latest.close - stopDistance : latest.close + stopDistance;
   const takeProfit = isLong ? latest.close + stopDistance * 2 : latest.close - stopDistance * 2;
+  const roundTripCostRate = feeRate + slippageRate;
+  const estimatedCostPerUnit = (latest.close + stopLoss) * roundTripCostRate
+    + latest.close * fundingRatePerBar * maxBarsInTrade;
+  const costAwareQuantity = riskAmount / Math.max(stopDistance + estimatedCostPerUnit, Number.EPSILON);
 
   return {
     decision,
@@ -439,7 +451,7 @@ export function evaluateIntelligentSignal({
     triggerPrice: triggerPrice === null ? null : round(triggerPrice, 2),
     stopLoss: round(stopLoss, 2),
     takeProfit: round(takeProfit, 2),
-    quantity: round(riskAmount / stopDistance, 6),
+    quantity: round(costAwareQuantity, 6),
     riskAmount: round(riskAmount, 2),
     riskReward: 2,
     maxChaseDistance: round(maxChaseDistance, 2),

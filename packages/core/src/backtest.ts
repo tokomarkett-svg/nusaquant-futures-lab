@@ -128,6 +128,7 @@ export function runBacktest({
   const maxBarsInTrade = config.maxBarsInTrade ?? 96;
   const timezone = config.timezone ?? 'Asia/Jakarta';
   const trades: BacktestTrade[] = [];
+  const signalConfig = { feeRate, slippageRate, fundingRatePerBar, maxBarsInTrade };
   let equity = initialEquity;
   let peakEquity = initialEquity;
   let maxDrawdown = 0;
@@ -146,6 +147,7 @@ export function runBacktest({
       entryTimeframe: entryTimeframe.slice(0, index + 1),
       equity,
       riskFraction,
+      ...signalConfig,
     });
     if (signal.decision === 'NO_TRADE' || signal.entry === null || signal.stopLoss === null || signal.takeProfit === null) {
       index += 1;
