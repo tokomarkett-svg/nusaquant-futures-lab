@@ -37,7 +37,7 @@ export default function BotControls() {
 
   useEffect(() => { void load(); }, [load]);
 
-  async function command(action: 'start' | 'pause' | 'emergency') {
+  async function command(action: 'start' | 'pause' | 'approve' | 'emergency') {
     if (action === 'emergency' && !window.confirm('Aktifkan emergency stop untuk paper bot?')) return;
     setBusy(true);
     try {
@@ -66,8 +66,9 @@ export default function BotControls() {
       </div>
       <div className="control-status"><span className={`status-dot status-${status?.toLowerCase() ?? 'idle'}`} />{readableStatus(status)}</div>
       <div className="control-actions">
-        <button className="control-btn control-primary" disabled={!configured || busy || status === 'RUNNING'} onClick={() => void command('start')}>Start observation</button>
-        <button className="control-btn" disabled={!configured || busy || status !== 'RUNNING'} onClick={() => void command('pause')}>Pause new entries</button>
+        <button className="control-btn control-primary" disabled={!configured || busy || status === 'RUNNING' || status === 'WAITING_APPROVAL' || status === 'POSITION_OPEN'} onClick={() => void command('start')}>Start observation</button>
+        <button className="control-btn" disabled={!configured || busy || (status !== 'RUNNING' && status !== 'WAITING_APPROVAL')} onClick={() => void command('pause')}>Pause new entries</button>
+        <button className="control-btn control-approve" disabled={!configured || busy || status !== 'WAITING_APPROVAL'} onClick={() => void command('approve')}>Approve paper entry</button>
         <button className="control-btn control-danger" disabled={!configured || busy || status === 'EMERGENCY'} onClick={() => void command('emergency')}>Emergency stop</button>
       </div>
       <div className="control-message">{message}</div>

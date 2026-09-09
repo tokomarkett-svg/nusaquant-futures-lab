@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 const DEFAULT_SESSION_ID = '00000000-0000-4000-8000-000000000001';
-type Action = 'start' | 'pause' | 'emergency';
+type Action = 'start' | 'pause' | 'approve' | 'emergency';
 
 function getAdminClient() {
   const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => ({})) as { action?: Action };
   const action = body.action;
-  const nextStatus = action === 'start' ? 'RUNNING' : action === 'pause' ? 'PAUSED' : action === 'emergency' ? 'EMERGENCY' : null;
+  const nextStatus = action === 'start' ? 'RUNNING' : action === 'pause' ? 'PAUSED' : action === 'approve' ? 'POSITION_OPEN' : action === 'emergency' ? 'EMERGENCY' : null;
   if (!nextStatus) return NextResponse.json({ ok: false, error: 'Action tidak valid.' }, { status: 400 });
 
   const updated = await result.client.from('bot_sessions').update({ status: nextStatus }).eq('id', DEFAULT_SESSION_ID).select('*').single();

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PaperBotEngine } from './index.ts';
+import { desiredStatusAction } from './session-control.ts';
 
 test('bot starts in observation mode without opening a position', () => {
   const bot = new PaperBotEngine({ mode: 'PAPER_APPROVAL' });
@@ -24,4 +25,12 @@ test('insufficient candle data cannot create a paper order', () => {
   const snapshot = bot.onClosedCandle({ higherTimeframe: [], entryTimeframe: [] });
   assert.equal(snapshot.position, null);
   assert.equal(snapshot.latestSignal?.decision, 'NO_TRADE');
+});
+
+test('session commands map to safe paper-only worker actions', () => {
+  assert.equal(desiredStatusAction('RUNNING'), 'START');
+  assert.equal(desiredStatusAction('WAITING_APPROVAL'), 'START');
+  assert.equal(desiredStatusAction('POSITION_OPEN'), 'APPROVE');
+  assert.equal(desiredStatusAction('PAUSED'), 'PAUSE');
+  assert.equal(desiredStatusAction('EMERGENCY'), 'EMERGENCY');
 });

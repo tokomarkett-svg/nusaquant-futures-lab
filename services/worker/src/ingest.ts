@@ -1,5 +1,6 @@
 import type { Candle } from '@nusaquant/core';
 import { BinancePublicMarketDataClient } from './market-data.ts';
+import { PaperSessionController } from './session-control.ts';
 import { createWorkerSupabaseClient } from './supabase.ts';
 
 export interface MarketCandleRow {
@@ -62,16 +63,21 @@ async function main(): Promise<void> {
   console.log(JSON.stringify({ ok: true, result, at: new Date().toISOString() }));
 }
 
-async function watch(): Promise<void> {
+async function watchIngestion(): Promise<void> {
   const intervalMs = Math.max(Number(process.env.INGEST_INTERVAL_MS ?? 60_000), 15_000);
   for (;;) {
     try {
       await main();
     } catch (error) {
-      console.error(error);
+      console.error('[ingest]', error);
     }
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
+}
+
+async function watch(): Promise<void> {
+  const controller = new PaperSessionController();
+  await Promise.all([watchIngestion(), controller.watch()]);
 }
 
 if (process.env.RUN_MARKET_INGEST === 'true') {
