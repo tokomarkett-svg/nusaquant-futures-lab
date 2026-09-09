@@ -127,6 +127,8 @@ export default async function HomePage() {
 
           <BotControls />
 
+          <BacktestPanel />
+
           <div className="metrics">
             <div className="metric-card"><div className="metric-label">Paper equity</div><div className="metric-value">10,000.00</div><div className="metric-foot">USDT · sandbox</div></div>
             <div className="metric-card"><div className="metric-label">Risk / trade</div><div className="metric-value">0.25%</div><div className="metric-foot">25.00 USDT cap</div></div>
@@ -155,8 +157,6 @@ export default async function HomePage() {
             </section>
             <DecisionPanel evaluation={btcSignal} />
           </div>
-
-          <BacktestPanel />
 
           <div className="footer-note"><span><strong>Next build:</strong> paper metrics → Testnet adapter → security gate.</span><span>v0.3.0 · 09 Sep 2026</span></div>
         </main>
