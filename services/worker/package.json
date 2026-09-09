@@ -3,9 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node -e \"console.log('Worker belum diaktifkan; paper engine akan dibuat setelah core lulus pengujian.')\""
+    "dev": "node -e \"console.log('Worker paper engine siap dihubungkan ke market stream.')\"",
+    "test": "node --import tsx --test src/*.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@nusaquant/core": "0.1.0"
+  },
+  "devDependencies": {
+    "tsx": "4.23.13",
+    "typescript": "5.7.2",
+    "@types/node": "20.17.10"
   }
 }

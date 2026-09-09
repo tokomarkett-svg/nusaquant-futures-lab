@@ -382,3 +382,5 @@ export function evaluateSignal({
 }
 
 export * from './intelligence';
+export * from './opportunity';
+export * from './backtest';
