@@ -1,10 +1,12 @@
 import { runBacktest, type Candle } from '@nusaquant/core';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
 const SYMBOLS = new Set(['BTCUSDT', 'ETHUSDT']);
+const PAGE_SIZE = 1000;
+const MAX_CANDLES = 20_000;
 
 type CandleRow = {
   open_time: string;
@@ -26,6 +28,24 @@ function toCandle(row: CandleRow): Candle {
   };
 }
 
+async function readCandles(supabase: SupabaseClient, symbol: string, interval: string): Promise<CandleRow[]> {
+  const rows: CandleRow[] = [];
+  for (let offset = 0; offset < MAX_CANDLES; offset += PAGE_SIZE) {
+    const result = await supabase
+      .from('market_candles')
+      .select('open_time,open,high,low,close,volume')
+      .eq('symbol', symbol)
+      .eq('interval', interval)
+      .order('open_time', { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (result.error) throw new Error(result.error.message);
+    const page = (result.data ?? []) as CandleRow[];
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) break;
+  }
+  return rows;
+}
+
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({})) as { symbol?: string };
   const symbol = body.symbol?.toUpperCase() ?? 'BTCUSDT';
@@ -36,16 +56,19 @@ export async function POST(request: Request) {
   if (!url || !key) return NextResponse.json({ ok: false, error: 'Supabase public environment belum dikonfigurasi.' }, { status: 503 });
 
   const supabase = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-  const [higherResult, entryResult] = await Promise.all([
-    supabase.from('market_candles').select('open_time,open,high,low,close,volume').eq('symbol', symbol).eq('interval', '1h').order('open_time', { ascending: true }).limit(500),
-    supabase.from('market_candles').select('open_time,open,high,low,close,volume').eq('symbol', symbol).eq('interval', '15m').order('open_time', { ascending: true }).limit(500),
-  ]);
-  if (higherResult.error || entryResult.error) {
-    return NextResponse.json({ ok: false, error: higherResult.error?.message ?? entryResult.error?.message ?? 'Candle query gagal.' }, { status: 502 });
+  let higherTimeframe: Candle[];
+  let entryTimeframe: Candle[];
+  try {
+    const [higherRows, entryRows] = await Promise.all([
+      readCandles(supabase, symbol, '1h'),
+      readCandles(supabase, symbol, '15m'),
+    ]);
+    higherTimeframe = higherRows.map(toCandle);
+    entryTimeframe = entryRows.map(toCandle);
+  } catch (error) {
+    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : 'Candle query gagal.' }, { status: 502 });
   }
 
-  const higherTimeframe = ((higherResult.data ?? []) as CandleRow[]).map(toCandle);
-  const entryTimeframe = ((entryResult.data ?? []) as CandleRow[]).map(toCandle);
   const report = runBacktest({
     symbol,
     higherTimeframe,
