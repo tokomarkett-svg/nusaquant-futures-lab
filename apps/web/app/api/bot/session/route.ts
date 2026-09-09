@@ -52,10 +52,13 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => ({})) as { action?: Action };
   const action = body.action;
+  if (action === 'approve' && result.data.status !== 'WAITING_APPROVAL') {
+    return NextResponse.json({ ok: false, error: 'Belum ada signal paper yang menunggu approval.' }, { status: 409 });
+  }
   const nextStatus = action === 'start' ? 'RUNNING' : action === 'pause' ? 'PAUSED' : action === 'approve' ? 'POSITION_OPEN' : action === 'emergency' ? 'EMERGENCY' : null;
   if (!nextStatus) return NextResponse.json({ ok: false, error: 'Action tidak valid.' }, { status: 400 });
 
-  const updated = await result.client.from('bot_sessions').update({ status: nextStatus }).eq('id', DEFAULT_SESSION_ID).select('*').single();
+  const updated = await result.client.from('bot_sessions').update({ status: nextStatus }).eq('id', DEFAULT_SESSION_ID).eq('status', result.data.status).select('*').single();
   if (updated.error) return NextResponse.json({ ok: false, error: updated.error.message }, { status: 502 });
   return NextResponse.json({ ok: true, configured: true, session: updated.data });
 }
