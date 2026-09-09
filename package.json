@@ -1,0 +1,16 @@
+{
+  "name": "nusaquant-futures-lab",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Research and paper-trading platform for Binance USDⓈ-M Futures",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "services/*"
+  ],
+  "scripts": {
+    "dev": "echo 'Development app belum dibuat'",
+    "test": "echo 'Test suite belum dibuat'",
+    "lint": "echo 'Lint belum dikonfigurasi'"
+  }
+}

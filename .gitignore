@@ -1,0 +1,21 @@
+node_modules/
+.next/
+out/
+dist/
+coverage/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.vscode/
+.idea/
+
+# Runtime data and secrets
+runtime/
+*.sqlite
+*.db
+secrets/
+
+# Test outputs
+reports/
