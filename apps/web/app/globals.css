@@ -56,11 +56,25 @@ h1 { max-width: 760px; margin: 12px 0 15px; font-size: clamp(34px, 5vw, 62px); l
 .hero-note { max-width: 260px; padding: 16px; border-left: 2px solid #a8dec0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 
 .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
-.metric-card, .panel { border: 1px solid var(--line); background: rgba(255,255,255,.84); box-shadow: var(--shadow); }
+.metric-card, .panel, .control-panel { border: 1px solid var(--line); background: rgba(255,255,255,.84); box-shadow: var(--shadow); }
 .metric-card { border-radius: 18px; padding: 20px; }
 .metric-label { color: var(--muted); font-size: 12px; }
 .metric-value { margin-top: 10px; font-family: 'DM Mono', monospace; font-size: 22px; letter-spacing: -.05em; }
 .metric-foot { margin-top: 10px; color: var(--green); font-size: 11px; }
+
+.control-panel { display: grid; grid-template-columns: 1.2fr auto; gap: 12px 18px; align-items: center; border-radius: 18px; padding: 18px 20px; margin: 12px 0; }
+.control-status { display: flex; align-items: center; gap: 8px; justify-self: end; padding: 8px 11px; border-radius: 999px; background: #f0f8f2; color: var(--green-dark); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; background: #a8b5ad; }
+.status-running { background: #22a66a; box-shadow: 0 0 0 4px #ddf6e8; }
+.status-paused, .status-idle { background: #d29125; }
+.status-emergency { background: #c45555; }
+.control-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
+.control-btn { border: 1px solid var(--line); border-radius: 10px; padding: 10px 13px; background: #fff; color: var(--ink); cursor: pointer; font-size: 11px; font-weight: 800; }
+.control-btn:hover:not(:disabled) { border-color: #8fcfa8; transform: translateY(-1px); }
+.control-btn:disabled { cursor: not-allowed; opacity: .45; }
+.control-primary { border-color: var(--green); color: white; background: var(--green-dark); }
+.control-danger { color: var(--red); border-color: #efcaca; }
+.control-message { grid-column: 1 / -1; color: var(--muted); font-size: 11px; }
 
 .grid { display: grid; grid-template-columns: 1.35fr .9fr; gap: 12px; margin-top: 12px; }
 .panel { border-radius: 22px; padding: 23px; }

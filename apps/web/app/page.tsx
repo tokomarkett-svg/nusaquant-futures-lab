@@ -1,6 +1,7 @@
 import { evaluateIntelligentSignal, type Candle, type IntelligentSignal } from '@nusaquant/core';
 import { loadMarketSnapshot } from '../lib/market';
 import SupabaseStatus from './components/SupabaseStatus';
+import BotControls from './components/BotControls';
 
 export const dynamic = 'force-dynamic';
 
@@ -122,6 +123,8 @@ export default async function HomePage() {
             </div>
             <div className="hero-note"><strong>Guardrail aktif.</strong><br />No trade adalah keputusan yang sah. Bot tidak dipaksa mengirim sinyal ketika kondisi pasar tidak memenuhi aturan.</div>
           </div>
+
+          <BotControls />
 
           <div className="metrics">
             <div className="metric-card"><div className="metric-label">Paper equity</div><div className="metric-value">10,000.00</div><div className="metric-foot">USDT · sandbox</div></div>
