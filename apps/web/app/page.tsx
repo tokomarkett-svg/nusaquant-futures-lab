@@ -1,41 +1,27 @@
 import { evaluateIntelligentSignal, type Candle, type IntelligentSignal } from '@nusaquant/core';
+import { loadMarketSnapshot } from '../lib/market';
 import SupabaseStatus from './components/SupabaseStatus';
 
-function makeCandles(count: number, start: number, interval: number, trend: number, phase: number): Candle[] {
-  const candles: Candle[] = [];
-  let previousClose = start;
-
-  for (let index = 0; index < count; index += 1) {
-    const wave = Math.sin((index + phase) / 8) * start * 0.0025;
-    const micro = Math.sin((index + phase) / 2.7) * start * 0.0008;
-    const pullback = index > count - 12 ? (index - (count - 12)) * -start * 0.00025 : 0;
-    const close = previousClose + trend + wave * 0.08 + micro + pullback;
-    const open = previousClose;
-    const high = Math.max(open, close) + start * (0.0009 + Math.abs(Math.sin(index)) * 0.0005);
-    const low = Math.min(open, close) - start * (0.0008 + Math.abs(Math.cos(index)) * 0.00045);
-    const volume = 800 + Math.abs(Math.sin(index / 4)) * 300 + (index > count - 4 ? 180 : 0);
-
-    candles.push({
-      time: Date.now() - (count - index) * interval,
-      open,
-      high,
-      low,
-      close,
-      volume,
-    });
-    previousClose = close;
-  }
-
-  return candles;
-}
+export const dynamic = 'force-dynamic';
 
 function formatPrice(value: number | null): string {
   if (value === null) return '—';
   return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value);
 }
 
+function formatChange(candles: Candle[]): string {
+  if (candles.length < 2) return '—';
+  const current = candles[candles.length - 1].close;
+  const previous = candles[Math.max(0, candles.length - 17)].close;
+  if (!previous) return '—';
+  const change = ((current - previous) / previous) * 100;
+  return `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+}
+
 function chartPoints(candles: Candle[]): string {
   const visible = candles.slice(-48);
+  if (visible.length === 0) return '0,88 500,88';
+  if (visible.length === 1) return `0,88 500,88`;
   const closes = visible.map((candle) => candle.close);
   const min = Math.min(...closes);
   const max = Math.max(...closes);
@@ -49,11 +35,13 @@ function chartPoints(candles: Candle[]): string {
     .join(' ');
 }
 
-function MarketRow({ pair, price, change, candles, signal }: { pair: string; price: number; change: string; candles: Candle[]; signal: string }) {
+function MarketRow({ pair, candles, signal }: { pair: string; candles: Candle[]; signal: string }) {
+  const latest = candles.at(-1)?.close ?? null;
+  const change = formatChange(candles);
   return (
     <div className="market-row">
       <div className="pair"><span className="pair-icon">{pair.slice(0, 3)}</span>{pair}</div>
-      <div className="market-value">{formatPrice(price)}</div>
+      <div className="market-value">{formatPrice(latest)}</div>
       <div className={change.startsWith('-') ? 'market-muted negative' : 'market-muted positive'}>{change}</div>
       <div className="market-muted">{signal} · {candles.length} bars</div>
     </div>
@@ -91,7 +79,7 @@ function DecisionPanel({ evaluation }: { evaluation: IntelligentSignal }) {
       </div>
       <div className="reasons">
         <div className="reasons-title">Mengapa bot mengambil keputusan ini?</div>
-        {reasons.map((reason) => (
+        {reasons.length === 0 ? <div className="reason"><span className="reason-mark">!</span><span>Belum ada cukup data untuk evaluasi.</span></div> : reasons.map((reason) => (
           <div className={`reason ${evaluation.decision === 'NO_TRADE' ? 'reason-blocked' : ''}`} key={reason}>
             <span className="reason-mark">{evaluation.decision === 'NO_TRADE' ? '!' : '✓'}</span>
             <span>{reason}</span>
@@ -102,12 +90,13 @@ function DecisionPanel({ evaluation }: { evaluation: IntelligentSignal }) {
   );
 }
 
-export default function HomePage() {
-  const btcEntry = makeCandles(260, 62500, 15 * 60 * 1000, 19, 2);
-  const btcHigher = makeCandles(260, 59200, 60 * 60 * 1000, 42, 4);
-  const ethEntry = makeCandles(260, 3420, 15 * 60 * 1000, 1.1, 8);
-  const btcSignal = evaluateIntelligentSignal({ higherTimeframe: btcHigher, entryTimeframe: btcEntry, equity: 10000 });
-  const ethSignal = evaluateIntelligentSignal({ higherTimeframe: btcHigher, entryTimeframe: ethEntry, equity: 10000 });
+export default async function HomePage() {
+  const market = await loadMarketSnapshot();
+  const btc = market.candles.BTCUSDT ?? { entry: [], higher: [] };
+  const eth = market.candles.ETHUSDT ?? { entry: [], higher: [] };
+  const btcSignal = evaluateIntelligentSignal({ higherTimeframe: btc.higher, entryTimeframe: btc.entry, equity: 10000 });
+  const ethSignal = evaluateIntelligentSignal({ higherTimeframe: eth.higher, entryTimeframe: eth.entry, equity: 10000 });
+  const dataLabel = market.source === 'SUPABASE' && btc.entry.length > 0 ? 'Supabase candles · closed data' : 'Menunggu market candles';
 
   return (
     <div className="shell">
@@ -129,7 +118,7 @@ export default function HomePage() {
             <div>
               <div className="eyebrow">MVP · decision layer</div>
               <h1>Trading dengan alasan, bukan tebakan.</h1>
-              <p className="lede">Dashboard awal NusaQuant memisahkan signal engine, risk engine, dan execution. Versi ini masih paper trading dengan data demo yang deterministik—belum terhubung ke dana atau akun Binance.</p>
+              <p className="lede">NusaQuant memisahkan signal engine, risk engine, dan execution. Market watch sekarang membaca candle tertutup dari Supabase; mode tetap paper trading dan belum terhubung ke dana Binance.</p>
             </div>
             <div className="hero-note"><strong>Guardrail aktif.</strong><br />No trade adalah keputusan yang sah. Bot tidak dipaksa mengirim sinyal ketika kondisi pasar tidak memenuhi aturan.</div>
           </div>
@@ -144,26 +133,26 @@ export default function HomePage() {
           <div className="grid">
             <section className="panel">
               <div className="panel-header">
-                <div><div className="panel-title">Market watch</div><div className="panel-kicker">Synthetic candles · live connector belum aktif</div></div>
+                <div><div className="panel-title">Market watch</div><div className="panel-kicker">{dataLabel}</div></div>
                 <div className="panel-tag">15M / 1H</div>
               </div>
               <div className="market-list">
-                <MarketRow pair="BTCUSDT" price={btcEntry[btcEntry.length - 1].close} change="+1.84%" candles={btcEntry} signal={btcSignal.decision} />
-                <MarketRow pair="ETHUSDT" price={ethEntry[ethEntry.length - 1].close} change="+0.72%" candles={ethEntry} signal={ethSignal.decision} />
+                <MarketRow pair="BTCUSDT" candles={btc.entry} signal={btcSignal.decision} />
+                <MarketRow pair="ETHUSDT" candles={eth.entry} signal={ethSignal.decision} />
               </div>
               <div className="chart-wrap">
-                <svg className="chart" viewBox="0 0 500 100" role="img" aria-label="Synthetic BTC price chart">
+                <svg className="chart" viewBox="0 0 500 100" role="img" aria-label="BTC closed candle chart">
                   <defs><linearGradient id="chartFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#b9e9ca" stopOpacity=".72" /><stop offset="100%" stopColor="#b9e9ca" stopOpacity="0" /></linearGradient></defs>
-                  <polyline className="chart-area" points={`0,100 ${chartPoints(btcEntry)} 500,100`} />
-                  <polyline className="chart-line" points={chartPoints(btcEntry)} />
+                  <polyline className="chart-area" points={`0,100 ${chartPoints(btc.entry)} 500,100`} />
+                  <polyline className="chart-line" points={chartPoints(btc.entry)} />
                 </svg>
-                <div className="chart-legend"><span>48 closed candles</span><span>Demo data only</span></div>
+                <div className="chart-legend"><span>{btc.entry.length} closed candles</span><span>{market.source === 'SUPABASE' ? 'Supabase data' : 'Waiting for data'}</span></div>
               </div>
             </section>
             <DecisionPanel evaluation={btcSignal} />
           </div>
 
-          <div className="footer-note"><span><strong>Next build:</strong> historical data adapter → backtest runner → paper execution state machine.</span><span>v0.1.0 · 09 Sep 2026</span></div>
+          <div className="footer-note"><span><strong>Next build:</strong> paper controls → signal persistence → real-time worker state.</span><span>v0.2.0 · 09 Sep 2026</span></div>
         </main>
       </div>
     </div>
