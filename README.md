@@ -27,7 +27,8 @@ Tahap 1: spesifikasi MVP — selesai
 Tahap 2: repository dan struktur proyek — selesai  
 Tahap 3: intelligence layer, opportunity planner, dan paper worker — fondasi selesai  
 Tahap 4: public market adapter dan cost-aware backtest — fondasi selesai  
-Tahap 5: persistent stream, API controls, dan dataset nyata — berikutnya
+Tahap 5: Supabase health check dan candle ingestion adapter — fondasi selesai  
+Tahap 6: persistent stream, API controls, dan dataset nyata — berikutnya
 
 ## Konfigurasi Awal
 

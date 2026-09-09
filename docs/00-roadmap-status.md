@@ -17,11 +17,11 @@
 | 7 | Triad doctrine | SELESAI SEBAGIAN | Doktrin v0.1 dan modul intelligence sudah ditulis; kalibrasi statistik masih berjalan |
 | 8 | Daily opportunity planner | SELESAI SEBAGIAN | Planner dan status window sudah ada; profile nyata menunggu data backtest |
 | 9 | Paper trading state machine | SELESAI SEBAGIAN | Worker dan paper broker lokal sudah ada; belum terhubung stream/API |
-| 10 | Historical data adapter | SELESAI SEBAGIAN | Parser public Binance klines tersedia; dataset persistence belum ada |
+| 10 | Historical data adapter | SELESAI SEBAGIAN | Parser public Binance klines dan worker ingestion tersedia; scheduler production belum |
 | 11 | Backtest dengan fee, funding, spread, slippage | SELESAI SEBAGIAN | Core runner dan cost model tersedia; perlu dataset nyata dan walk-forward |
 | 12 | Persistent worker dan market stream | SELESAI SEBAGIAN | REST public klines + polling adapter tersedia; persistent service/WebSocket belum |
 | 13 | API start/pause/approval | BELUM | Worker state machine lokal sudah ada; dashboard belum terhubung |
-| 14 | Supabase schema dan persistence | SELESAI SEBAGIAN | Migration, RLS, dan setup doc sudah dibuat; client adapter dan Auth belum |
+| 14 | Supabase schema dan persistence | SELESAI SEBAGIAN | Schema, RLS, client health check, dan ingestion adapter tersedia; Auth dan persistence signal belum |
 | 15 | Binance Futures Testnet | BELUM | Hanya setelah paper engine stabil |
 | 16 | Security audit dan recovery | BELUM | API key, idempotency, reconnect, emergency stop |
 | 17 | Vercel deployment | SIAP DIIMPOR | Memerlukan konfigurasi project Vercel; secret tidak boleh masuk repo |
