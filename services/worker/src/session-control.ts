@@ -122,6 +122,22 @@ export class PaperSessionController {
     if (!latestRow) return current;
     if (this.lastEvaluatedCandleTime === latestRow.open_time) return current;
 
+    const latestPersisted = await this.client
+      .from('signal_evaluations')
+      .select('structure')
+      .eq('bot_session_id', sessionId)
+      .eq('symbol', session.symbol)
+      .eq('timeframe', '15m')
+      .order('evaluated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (latestPersisted.error) throw new Error(`Gagal membaca signal terakhir: ${latestPersisted.error.message}`);
+    const persistedCandleTime = (latestPersisted.data?.structure as { candle_open_time?: string } | null)?.candle_open_time;
+    if (persistedCandleTime === latestRow.open_time) {
+      this.lastEvaluatedCandleTime = latestRow.open_time;
+      return current;
+    }
+
     const higherTimeframe = higherRows.reverse().map(mapCandle);
     const entryTimeframe = entryRows.reverse().map(mapCandle);
     const snapshot = this.engine?.onClosedCandle({ higherTimeframe, entryTimeframe }) ?? current;
