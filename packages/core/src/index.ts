@@ -380,3 +380,5 @@ export function evaluateSignal({
     indicators,
   };
 }
+
+export * from './intelligence';

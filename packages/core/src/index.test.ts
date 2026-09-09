@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { atr, ema, evaluateSignal, type Candle } from './index.ts';
+import { atr, detectCandlePatterns, ema, evaluateIntelligentSignal, evaluateSignal, type Candle } from './index.ts';
 
 function makeCandles(count: number, start: number, trend: number): Candle[] {
   const candles: Candle[] = [];
@@ -60,4 +60,25 @@ test('signal engine returns a bounded decision and valid risk amount', () => {
     assert.ok(evaluation.takeProfit !== null);
     assert.ok(evaluation.quantity > 0);
   }
+});
+
+
+test('candle pattern detector identifies a closed bullish engulfing', () => {
+  const patterns = detectCandlePatterns([
+    { time: 1, open: 105, high: 106, low: 99, close: 100, volume: 1000 },
+    { time: 2, open: 99.5, high: 108, low: 98, close: 107, volume: 1400 },
+  ]);
+  assert.ok(patterns.some((pattern) => pattern.name === 'BULLISH_ENGULFING'));
+});
+
+test('intelligence layer separates candidate setup from confirmed trigger', () => {
+  const evaluation = evaluateIntelligentSignal({
+    higherTimeframe: makeCandles(260, 100, 0.2),
+    entryTimeframe: makeCandles(260, 100, 0.08),
+    equity: 10_000,
+  });
+  assert.ok(['LONG', 'SHORT', 'NO_TRADE'].includes(evaluation.decision));
+  assert.ok(['TRIGGERED', 'SETUP', 'NO_TRADE'].includes(evaluation.stage));
+  assert.ok(evaluation.qualityScore >= 0 && evaluation.qualityScore <= 100);
+  if (evaluation.decision === 'NO_TRADE') assert.equal(evaluation.quantity, 0);
 });

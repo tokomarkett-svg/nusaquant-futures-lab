@@ -1,4 +1,4 @@
-import { evaluateSignal, type Candle, type SignalEvaluation } from '@nusaquant/core';
+import { evaluateIntelligentSignal, type Candle, type IntelligentSignal } from '@nusaquant/core';
 
 function makeCandles(count: number, start: number, interval: number, trend: number, phase: number): Candle[] {
   const candles: Candle[] = [];
@@ -59,26 +59,28 @@ function MarketRow({ pair, price, change, candles, signal }: { pair: string; pri
   );
 }
 
-function DecisionPanel({ evaluation }: { evaluation: SignalEvaluation }) {
-  const directionColor = evaluation.direction === 'LONG' ? 'positive' : evaluation.direction === 'SHORT' ? 'negative' : '';
-  const reasons = evaluation.reasons.length > 0 ? evaluation.reasons : evaluation.blockers;
+function DecisionPanel({ evaluation }: { evaluation: IntelligentSignal }) {
+  const directionColor = evaluation.decision === 'LONG' ? 'positive' : evaluation.decision === 'SHORT' ? 'negative' : '';
+  const reasons = evaluation.blockers.length === 0
+    ? evaluation.evidence.filter((item) => item.passed).map((item) => item.explanation)
+    : evaluation.blockers;
 
   return (
     <section className="panel">
       <div className="panel-header">
         <div>
-          <div className="panel-title">Signal engine</div>
-          <div className="panel-kicker">Rule-based evaluation · BTCUSDT · 15M</div>
+          <div className="panel-title">Intelligence engine</div>
+          <div className="panel-kicker">Context → setup → trigger · BTCUSDT · 15M</div>
         </div>
         <div className="panel-tag">{evaluation.regime}</div>
       </div>
       <div className="signal-box">
         <div>
           <div className="signal-label">Keputusan saat ini</div>
-          <div className={`signal-direction ${directionColor}`}>{evaluation.direction}</div>
-          <div className="signal-quality">Quality: <strong>{evaluation.qualityLabel}</strong> · Bot boleh menolak setup ketika syarat belum lengkap.</div>
+          <div className={`signal-direction ${directionColor}`}>{evaluation.decision}</div>
+          <div className="signal-quality">Stage: <strong>{evaluation.stage}</strong> · Timing: <strong>{evaluation.timing}</strong> · Bot boleh menolak setup ketika syarat belum lengkap.</div>
         </div>
-        <div className="signal-score">{evaluation.score}/{evaluation.scoreMax}</div>
+        <div className="signal-score">{evaluation.qualityScore}/100</div>
       </div>
       <div className="detail-grid">
         <div className="detail"><div className="detail-label">Entry</div><div className="detail-value">{formatPrice(evaluation.entry)}</div></div>
@@ -89,8 +91,8 @@ function DecisionPanel({ evaluation }: { evaluation: SignalEvaluation }) {
       <div className="reasons">
         <div className="reasons-title">Mengapa bot mengambil keputusan ini?</div>
         {reasons.map((reason) => (
-          <div className={`reason ${evaluation.direction === 'NO_TRADE' ? 'reason-blocked' : ''}`} key={reason}>
-            <span className="reason-mark">{evaluation.direction === 'NO_TRADE' ? '!' : '✓'}</span>
+          <div className={`reason ${evaluation.decision === 'NO_TRADE' ? 'reason-blocked' : ''}`} key={reason}>
+            <span className="reason-mark">{evaluation.decision === 'NO_TRADE' ? '!' : '✓'}</span>
             <span>{reason}</span>
           </div>
         ))}
@@ -103,8 +105,8 @@ export default function HomePage() {
   const btcEntry = makeCandles(260, 62500, 15 * 60 * 1000, 19, 2);
   const btcHigher = makeCandles(260, 59200, 60 * 60 * 1000, 42, 4);
   const ethEntry = makeCandles(260, 3420, 15 * 60 * 1000, 1.1, 8);
-  const btcSignal = evaluateSignal({ higherTimeframe: btcHigher, entryTimeframe: btcEntry, equity: 10000 });
-  const ethSignal = evaluateSignal({ higherTimeframe: btcHigher, entryTimeframe: ethEntry, equity: 10000 });
+  const btcSignal = evaluateIntelligentSignal({ higherTimeframe: btcHigher, entryTimeframe: btcEntry, equity: 10000 });
+  const ethSignal = evaluateIntelligentSignal({ higherTimeframe: btcHigher, entryTimeframe: ethEntry, equity: 10000 });
 
   return (
     <div className="shell">
@@ -144,8 +146,8 @@ export default function HomePage() {
                 <div className="panel-tag">15M / 1H</div>
               </div>
               <div className="market-list">
-                <MarketRow pair="BTCUSDT" price={btcEntry[btcEntry.length - 1].close} change="+1.84%" candles={btcEntry} signal={btcSignal.direction} />
-                <MarketRow pair="ETHUSDT" price={ethEntry[ethEntry.length - 1].close} change="+0.72%" candles={ethEntry} signal={ethSignal.direction} />
+                <MarketRow pair="BTCUSDT" price={btcEntry[btcEntry.length - 1].close} change="+1.84%" candles={btcEntry} signal={btcSignal.decision} />
+                <MarketRow pair="ETHUSDT" price={ethEntry[ethEntry.length - 1].close} change="+0.72%" candles={ethEntry} signal={ethSignal.decision} />
               </div>
               <div className="chart-wrap">
                 <svg className="chart" viewBox="0 0 500 100" role="img" aria-label="Synthetic BTC price chart">
