@@ -76,6 +76,8 @@ h1 { max-width: 760px; margin: 12px 0 15px; font-size: clamp(34px, 5vw, 62px); l
 .control-approve { border-color: #c4a653; color: #745d16; background: #fff9df; }
 .control-danger { color: var(--red); border-color: #efcaca; }
 .control-message { grid-column: 1 / -1; color: var(--muted); font-size: 11px; }
+.control-signal { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding-top: 10px; border-top: 1px solid #edf2ee; color: var(--muted); font-size: 10px; }
+.control-signal strong { color: var(--ink); font-family: 'DM Mono', monospace; font-weight: 500; }
 
 .grid { display: grid; grid-template-columns: 1.35fr .9fr; gap: 12px; margin-top: 12px; }
 .panel { border-radius: 22px; padding: 23px; }

@@ -1,11 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 type BotStatus = 'IDLE' | 'STARTING' | 'RUNNING' | 'WAITING_APPROVAL' | 'POSITION_OPEN' | 'PAUSED' | 'COOLDOWN' | 'EMERGENCY';
 type Session = { status: BotStatus; mode: string; symbol: string; risk_fraction: number; daily_loss_limit: number };
+type LatestSignal = { decision: string; stage: string; timing: string; quality_score: number; evaluated_at: string };
 
-type ResponsePayload = { ok: boolean; configured?: boolean; error?: string; session?: Session };
+type ResponsePayload = { ok: boolean; configured?: boolean; error?: string; session?: Session; latestSignal?: LatestSignal | null };
 
 function readableStatus(status: BotStatus | null): string {
   if (!status) return 'Checking';
@@ -17,7 +19,9 @@ function readableStatus(status: BotStatus | null): string {
 }
 
 export default function BotControls() {
+  const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
+  const [latestSignal, setLatestSignal] = useState<LatestSignal | null>(null);
   const [configured, setConfigured] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('Memeriksa bot session…');
@@ -28,14 +32,22 @@ export default function BotControls() {
       const payload = await response.json() as ResponsePayload;
       setConfigured(payload.configured !== false);
       if (payload.session) setSession(payload.session);
-      setMessage(payload.ok ? 'Paper mode · belum ada order real.' : payload.error ?? 'Bot session belum siap.');
+      setLatestSignal(payload.latestSignal ?? null);
+      setMessage(payload.ok ? 'Paper mode · worker akan mengevaluasi candle closed terbaru.' : payload.error ?? 'Bot session belum siap.');
     } catch {
       setConfigured(false);
       setMessage('Bot control API belum dapat dihubungi.');
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    const timer = window.setInterval(() => {
+      void load();
+      router.refresh();
+    }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [load, router]);
 
   async function command(action: 'start' | 'pause' | 'approve' | 'emergency') {
     if (action === 'emergency' && !window.confirm('Aktifkan emergency stop untuk paper bot?')) return;
@@ -48,8 +60,10 @@ export default function BotControls() {
       });
       const payload = await response.json() as ResponsePayload;
       if (payload.session) setSession(payload.session);
+      setLatestSignal(payload.latestSignal ?? null);
       setMessage(payload.ok ? `Session berubah menjadi ${readableStatus(payload.session?.status ?? null)}.` : payload.error ?? 'Perintah gagal.');
       setConfigured(payload.configured !== false);
+      router.refresh();
     } catch {
       setMessage('Perintah tidak dapat dikirim.');
     } finally {
@@ -72,6 +86,10 @@ export default function BotControls() {
         <button className="control-btn control-danger" disabled={!configured || busy || status === 'EMERGENCY'} onClick={() => void command('emergency')}>Emergency stop</button>
       </div>
       <div className="control-message">{message}</div>
+      <div className="control-signal">
+        <span>Worker result</span>
+        {latestSignal ? <strong>{latestSignal.decision} · {latestSignal.stage} · {latestSignal.quality_score}/100 · {new Date(latestSignal.evaluated_at).toLocaleString('id-ID')}</strong> : <strong>Belum ada evaluasi dari worker</strong>}
+      </div>
     </section>
   );
 }
