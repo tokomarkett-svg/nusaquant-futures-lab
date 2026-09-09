@@ -6,8 +6,9 @@ import { useRouter } from 'next/navigation';
 type BotStatus = 'IDLE' | 'STARTING' | 'RUNNING' | 'WAITING_APPROVAL' | 'POSITION_OPEN' | 'PAUSED' | 'COOLDOWN' | 'EMERGENCY';
 type Session = { status: BotStatus; mode: string; symbol: string; risk_fraction: number; daily_loss_limit: number };
 type LatestSignal = { decision: string; stage: string; timing: string; quality_score: number; evaluated_at: string };
+type LatestPosition = { side: string; symbol: string; quantity: number | string; entry_price: number | string; stop_loss: number | string; take_profit: number | string; opened_at: string };
 
-type ResponsePayload = { ok: boolean; configured?: boolean; error?: string; session?: Session; latestSignal?: LatestSignal | null };
+type ResponsePayload = { ok: boolean; configured?: boolean; error?: string; session?: Session; latestSignal?: LatestSignal | null; position?: LatestPosition | null };
 
 function readableStatus(status: BotStatus | null): string {
   if (!status) return 'Checking';
@@ -22,6 +23,7 @@ export default function BotControls() {
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
   const [latestSignal, setLatestSignal] = useState<LatestSignal | null>(null);
+  const [position, setPosition] = useState<LatestPosition | null>(null);
   const [configured, setConfigured] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('Memeriksa bot session…');
@@ -33,6 +35,7 @@ export default function BotControls() {
       setConfigured(payload.configured !== false);
       if (payload.session) setSession(payload.session);
       setLatestSignal(payload.latestSignal ?? null);
+      setPosition(payload.position ?? null);
       setMessage(payload.ok ? 'Paper mode · worker akan mengevaluasi candle closed terbaru.' : payload.error ?? 'Bot session belum siap.');
     } catch {
       setConfigured(false);
@@ -61,6 +64,7 @@ export default function BotControls() {
       const payload = await response.json() as ResponsePayload;
       if (payload.session) setSession(payload.session);
       setLatestSignal(payload.latestSignal ?? null);
+      setPosition(payload.position ?? null);
       setMessage(payload.ok ? `Session berubah menjadi ${readableStatus(payload.session?.status ?? null)}.` : payload.error ?? 'Perintah gagal.');
       setConfigured(payload.configured !== false);
       router.refresh();
@@ -89,6 +93,10 @@ export default function BotControls() {
       <div className="control-signal">
         <span>Worker result</span>
         {latestSignal ? <strong>{latestSignal.decision} · {latestSignal.stage} · {latestSignal.quality_score}/100 · {new Date(latestSignal.evaluated_at).toLocaleString('id-ID')}</strong> : <strong>Belum ada evaluasi dari worker</strong>}
+      </div>
+      <div className="control-signal">
+        <span>Paper position</span>
+        {position ? <strong>{position.side} {position.symbol} · qty {position.quantity} · entry {position.entry_price} · SL {position.stop_loss} · TP {position.take_profit}</strong> : <strong>Tidak ada posisi terbuka</strong>}
       </div>
     </section>
   );

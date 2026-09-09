@@ -6,6 +6,7 @@ export const dynamic = 'force-dynamic';
 const DEFAULT_SESSION_ID = '00000000-0000-4000-8000-000000000001';
 type Action = 'start' | 'pause' | 'approve' | 'emergency';
 type LatestSignal = { decision: string; stage: string; timing: string; quality_score: number; evaluated_at: string };
+type LatestPosition = { side: string; symbol: string; quantity: number | string; entry_price: number | string; stop_loss: number | string; take_profit: number | string; opened_at: string };
 
 function getAdminClient() {
   const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -26,6 +27,19 @@ async function latestSignal(client: NonNullable<ReturnType<typeof getAdminClient
     .maybeSingle();
   if (result.error) return null;
   return result.data as LatestSignal | null;
+}
+
+async function latestPosition(client: NonNullable<ReturnType<typeof getAdminClient>>, sessionId: string): Promise<LatestPosition | null> {
+  const result = await client
+    .from('paper_positions')
+    .select('side,symbol,quantity,entry_price,stop_loss,take_profit,opened_at')
+    .eq('bot_session_id', sessionId)
+    .eq('status', 'OPEN')
+    .order('opened_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (result.error) return null;
+  return result.data as LatestPosition | null;
 }
 
 async function ensureSession() {
@@ -54,7 +68,7 @@ export async function GET() {
   if (!result.data) {
     return NextResponse.json({ ok: false, configured: Boolean(result.client), error: result.error }, { status: result.client ? 502 : 503 });
   }
-  return NextResponse.json({ ok: true, configured: true, session: result.data, latestSignal: await latestSignal(result.client!, DEFAULT_SESSION_ID) });
+  return NextResponse.json({ ok: true, configured: true, session: result.data, latestSignal: await latestSignal(result.client!, DEFAULT_SESSION_ID), position: await latestPosition(result.client!, DEFAULT_SESSION_ID) });
 }
 
 export async function POST(request: Request) {
@@ -73,5 +87,5 @@ export async function POST(request: Request) {
 
   const updated = await result.client.from('bot_sessions').update({ status: nextStatus }).eq('id', DEFAULT_SESSION_ID).eq('status', result.data.status).select('*').single();
   if (updated.error) return NextResponse.json({ ok: false, error: updated.error.message }, { status: 502 });
-  return NextResponse.json({ ok: true, configured: true, session: updated.data, latestSignal: await latestSignal(result.client!, DEFAULT_SESSION_ID) });
+  return NextResponse.json({ ok: true, configured: true, session: updated.data, latestSignal: await latestSignal(result.client!, DEFAULT_SESSION_ID), position: await latestPosition(result.client!, DEFAULT_SESSION_ID) });
 }

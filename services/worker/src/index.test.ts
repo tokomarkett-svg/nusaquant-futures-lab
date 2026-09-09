@@ -34,3 +34,19 @@ test('session commands map to safe paper-only worker actions', () => {
   assert.equal(desiredStatusAction('PAUSED'), 'PAUSE');
   assert.equal(desiredStatusAction('EMERGENCY'), 'EMERGENCY');
 });
+
+test('paper position state can be restored after a worker restart', () => {
+  const bot = new PaperBotEngine({ mode: 'PAPER_APPROVAL', symbol: 'BTCUSDT' });
+  const snapshot = bot.restorePosition({
+    id: 'paper-4',
+    symbol: 'BTCUSDT',
+    side: 'LONG',
+    entry: 100,
+    quantity: 0.1,
+    stopLoss: 95,
+    takeProfit: 110,
+    openedAt: '2026-09-09T00:00:00.000Z',
+  });
+  assert.equal(snapshot.status, 'POSITION_OPEN');
+  assert.equal(snapshot.position?.id, 'paper-4');
+});

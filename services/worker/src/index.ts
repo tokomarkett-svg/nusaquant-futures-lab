@@ -33,6 +33,7 @@ export interface WorkerSnapshot {
   latestSignal: IntelligentSignal | null;
   pendingSignal: IntelligentSignal | null;
   position: PaperPosition | null;
+  lastClosedPosition: PaperPosition | null;
   equity: number;
   realizedPnl: number;
   lastEvent: string | null;
@@ -92,6 +93,13 @@ class PaperBroker {
     return this.position;
   }
 
+  restore(position: PaperPosition): void {
+    if (this.position) throw new Error('Paper broker tidak dapat restore: posisi sudah tersedia.');
+    this.position = { ...position };
+    const sequence = Number(position.id.replace('paper-', ''));
+    if (Number.isFinite(sequence)) this.sequence = Math.max(this.sequence, sequence);
+  }
+
   clearClosedPosition(): void {
     if (this.position?.closedAt) this.position = null;
   }
@@ -110,6 +118,7 @@ export class PaperBotEngine {
   private readonly broker = new PaperBroker();
   private realizedPnl = 0;
   private cooldownUntil = 0;
+  private lastClosedPosition: PaperPosition | null = null;
   private lastEvent: string | null = null;
   private listeners = new Set<(event: WorkerEvent) => void>();
 
@@ -146,6 +155,7 @@ export class PaperBotEngine {
       latestSignal: this.latestSignal,
       pendingSignal: this.pendingSignal,
       position: this.broker.getPosition(),
+      lastClosedPosition: this.lastClosedPosition,
       equity: this.equityStart + this.realizedPnl,
       realizedPnl: this.realizedPnl,
       lastEvent: this.lastEvent,
@@ -184,6 +194,7 @@ export class PaperBotEngine {
     const closed = this.broker.mark(price, now);
     if (closed) {
       this.realizedPnl += closed.realizedPnl ?? 0;
+      this.lastClosedPosition = closed;
       this.status = 'COOLDOWN';
       this.cooldownUntil = now.getTime() + 3 * 15 * 60 * 1000;
       this.emit('POSITION', `${closed.closeReason} pada ${closed.exit}. P/L kotor ${closed.realizedPnl?.toFixed(2)} USDT.`);
@@ -228,6 +239,23 @@ export class PaperBotEngine {
     return this.snapshot();
   }
 
+  restorePosition(position: PaperPosition): WorkerSnapshot {
+    if (this.broker.getPosition()) return this.snapshot();
+    this.broker.restore(position);
+    this.status = 'POSITION_OPEN';
+    this.emit('POSITION', `Paper position ${position.id} dipulihkan dari Supabase.`);
+    return this.snapshot();
+  }
+
+  restorePendingSignal(signal: IntelligentSignal): WorkerSnapshot {
+    if (this.broker.getPosition() || this.pendingSignal) return this.snapshot();
+    this.latestSignal = signal;
+    this.pendingSignal = signal;
+    this.status = 'WAITING_APPROVAL';
+    this.emit('SIGNAL', 'Pending paper signal dipulihkan dari Supabase.');
+    return this.snapshot();
+  }
+
   approvePending(now = new Date()): WorkerSnapshot {
     if (this.status !== 'WAITING_APPROVAL' || !this.pendingSignal) {
       this.emit('ERROR', 'Tidak ada entry valid yang menunggu persetujuan.');
@@ -240,6 +268,7 @@ export class PaperBotEngine {
   private openPending(now: Date): void {
     if (!this.pendingSignal) return;
     const position = this.broker.open(this.symbol, this.pendingSignal, now);
+    this.lastClosedPosition = null;
     this.pendingSignal = null;
     this.status = 'POSITION_OPEN';
     this.emit('ORDER', `Paper order ${position.side} ${position.quantity} ${position.symbol} dibuka.`);

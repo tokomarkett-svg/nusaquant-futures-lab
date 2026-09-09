@@ -34,7 +34,7 @@ Jika hasil memasuki tahap `WAITING_APPROVAL`, worker memperbarui session dan das
 
 - Control dan execution hanya untuk paper session.
 - Belum mengirim order Binance.
-- Paper signal sudah dipersistenkan; paper order/position persistence lintas restart belum menjadi sumber kebenaran utama.
-- Sebelum live, wajib ditambahkan Supabase Auth, user ownership, audit log, CSRF/origin protection, durable command queue, dan recovery state untuk posisi paper.
+- Paper signal, paper order, paper position, journal, dan equity snapshot sekarang dipersistenkan melalui worker service-role; posisi terbuka dipulihkan saat worker restart.
+- Sebelum live, wajib ditambahkan Supabase Auth, user ownership, audit log, CSRF/origin protection, durable command queue, dan rekonsiliasi position state yang lebih ketat.
 
 Jika service-role key belum ada di Vercel, dashboard akan menampilkan `Bot control API belum siap` dan tombol tidak aktif. Itu kondisi aman.

@@ -1,5 +1,5 @@
-import type { Candle } from '@nusaquant/core';
-import { PaperBotEngine, type BotStatus, type ExecutionMode, type WorkerSnapshot } from './index.ts';
+import type { Candle, IntelligentSignal } from '@nusaquant/core';
+import { PaperBotEngine, type BotStatus, type ExecutionMode, type PaperPosition, type WorkerSnapshot } from './index.ts';
 import { createWorkerSupabaseClient } from './supabase.ts';
 
 export const DEFAULT_BOT_SESSION_ID = '00000000-0000-4000-8000-000000000001';
@@ -21,6 +21,39 @@ type CandleRow = {
   volume: number | string;
 };
 
+type StoredPosition = {
+  id: string;
+  symbol: string;
+  side: 'LONG' | 'SHORT';
+  quantity: number | string;
+  entry_price: number | string;
+  stop_loss: number | string;
+  take_profit: number | string;
+  opened_at: string;
+  metadata: Record<string, unknown> | null;
+};
+
+type StoredSignal = {
+  id: string;
+  decision: 'LONG' | 'SHORT' | 'NO_TRADE';
+  candidate: 'LONG' | 'SHORT' | 'NO_TRADE';
+  stage: 'TRIGGERED' | 'SETUP' | 'NO_TRADE';
+  timing: 'ENTER_NOW' | 'WAIT_CONFIRMATION' | 'NO_TRADE';
+  regime: string;
+  quality_score: number;
+  entry: number | null;
+  trigger_price: number | null;
+  stop_loss: number | null;
+  take_profit: number | null;
+  quantity: number;
+  risk_amount: number;
+  risk_reward: number | null;
+  evidence: IntelligentSignal['evidence'];
+  blockers: string[];
+  patterns: IntelligentSignal['patterns'];
+  structure: IntelligentSignal['structure'] & { candle_open_time?: string };
+};
+
 export function desiredStatusAction(status: BotStatus): 'START' | 'PAUSE' | 'EMERGENCY' | 'APPROVE' | 'IDLE' {
   if (status === 'POSITION_OPEN') return 'APPROVE';
   if (status === 'RUNNING' || status === 'STARTING' || status === 'WAITING_APPROVAL' || status === 'COOLDOWN') return 'START';
@@ -40,12 +73,56 @@ function mapCandle(row: CandleRow): Candle {
   };
 }
 
+function mapStoredPosition(row: StoredPosition): PaperPosition {
+  const engineId = typeof row.metadata?.engine_position_id === 'string'
+    ? row.metadata.engine_position_id
+    : `db-${row.id}`;
+  return {
+    id: engineId,
+    symbol: row.symbol,
+    side: row.side,
+    entry: Number(row.entry_price),
+    quantity: Number(row.quantity),
+    stopLoss: Number(row.stop_loss),
+    takeProfit: Number(row.take_profit),
+    openedAt: row.opened_at,
+  };
+}
+
+function mapStoredSignal(row: StoredSignal): IntelligentSignal {
+  return {
+    decision: row.decision,
+    candidate: row.candidate,
+    stage: row.stage,
+    timing: row.timing,
+    regime: row.regime as IntelligentSignal['regime'],
+    qualityScore: row.quality_score,
+    scoreMax: 100,
+    entry: row.entry,
+    triggerPrice: row.trigger_price,
+    stopLoss: row.stop_loss,
+    takeProfit: row.take_profit,
+    quantity: Number(row.quantity),
+    riskAmount: Number(row.risk_amount),
+    riskReward: row.risk_reward,
+    maxChaseDistance: null,
+    patterns: row.patterns ?? [],
+    structure: row.structure,
+    evidence: row.evidence ?? [],
+    blockers: row.blockers ?? [],
+    explanation: 'Signal dipulihkan dari signal_evaluations untuk paper approval.',
+  };
+}
+
 export class PaperSessionController {
   private readonly client = createWorkerSupabaseClient();
   private engine: PaperBotEngine | null = null;
   private lastDesiredStatus: BotStatus | null = null;
   private lastEngineStatus: BotStatus | null = null;
   private lastEvaluatedCandleTime: string | null = null;
+  private lastSignalId: string | null = null;
+  private lastPersistedClosedId: string | null = null;
+  private lastEquitySnapshotAt = 0;
 
   async sync(): Promise<WorkerSnapshot | null> {
     const sessionId = process.env.BOT_SESSION_ID ?? DEFAULT_BOT_SESSION_ID;
@@ -66,13 +143,8 @@ export class PaperSessionController {
       return null;
     }
 
-    if (!this.engine || this.engine.snapshot().mode !== (data.mode === 'PAPER_AUTO' ? 'PAPER_AUTO' : 'PAPER_APPROVAL')) {
-      this.engine = new PaperBotEngine({
-        symbol: data.symbol,
-        riskFraction: Number(data.risk_fraction),
-        mode: data.mode === 'PAPER_AUTO' ? 'PAPER_AUTO' : 'PAPER_APPROVAL',
-      });
-    }
+    await this.ensureEngine(sessionId, data);
+    if (!this.engine) return null;
 
     const action = desiredStatusAction(data.status);
     const before = this.engine.snapshot().status;
@@ -90,6 +162,10 @@ export class PaperSessionController {
     if (snapshot.status === 'RUNNING') {
       snapshot = await this.evaluateLatestCandles(sessionId, data, snapshot);
     }
+    if (snapshot.status === 'POSITION_OPEN') {
+      snapshot = await this.markLatestPrice(data, snapshot);
+    }
+    await this.persistPaperState(sessionId, data, snapshot);
     await this.persistDerivedStatus(sessionId, data.status, snapshot.status);
     this.logState(data.status, `Command ${action}; engine ${snapshot.status}.`);
     this.lastEngineStatus = snapshot.status;
@@ -105,6 +181,45 @@ export class PaperSessionController {
         console.error('[control]', error);
       }
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+  }
+
+  private async ensureEngine(sessionId: string, session: SessionRecord): Promise<void> {
+    const mode = session.mode === 'PAPER_AUTO' ? 'PAPER_AUTO' : 'PAPER_APPROVAL';
+    if (this.engine && this.engine.snapshot().mode === mode) return;
+
+    this.engine = new PaperBotEngine({
+      symbol: session.symbol,
+      riskFraction: Number(session.risk_fraction),
+      mode,
+    });
+
+    const openPosition = await this.client
+      .from('paper_positions')
+      .select('id,symbol,side,quantity,entry_price,stop_loss,take_profit,opened_at,metadata')
+      .eq('bot_session_id', sessionId)
+      .eq('symbol', session.symbol)
+      .eq('status', 'OPEN')
+      .maybeSingle<StoredPosition>();
+    if (openPosition.error) throw new Error(`Gagal membaca paper position: ${openPosition.error.message}`);
+    if (openPosition.data) this.engine.restorePosition(mapStoredPosition(openPosition.data));
+
+    if ((session.status === 'WAITING_APPROVAL' || session.status === 'POSITION_OPEN') && !openPosition.data) {
+      const pending = await this.client
+        .from('signal_evaluations')
+        .select('id,decision,candidate,stage,timing,regime,quality_score,entry,trigger_price,stop_loss,take_profit,quantity,risk_amount,risk_reward,evidence,blockers,patterns,structure')
+        .eq('bot_session_id', sessionId)
+        .eq('symbol', session.symbol)
+        .in('decision', ['LONG', 'SHORT'])
+        .eq('stage', 'TRIGGERED')
+        .order('evaluated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle<StoredSignal>();
+      if (pending.error) throw new Error(`Gagal membaca pending signal: ${pending.error.message}`);
+      if (pending.data) {
+        this.lastSignalId = pending.data.id;
+        this.engine.restorePendingSignal(mapStoredSignal(pending.data));
+      }
     }
   }
 
@@ -144,7 +259,7 @@ export class PaperSessionController {
     const signal = snapshot.latestSignal;
     if (!signal) return snapshot;
 
-    const { error } = await this.client.from('signal_evaluations').insert({
+    const inserted = await this.client.from('signal_evaluations').insert({
       bot_session_id: sessionId,
       symbol: session.symbol,
       timeframe: '15m',
@@ -166,9 +281,10 @@ export class PaperSessionController {
       blockers: signal.blockers,
       patterns: signal.patterns,
       structure: { ...signal.structure, candle_open_time: latestRow.open_time },
-    });
-    if (error) throw new Error(`Gagal menyimpan signal evaluation: ${error.message}`);
+    }).select('id').single();
+    if (inserted.error) throw new Error(`Gagal menyimpan signal evaluation: ${inserted.error.message}`);
 
+    this.lastSignalId = inserted.data.id;
     this.lastEvaluatedCandleTime = latestRow.open_time;
     console.log(JSON.stringify({
       signal: true,
@@ -183,10 +299,108 @@ export class PaperSessionController {
     return snapshot;
   }
 
+  private async markLatestPrice(session: SessionRecord, current: WorkerSnapshot): Promise<WorkerSnapshot> {
+    const latest = await this.client
+      .from('market_candles')
+      .select('close,open_time')
+      .eq('symbol', session.symbol)
+      .eq('interval', '15m')
+      .order('open_time', { ascending: false })
+      .limit(1)
+      .maybeSingle<{ close: number | string; open_time: string }>();
+    if (latest.error) throw new Error(`Gagal membaca harga paper position: ${latest.error.message}`);
+    if (!latest.data) return current;
+    return this.engine?.onPriceTick(Number(latest.data.close), new Date(latest.data.open_time)) ?? current;
+  }
+
+  private async persistPaperState(sessionId: string, session: SessionRecord, snapshot: WorkerSnapshot): Promise<void> {
+    if (snapshot.position) {
+      const existing = await this.client
+        .from('paper_positions')
+        .select('id')
+        .eq('bot_session_id', sessionId)
+        .eq('symbol', session.symbol)
+        .eq('status', 'OPEN')
+        .maybeSingle();
+      if (existing.error) throw new Error(`Gagal membaca paper position aktif: ${existing.error.message}`);
+      if (!existing.data) {
+        const order = await this.client.from('paper_orders').upsert({
+          bot_session_id: sessionId,
+          signal_id: this.lastSignalId,
+          client_order_id: snapshot.position.id,
+          symbol: snapshot.position.symbol,
+          side: snapshot.position.side,
+          order_type: 'SIMULATED_MARKET',
+          status: 'FILLED',
+          quantity: snapshot.position.quantity,
+          requested_price: snapshot.position.entry,
+          filled_price: snapshot.position.entry,
+          metadata: { mode: snapshot.mode, source: 'PAPER_APPROVAL' },
+        }, { onConflict: 'client_order_id', ignoreDuplicates: true });
+        if (order.error) throw new Error(`Gagal menyimpan paper order: ${order.error.message}`);
+
+        const position = await this.client.from('paper_positions').insert({
+          bot_session_id: sessionId,
+          symbol: snapshot.position.symbol,
+          side: snapshot.position.side,
+          status: 'OPEN',
+          quantity: snapshot.position.quantity,
+          entry_price: snapshot.position.entry,
+          stop_loss: snapshot.position.stopLoss,
+          take_profit: snapshot.position.takeProfit,
+          opened_at: snapshot.position.openedAt,
+          metadata: { engine_position_id: snapshot.position.id, mode: snapshot.mode },
+        });
+        if (position.error) throw new Error(`Gagal menyimpan paper position: ${position.error.message}`);
+        await this.writeJournal(sessionId, snapshot.position.symbol, 'PAPER_OPEN', 'Paper approval disetujui dan position dibuat.', snapshot);
+      }
+    }
+
+    const closed = snapshot.lastClosedPosition;
+    if (closed && closed.id !== this.lastPersistedClosedId) {
+      const update = await this.client
+        .from('paper_positions')
+        .update({ status: 'CLOSED', exit_price: closed.exit, realized_pnl: closed.realizedPnl, close_reason: closed.closeReason, closed_at: closed.closedAt })
+        .eq('bot_session_id', sessionId)
+        .eq('symbol', session.symbol)
+        .eq('status', 'OPEN');
+      if (update.error) throw new Error(`Gagal menutup paper position: ${update.error.message}`);
+      await this.writeJournal(sessionId, closed.symbol, 'PAPER_CLOSE', `${closed.closeReason ?? 'EXIT'} pada ${closed.exit}.`, snapshot);
+      this.lastPersistedClosedId = closed.id;
+    }
+
+    const now = Date.now();
+    if (now - this.lastEquitySnapshotAt >= 60_000 || snapshot.lastClosedPosition !== null) {
+      const equity = await this.client.from('equity_snapshots').insert({
+        bot_session_id: sessionId,
+        equity: snapshot.equity,
+        realized_pnl: snapshot.realizedPnl,
+        unrealized_pnl: 0,
+        drawdown: 0,
+        daily_loss: Math.max(0, -snapshot.realizedPnl),
+      });
+      if (equity.error) throw new Error(`Gagal menyimpan equity snapshot: ${equity.error.message}`);
+      this.lastEquitySnapshotAt = now;
+    }
+  }
+
+  private async writeJournal(sessionId: string, symbol: string, action: string, reason: string, snapshot: WorkerSnapshot): Promise<void> {
+    const { error } = await this.client.from('trade_journal').insert({
+      bot_session_id: sessionId,
+      symbol,
+      action,
+      reason,
+      quality_score: snapshot.latestSignal?.qualityScore ?? null,
+      payload: { status: snapshot.status, mode: snapshot.mode, position: snapshot.position, lastClosedPosition: snapshot.lastClosedPosition },
+    });
+    if (error) throw new Error(`Gagal menyimpan trade journal: ${error.message}`);
+  }
+
   private async persistDerivedStatus(sessionId: string, requestedStatus: BotStatus, actualStatus: BotStatus): Promise<void> {
-    if (actualStatus !== 'WAITING_APPROVAL' && actualStatus !== 'POSITION_OPEN' && actualStatus !== 'COOLDOWN') return;
-    if (requestedStatus === actualStatus) return;
-    const { error } = await this.client.from('bot_sessions').update({ status: actualStatus }).eq('id', sessionId).eq('status', requestedStatus);
+    const derivedStatus = actualStatus === 'RUNNING' && requestedStatus === 'COOLDOWN' ? 'RUNNING' : actualStatus;
+    if (derivedStatus !== 'WAITING_APPROVAL' && derivedStatus !== 'POSITION_OPEN' && derivedStatus !== 'COOLDOWN' && !(requestedStatus === 'COOLDOWN' && derivedStatus === 'RUNNING')) return;
+    if (requestedStatus === derivedStatus) return;
+    const { error } = await this.client.from('bot_sessions').update({ status: derivedStatus }).eq('id', sessionId).eq('status', requestedStatus);
     if (error) throw new Error(`Gagal memperbarui status worker: ${error.message}`);
   }
 
