@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 type BotStatus = 'IDLE' | 'STARTING' | 'RUNNING' | 'WAITING_APPROVAL' | 'POSITION_OPEN' | 'PAUSED' | 'COOLDOWN' | 'EMERGENCY';
 type SupportedSymbol = 'BTCUSDT' | 'ETHUSDT';
 type Session = { status: BotStatus; mode: string; symbol: string; risk_fraction: number; daily_loss_limit: number };
-type LatestSignal = { decision: string; stage: string; timing: string; quality_score: number; evaluated_at: string };
+type LatestSignal = { decision: string; stage: string; timing: string; quality_score: number; evaluated_at: string; blockers: string[] };
 type LatestPosition = { side: string; symbol: string; quantity: number | string; entry_price: number | string; stop_loss: number | string; take_profit: number | string; opened_at: string };
 
 type ResponsePayload = { ok: boolean; configured?: boolean; error?: string; session?: Session; latestSignal?: LatestSignal | null; position?: LatestPosition | null };
@@ -106,6 +106,10 @@ export default function BotControls() {
         <span>Paper position</span>
         {position ? <strong>{position.side} {position.symbol} · qty {position.quantity} · entry {position.entry_price} · SL {position.stop_loss} · TP {position.take_profit}</strong> : <strong>Tidak ada posisi terbuka</strong>}
       </div>
+      {latestSignal && <div className="control-signal control-explanation">
+        <span>Rule status</span>
+        <strong>{latestSignal.stage === 'SETUP' ? 'Setup lolos score, menunggu trigger candle close.' : latestSignal.timing === 'WAIT_CONFIRMATION' ? 'Menunggu konfirmasi entry.' : latestSignal.blockers?.[0] ?? 'Semua rule sedang dievaluasi.'}</strong>
+      </div>}
     </section>
   );
 }

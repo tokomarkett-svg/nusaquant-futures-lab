@@ -9,7 +9,7 @@ const SESSIONS = {
 } as const;
 type SupportedSymbol = keyof typeof SESSIONS;
 type Action = 'start' | 'pause' | 'approve' | 'emergency';
-type LatestSignal = { decision: string; stage: string; timing: string; quality_score: number; evaluated_at: string };
+type LatestSignal = { decision: string; stage: string; timing: string; quality_score: number; evaluated_at: string; blockers: string[] };
 type LatestPosition = { side: string; symbol: string; quantity: number | string; entry_price: number | string; stop_loss: number | string; take_profit: number | string; opened_at: string };
 
 function getAdminClient() {
@@ -29,7 +29,7 @@ function resolveTarget(value: string | null | undefined): { symbol: SupportedSym
 async function latestSignal(client: NonNullable<ReturnType<typeof getAdminClient>>, sessionId: string): Promise<LatestSignal | null> {
   const result = await client
     .from('signal_evaluations')
-    .select('decision,stage,timing,quality_score,evaluated_at')
+    .select('decision,stage,timing,quality_score,evaluated_at,blockers')
     .eq('bot_session_id', sessionId)
     .order('evaluated_at', { ascending: false })
     .limit(1)
