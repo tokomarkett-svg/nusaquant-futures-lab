@@ -85,8 +85,15 @@ h1 { max-width: 760px; margin: 12px 0 15px; font-size: clamp(34px, 5vw, 62px); l
 .backtest-panel { margin-top: 12px; }
 .backtest-controls { display: flex; align-items: center; gap: 8px; }
 .backtest-controls select { border: 1px solid var(--line); border-radius: 9px; padding: 9px; background: white; color: var(--ink); font-size: 11px; font-weight: 800; }
+.backtest-verdict { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-bottom: 12px; padding: 12px 13px; border-radius: 12px; background: #fff4e8; color: var(--amber); font-size: 11px; }
+.backtest-verdict span { color: var(--muted); }
+.backtest-pass { background: #eaf8ef; color: var(--green-dark); }
 .backtest-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
 .backtest-sample { margin-top: 12px; color: var(--muted); font-family: 'DM Mono', monospace; font-size: 10px; }
+.backtest-trades-title { margin-top: 16px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+.backtest-trades { display: grid; gap: 6px; margin-top: 8px; }
+.backtest-trade { display: grid; grid-template-columns: 1.2fr 1fr 1.2fr; gap: 8px; padding: 9px; border-radius: 9px; background: #f7faf8; color: var(--muted); font-family: 'DM Mono', monospace; font-size: 10px; }
+.backtest-trade strong { font-weight: 600; }
 .backtest-note { margin-top: 7px; color: var(--muted); font-size: 10px; line-height: 1.45; }
 
 .grid { display: grid; grid-template-columns: 1.35fr .9fr; gap: 12px; margin-top: 12px; }
@@ -143,6 +150,8 @@ h1 { max-width: 760px; margin: 12px 0 15px; font-size: clamp(34px, 5vw, 62px); l
   .control-status { grid-column: 1 / -1; justify-self: start; }
   .grid { grid-template-columns: 1fr; }
   .backtest-grid { grid-template-columns: 1fr 1fr; }
+  .backtest-trade { grid-template-columns: 1fr 1fr; }
+  .backtest-trade span:last-child { grid-column: 1 / -1; }
   .footer-note { display: block; }
 }
 

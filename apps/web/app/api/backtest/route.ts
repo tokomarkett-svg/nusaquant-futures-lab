@@ -77,6 +77,23 @@ export async function POST(request: Request) {
       expectancyR: report.expectancyR,
       maxDrawdown: report.maxDrawdown,
       maxDrawdownPct: report.maxDrawdownPct,
+      gate: report.totalTrades < 30
+        ? 'NOT_READY_SAMPLE'
+        : report.profitFactor !== null && report.profitFactor > 1 && report.expectancyR > 0
+          ? 'PASS_RESEARCH_GATE'
+          : 'FAIL_NEGATIVE_EXPECTANCY',
+      trades: report.trades.map((trade) => ({
+        side: trade.side,
+        entryTime: trade.entryTime,
+        exitTime: trade.exitTime,
+        entry: trade.entry,
+        exit: trade.exit,
+        netPnl: trade.netPnl,
+        costs: trade.costs,
+        rMultiple: trade.rMultiple,
+        exitReason: trade.exitReason,
+        qualityScore: trade.qualityScore,
+      })),
       notes: report.notes,
     },
   });

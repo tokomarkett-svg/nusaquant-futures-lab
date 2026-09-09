@@ -15,6 +15,8 @@ type Report = {
   expectancyR: number;
   maxDrawdown: number;
   maxDrawdownPct: number;
+  gate: 'NOT_READY_SAMPLE' | 'PASS_RESEARCH_GATE' | 'FAIL_NEGATIVE_EXPECTANCY';
+  trades: Array<{ side: string; entryTime: number; exitTime: number; entry: number; exit: number; netPnl: number; costs: number; rMultiple: number; exitReason: string; qualityScore: number }>;
   notes: string[];
 };
 
@@ -70,6 +72,10 @@ export default function BacktestPanel() {
       </div>
       {report ? (
         <>
+          <div className={`backtest-verdict ${report.gate === 'PASS_RESEARCH_GATE' ? 'backtest-pass' : 'backtest-review'}`}>
+            <strong>{report.gate === 'PASS_RESEARCH_GATE' ? 'RESEARCH GATE PASS' : report.gate === 'NOT_READY_SAMPLE' ? 'NOT READY · SAMPLE TOO SMALL' : 'RESEARCH GATE FAIL'}</strong>
+            <span>{report.gate === 'NOT_READY_SAMPLE' ? 'Belum cukup trade untuk menyimpulkan performa.' : report.gate === 'PASS_RESEARCH_GATE' ? 'Metrik dasar positif setelah biaya.' : 'Expectancy atau profit factor masih negatif.'}</span>
+          </div>
           <div className="backtest-grid">
             <div className="detail"><div className="detail-label">Net P/L</div><div className={`detail-value ${report.netPnl >= 0 ? 'positive' : 'negative'}`}>{money(report.netPnl)}</div></div>
             <div className="detail"><div className="detail-label">Trades</div><div className="detail-value">{report.totalTrades} · {report.winningTrades}W / {report.losingTrades}L</div></div>
@@ -79,6 +85,8 @@ export default function BacktestPanel() {
             <div className="detail"><div className="detail-label">Profit factor</div><div className="detail-value">{report.profitFactor === null ? '—' : Number.isFinite(report.profitFactor) ? report.profitFactor.toFixed(2) : '∞'}</div></div>
           </div>
           <div className="backtest-sample">Sample: {sample?.higherCandles ?? 0} candle 1H · {sample?.entryCandles ?? 0} candle 15M</div>
+          <div className="backtest-trades-title">Trade diagnostics</div>
+          {report.trades.length === 0 ? <div className="backtest-note">Belum ada trade pada sample ini.</div> : <div className="backtest-trades">{report.trades.map((trade, index) => <div className="backtest-trade" key={`${trade.entryTime}-${index}`}><span>#{index + 1} {trade.side} · score {trade.qualityScore}</span><strong className={trade.netPnl >= 0 ? 'positive' : 'negative'}>{money(trade.netPnl)} · {trade.rMultiple.toFixed(2)}R</strong><span>{trade.exitReason} · costs {trade.costs.toFixed(2)}</span></div>)}</div>}
           {report.notes.map((note) => <div className="backtest-note" key={note}>• {note}</div>)}
         </>
       ) : <div className="control-message">{message}</div>}
