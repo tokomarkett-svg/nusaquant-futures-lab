@@ -9,8 +9,10 @@
     "services/*"
   ],
   "scripts": {
-    "dev": "echo 'Development app belum dibuat'",
-    "test": "echo 'Test suite belum dibuat'",
-    "lint": "echo 'Lint belum dikonfigurasi'"
+    "dev": "npm run dev --workspace @nusaquant/web",
+    "build": "npm run build --workspace @nusaquant/web",
+    "start": "npm run start --workspace @nusaquant/web",
+    "typecheck": "npm run typecheck --workspace @nusaquant/web",
+    "test": "npm run test --workspace @nusaquant/core"
   }
 }

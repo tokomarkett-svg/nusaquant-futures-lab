@@ -1,0 +1,11 @@
+{
+  "name": "@nusaquant/worker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "node -e \"console.log('Worker belum diaktifkan; paper engine akan dibuat setelah core lulus pengujian.')\""
+  },
+  "dependencies": {
+    "@nusaquant/core": "0.1.0"
+  }
+}
