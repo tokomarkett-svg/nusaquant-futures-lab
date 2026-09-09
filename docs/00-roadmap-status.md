@@ -19,13 +19,14 @@
 | 9 | Paper trading state machine | SELESAI SEBAGIAN | Worker dan paper broker lokal sudah ada; belum terhubung stream/API |
 | 10 | Historical data adapter | SELESAI SEBAGIAN | Parser public Binance klines tersedia; dataset persistence belum ada |
 | 11 | Backtest dengan fee, funding, spread, slippage | SELESAI SEBAGIAN | Core runner dan cost model tersedia; perlu dataset nyata dan walk-forward |
-| 12 | Persistent worker dan market stream | BELUM | REST bootstrap + WebSocket candle/mark/user stream |
-| 13 | API start/pause/approval | BELUM | Dashboard akan mengontrol worker melalui API |
-| 14 | Binance Futures Testnet | BELUM | Hanya setelah paper engine stabil |
-| 15 | Security audit dan recovery | BELUM | API key, idempotency, reconnect, emergency stop |
-| 16 | Vercel deployment | SIAP DIIMPOR | Memerlukan konfigurasi project Vercel; secret tidak boleh masuk repo |
-| 17 | Live trading | TIDAK DIMULAI | Tidak boleh sebelum fase sebelumnya lulus |
-| 18 | Komersialisasi | BELUM | Perlu performa teruji, dokumentasi, terms, privacy, risk disclosure, dan review hukum |
+| 12 | Persistent worker dan market stream | SELESAI SEBAGIAN | REST public klines + polling adapter tersedia; persistent service/WebSocket belum |
+| 13 | API start/pause/approval | BELUM | Worker state machine lokal sudah ada; dashboard belum terhubung |
+| 14 | Supabase schema dan persistence | SELESAI SEBAGIAN | Migration, RLS, dan setup doc sudah dibuat; client adapter dan Auth belum |
+| 15 | Binance Futures Testnet | BELUM | Hanya setelah paper engine stabil |
+| 16 | Security audit dan recovery | BELUM | API key, idempotency, reconnect, emergency stop |
+| 17 | Vercel deployment | SIAP DIIMPOR | Memerlukan konfigurasi project Vercel; secret tidak boleh masuk repo |
+| 18 | Live trading | TIDAK DIMULAI | Tidak boleh sebelum fase sebelumnya lulus |
+| 19 | Komersialisasi | BELUM | Perlu performa teruji, dokumentasi, terms, privacy, risk disclosure, dan review hukum |
 
 ## Urutan pembangunan yang disepakati
 
