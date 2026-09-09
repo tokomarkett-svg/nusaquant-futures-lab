@@ -2,6 +2,7 @@ import { evaluateIntelligentSignal, type Candle, type IntelligentSignal } from '
 import { loadMarketSnapshot } from '../lib/market';
 import SupabaseStatus from './components/SupabaseStatus';
 import BotControls from './components/BotControls';
+import BacktestPanel from './components/BacktestPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -155,7 +156,9 @@ export default async function HomePage() {
             <DecisionPanel evaluation={btcSignal} />
           </div>
 
-          <div className="footer-note"><span><strong>Next build:</strong> paper controls → signal persistence → real-time worker state.</span><span>v0.2.0 · 09 Sep 2026</span></div>
+          <BacktestPanel />
+
+          <div className="footer-note"><span><strong>Next build:</strong> paper metrics → Testnet adapter → security gate.</span><span>v0.3.0 · 09 Sep 2026</span></div>
         </main>
       </div>
     </div>

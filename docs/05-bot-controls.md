@@ -30,6 +30,10 @@ Railway worker menjalankan control consumer setiap beberapa detik untuk dua sess
 
 Jika hasil memasuki tahap `WAITING_APPROVAL`, worker memperbarui session dan dashboard menampilkan `Approve paper entry`. Approval hanya diterima jika engine memang memiliki signal valid yang menunggu persetujuan.
 
+## Backtest gate
+
+Dashboard memiliki `Backtest gate` untuk BTCUSDT dan ETHUSDT. Backtest membaca candle Supabase, memakai fee, slippage, funding, risk fraction, dan asumsi konservatif saat stop serta target tersentuh pada candle yang sama. Hasil hanya laporan penelitian; tidak mengubah paper session dan tidak mengirim order.
+
 ## Batasan versi ini
 
 - Control dan execution hanya untuk paper session.
