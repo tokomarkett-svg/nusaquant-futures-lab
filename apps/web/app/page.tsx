@@ -1,4 +1,5 @@
 import { evaluateIntelligentSignal, type Candle, type IntelligentSignal } from '@nusaquant/core';
+import SupabaseStatus from './components/SupabaseStatus';
 
 function makeCandles(count: number, start: number, interval: number, trend: number, phase: number): Candle[] {
   const candles: Candle[] = [];
@@ -119,6 +120,7 @@ export default function HomePage() {
           <div className="top-actions">
             <div className="mode-badge">Paper trading</div>
             <div className="health-badge"><span className="health-dot" />Core healthy</div>
+            <SupabaseStatus />
           </div>
         </header>
 
