@@ -5,7 +5,7 @@ import { BinancePublicMarketDataClient } from './market-data.ts';
 test('public market adapter validates and filters unfinished candles', async () => {
   const now = Date.now();
   const payload = [
-    [now - 3_600_000, '100', '102', '99', '101', '1000', now],
+    [now - 3_600_000, '100', '102', '99', '101', '0', now],
     [now - 1000, '101', '102', '100', '101.5', '900', now],
   ];
   const client = new BinancePublicMarketDataClient({

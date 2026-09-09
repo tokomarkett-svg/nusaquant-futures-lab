@@ -33,6 +33,11 @@ function assertPositive(value: number, label: string): number {
   return value;
 }
 
+function assertNonNegative(value: number, label: string): number {
+  if (!Number.isFinite(value) || value < 0) throw new Error(`Data Binance tidak valid: ${label}`);
+  return value;
+}
+
 export class BinancePublicMarketDataClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
@@ -74,7 +79,7 @@ export class BinancePublicMarketDataClient {
           high: assertPositive(Number(row[2]), 'high'),
           low: assertPositive(Number(row[3]), 'low'),
           close: assertPositive(Number(row[4]), 'close'),
-          volume: assertPositive(Number(row[5]), 'volume'),
+          volume: assertNonNegative(Number(row[5]), 'volume'),
         };
       }).filter((candle) => !closedOnly || candle.time + duration <= now)
         .sort((left, right) => left.time - right.time);
