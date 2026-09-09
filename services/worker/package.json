@@ -5,11 +5,12 @@
   "scripts": {
     "dev": "node -e \"console.log('Worker paper engine siap dihubungkan ke market stream.')\"",
     "test": "node --import tsx --test src/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "ingest": "RUN_MARKET_INGEST=true node --import tsx src/ingest.ts",
+    "ingest:watch": "RUN_MARKET_INGEST=true RUN_MARKET_WATCH=true node --import tsx src/ingest.ts"
   },
   "dependencies": {
     "@nusaquant/core": "0.1.0",
-    "@supabase/supabase-js": "^2.57.0",
     "@supabase/supabase-js": "^2.109.0"
   },
   "devDependencies": {

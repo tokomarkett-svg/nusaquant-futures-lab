@@ -59,11 +59,24 @@ async function main(): Promise<void> {
   const symbols = (process.env.SYMBOLS ?? 'BTCUSDT,ETHUSDT').split(',').map((symbol) => symbol.trim()).filter(Boolean);
   const result: Record<string, Record<string, number>> = {};
   for (const symbol of symbols) result[symbol] = await ingestSymbol({ symbol });
-  console.log(JSON.stringify({ ok: true, result }));
+  console.log(JSON.stringify({ ok: true, result, at: new Date().toISOString() }));
+}
+
+async function watch(): Promise<void> {
+  const intervalMs = Math.max(Number(process.env.INGEST_INTERVAL_MS ?? 60_000), 15_000);
+  for (;;) {
+    try {
+      await main();
+    } catch (error) {
+      console.error(error);
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
 }
 
 if (process.env.RUN_MARKET_INGEST === 'true') {
-  main().catch((error: unknown) => {
+  const task = process.env.RUN_MARKET_WATCH === 'true' ? watch() : main();
+  task.catch((error: unknown) => {
     console.error(error);
     process.exitCode = 1;
   });

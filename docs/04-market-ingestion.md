@@ -10,6 +10,8 @@ SUPABASE_SERVICE_ROLE_KEY=
 BINANCE_BASE_URL=https://fapi.binance.com
 SYMBOLS=BTCUSDT,ETHUSDT
 RUN_MARKET_INGEST=true
+RUN_MARKET_WATCH=false
+INGEST_INTERVAL_MS=60000
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` hanya boleh berada di worker/server. Jangan memasukkannya ke frontend, GitHub, Vercel public variables, atau chat.
@@ -57,4 +59,4 @@ Jika berhasil, setiap pair dan interval akan memiliki baris candle.
 - Service-role key memberi akses tinggi dan harus tetap berada di server.
 - Ingestion bersifat idempotent berdasarkan `symbol`, `interval`, dan `open_time`.
 - Candle yang belum selesai dibuang agar signal engine tidak membaca candle berjalan.
-- Tahap berikutnya adalah menjadwalkan ingestion dan menyimpan signal evaluation.
+- Untuk worker yang berjalan terus, gunakan command `npm run ingest:watch --workspace @nusaquant/worker` setelah environment aman tersedia. Tahap berikutnya adalah menyimpan signal evaluation dan menghubungkan start/pause.
