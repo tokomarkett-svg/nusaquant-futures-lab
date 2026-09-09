@@ -62,7 +62,9 @@ h1 { max-width: 760px; margin: 12px 0 15px; font-size: clamp(34px, 5vw, 62px); l
 .metric-value { margin-top: 10px; font-family: 'DM Mono', monospace; font-size: 22px; letter-spacing: -.05em; }
 .metric-foot { margin-top: 10px; color: var(--green); font-size: 11px; }
 
-.control-panel { display: grid; grid-template-columns: 1.2fr auto; gap: 12px 18px; align-items: center; border-radius: 18px; padding: 18px 20px; margin: 12px 0; }
+.control-panel { display: grid; grid-template-columns: 1.2fr auto auto; gap: 12px 18px; align-items: center; border-radius: 18px; padding: 18px 20px; margin: 12px 0; }
+.symbol-picker { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.symbol-picker select { border: 1px solid var(--line); border-radius: 9px; padding: 8px 9px; background: white; color: var(--ink); font-size: 11px; font-weight: 800; }
 .control-status { display: flex; align-items: center; gap: 8px; justify-self: end; padding: 8px 11px; border-radius: 999px; background: #f0f8f2; color: var(--green-dark); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #a8b5ad; }
 .status-running { background: #22a66a; box-shadow: 0 0 0 4px #ddf6e8; }
@@ -128,6 +130,9 @@ h1 { max-width: 760px; margin: 12px 0 15px; font-size: clamp(34px, 5vw, 62px); l
   .hero-row { display: block; }
   .hero-note { margin-top: 24px; max-width: none; }
   .metrics { grid-template-columns: 1fr 1fr; }
+  .control-panel { grid-template-columns: 1fr auto; }
+  .symbol-picker { justify-self: end; }
+  .control-status { grid-column: 1 / -1; justify-self: start; }
   .grid { grid-template-columns: 1fr; }
   .footer-note { display: block; }
 }

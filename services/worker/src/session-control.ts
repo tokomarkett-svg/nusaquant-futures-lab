@@ -3,6 +3,9 @@ import { PaperBotEngine, type BotStatus, type ExecutionMode, type PaperPosition,
 import { createWorkerSupabaseClient } from './supabase.ts';
 
 export const DEFAULT_BOT_SESSION_ID = '00000000-0000-4000-8000-000000000001';
+export const ETH_BOT_SESSION_ID = '00000000-0000-4000-8000-000000000002';
+
+export const DEFAULT_BOT_SESSION_IDS = [DEFAULT_BOT_SESSION_ID, ETH_BOT_SESSION_ID] as const;
 
 type SessionRecord = {
   id: string;
@@ -116,6 +119,11 @@ function mapStoredSignal(row: StoredSignal): IntelligentSignal {
 
 export class PaperSessionController {
   private readonly client = createWorkerSupabaseClient();
+  private readonly sessionId: string;
+
+  constructor(sessionId = process.env.BOT_SESSION_ID ?? DEFAULT_BOT_SESSION_ID) {
+    this.sessionId = sessionId;
+  }
   private engine: PaperBotEngine | null = null;
   private lastDesiredStatus: BotStatus | null = null;
   private lastEngineStatus: BotStatus | null = null;
@@ -125,7 +133,7 @@ export class PaperSessionController {
   private lastEquitySnapshotAt = 0;
 
   async sync(): Promise<WorkerSnapshot | null> {
-    const sessionId = process.env.BOT_SESSION_ID ?? DEFAULT_BOT_SESSION_ID;
+    const sessionId = this.sessionId;
     const { data, error } = await this.client
       .from('bot_sessions')
       .select('id,status,mode,symbol,risk_fraction')

@@ -1,6 +1,6 @@
 # Bot Controls v0.1
 
-Dashboard sekarang memiliki control session untuk paper mode:
+Dashboard sekarang memiliki control session untuk paper mode pada BTCUSDT dan ETHUSDT:
 
 - `Start observation` → status session menjadi `RUNNING`;
 - `Pause new entries` → status menjadi `PAUSED`;
@@ -26,7 +26,7 @@ Jangan gunakan prefix `NEXT_PUBLIC_`. Key ini tidak boleh tampil di browser, Git
 
 ## Alur worker
 
-Railway worker menjalankan control consumer setiap beberapa detik. Saat session `RUNNING`, worker membaca candle closed terbaru dari `market_candles` untuk `1h` dan `15m`, menjalankan intelligence engine, lalu menyimpan hasil audit ke `signal_evaluations`. Satu evaluasi hanya dibuat untuk candle `15m` terbaru selama proses worker tersebut berjalan.
+Railway worker menjalankan control consumer setiap beberapa detik untuk dua session terpisah: BTCUSDT dan ETHUSDT. Saat session `RUNNING`, worker membaca candle closed terbaru dari `market_candles` untuk `1h` dan `15m`, menjalankan intelligence engine, lalu menyimpan hasil audit ke `signal_evaluations`. Satu evaluasi hanya dibuat untuk candle `15m` terbaru selama proses worker tersebut berjalan.
 
 Jika hasil memasuki tahap `WAITING_APPROVAL`, worker memperbarui session dan dashboard menampilkan `Approve paper entry`. Approval hanya diterima jika engine memang memiliki signal valid yang menunggu persetujuan.
 

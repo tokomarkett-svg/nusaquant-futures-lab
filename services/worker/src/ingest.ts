@@ -1,6 +1,6 @@
 import type { Candle } from '@nusaquant/core';
 import { BinancePublicMarketDataClient } from './market-data.ts';
-import { PaperSessionController } from './session-control.ts';
+import { DEFAULT_BOT_SESSION_IDS, PaperSessionController } from './session-control.ts';
 import { createWorkerSupabaseClient } from './supabase.ts';
 
 export interface MarketCandleRow {
@@ -76,8 +76,10 @@ async function watchIngestion(): Promise<void> {
 }
 
 async function watch(): Promise<void> {
-  const controller = new PaperSessionController();
-  await Promise.all([watchIngestion(), controller.watch()]);
+  const configuredIds = process.env.BOT_SESSION_IDS?.split(',').map((id) => id.trim()).filter(Boolean);
+  const sessionIds = configuredIds?.length ? configuredIds : [...DEFAULT_BOT_SESSION_IDS];
+  const controllers = sessionIds.map((sessionId) => new PaperSessionController(sessionId));
+  await Promise.all([watchIngestion(), ...controllers.map((controller) => controller.watch())]);
 }
 
 if (process.env.RUN_MARKET_INGEST === 'true') {

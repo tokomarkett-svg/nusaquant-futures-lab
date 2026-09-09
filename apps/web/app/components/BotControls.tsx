@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 type BotStatus = 'IDLE' | 'STARTING' | 'RUNNING' | 'WAITING_APPROVAL' | 'POSITION_OPEN' | 'PAUSED' | 'COOLDOWN' | 'EMERGENCY';
+type SupportedSymbol = 'BTCUSDT' | 'ETHUSDT';
 type Session = { status: BotStatus; mode: string; symbol: string; risk_fraction: number; daily_loss_limit: number };
 type LatestSignal = { decision: string; stage: string; timing: string; quality_score: number; evaluated_at: string };
 type LatestPosition = { side: string; symbol: string; quantity: number | string; entry_price: number | string; stop_loss: number | string; take_profit: number | string; opened_at: string };
@@ -21,6 +22,7 @@ function readableStatus(status: BotStatus | null): string {
 
 export default function BotControls() {
   const router = useRouter();
+  const [symbol, setSymbol] = useState<SupportedSymbol>('BTCUSDT');
   const [session, setSession] = useState<Session | null>(null);
   const [latestSignal, setLatestSignal] = useState<LatestSignal | null>(null);
   const [position, setPosition] = useState<LatestPosition | null>(null);
@@ -30,7 +32,7 @@ export default function BotControls() {
 
   const load = useCallback(async () => {
     try {
-      const response = await fetch('/api/bot/session', { cache: 'no-store' });
+      const response = await fetch(`/api/bot/session?symbol=${symbol}`, { cache: 'no-store' });
       const payload = await response.json() as ResponsePayload;
       setConfigured(payload.configured !== false);
       if (payload.session) setSession(payload.session);
@@ -41,7 +43,7 @@ export default function BotControls() {
       setConfigured(false);
       setMessage('Bot control API belum dapat dihubungi.');
     }
-  }, []);
+  }, [symbol]);
 
   useEffect(() => {
     void load();
@@ -59,7 +61,7 @@ export default function BotControls() {
       const response = await fetch('/api/bot/session', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, symbol }),
       });
       const payload = await response.json() as ResponsePayload;
       if (payload.session) setSession(payload.session);
@@ -80,8 +82,14 @@ export default function BotControls() {
     <section className="control-panel">
       <div>
         <div className="panel-title">Bot control</div>
-        <div className="panel-kicker">Session: {session?.symbol ?? 'BTCUSDT'} · Paper approval only</div>
+        <div className="panel-kicker">Session: {session?.symbol ?? symbol} · Paper approval only</div>
       </div>
+      <label className="symbol-picker">Symbol
+        <select value={symbol} onChange={(event) => setSymbol(event.target.value as SupportedSymbol)}>
+          <option value="BTCUSDT">BTCUSDT</option>
+          <option value="ETHUSDT">ETHUSDT</option>
+        </select>
+      </label>
       <div className="control-status"><span className={`status-dot status-${status?.toLowerCase() ?? 'idle'}`} />{readableStatus(status)}</div>
       <div className="control-actions">
         <button className="control-btn control-primary" disabled={!configured || busy || status === 'RUNNING' || status === 'WAITING_APPROVAL' || status === 'POSITION_OPEN'} onClick={() => void command('start')}>Start observation</button>
