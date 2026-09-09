@@ -8,6 +8,9 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --import tsx --test src/index.test.ts"
+  },
+  "devDependencies": {
+    "tsx": "4.23.13"
   }
 }
