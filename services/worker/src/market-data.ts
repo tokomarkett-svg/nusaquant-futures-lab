@@ -44,10 +44,11 @@ export class BinancePublicMarketDataClient {
     this.timeoutMs = options.timeoutMs ?? 8_000;
   }
 
-  async getKlines({ symbol, interval, limit = 500, closedOnly = true }: {
+  async getKlines({ symbol, interval, limit = 500, endTime, closedOnly = true }: {
     symbol: string;
     interval: string;
     limit?: number;
+    endTime?: number;
     closedOnly?: boolean;
   }): Promise<Candle[]> {
     const duration = getIntervalMs(interval);
@@ -55,6 +56,7 @@ export class BinancePublicMarketDataClient {
     url.searchParams.set('symbol', symbol.toUpperCase());
     url.searchParams.set('interval', interval);
     url.searchParams.set('limit', String(Math.min(Math.max(limit, 1), 1500)));
+    if (endTime !== undefined) url.searchParams.set('endTime', String(Math.floor(endTime)));
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);

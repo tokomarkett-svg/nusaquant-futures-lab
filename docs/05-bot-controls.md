@@ -34,6 +34,14 @@ Jika hasil memasuki tahap `WAITING_APPROVAL`, worker memperbarui session dan das
 
 Dashboard memiliki `Backtest gate` untuk BTCUSDT dan ETHUSDT. Backtest membaca candle Supabase, memakai fee, slippage, funding, risk fraction, dan asumsi konservatif saat stop serta target tersentuh pada candle yang sama. Hasil hanya laporan penelitian; tidak mengubah paper session dan tidak mengirim order.
 
+Untuk memperbesar sample sebelum mengambil keputusan, worker menyediakan one-time historical backfill:
+
+```bash
+npm run ingest:backfill --workspace @nusaquant/worker
+```
+
+Gunakan `BACKFILL_DAYS` (default 90) dan jalankan sebagai job satu kali, bukan loop permanen. Setelah selesai, kembalikan worker ke `ingest:watch`.
+
 ## Batasan versi ini
 
 - Control dan execution hanya untuk paper session.
