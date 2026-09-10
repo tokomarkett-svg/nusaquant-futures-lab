@@ -6,9 +6,9 @@ NusaQuant Futures Lab adalah platform riset dan paper-trading untuk Binance USD�
 
 ## Handoff singkat untuk sesi/agent berikutnya
 
-**Tanggal status:** 10 September 2026, Asia/Jakarta
+**Tanggal status:** 11 September 2026, Asia/Jakarta
 **Branch:** `main`
-**Commit fitur terakhir:** `0006f76 fix: clarify gross audit summary`
+**Commit fitur terakhir:** update berikutnya sedang divalidasi
 **Repository:** `tokomarkett-svg/nusaquant-futures-lab`
 
 ### Mulai dari sini
@@ -35,17 +35,19 @@ NusaQuant Futures Lab adalah platform riset dan paper-trading untuk Binance USD�
 - Research gate dan trade diagnostics.
 - Edge diagnostics berdasarkan side, quality score, exit reason, regime, dan periode.
 - Entry timing diagnostics berdasarkan trigger candle range/ATR, entry distance/EMA20, dan stop distance/ATR.
-- State machine paper trading dengan approval, pause, emergency stop, stop-loss, take-profit, cooldown, dan restore state.
+- State machine paper trading dengan approval, pause, emergency stop, stop-loss, take-profit, cooldown, restore state, dan stale-approval guard.
+- Worker heartbeat, countdown candle 15M, symbol context sync, dan paper metrics yang membaca persistence Supabase.
 
-Validasi terakhir yang lulus sebelum commit edge diagnostics:
+Validasi terakhir:
 
 - Web typecheck: pass
 - Worker typecheck: pass
-- Core tests: 12 pass
-- Worker tests: 9 pass
+- Core tests: 13 pass
+- Worker tests: 14 pass
 - Production build: pass
 - `npm audit --omit=dev`: 0 vulnerability
 - `git diff --check`: pass
+- Vercel/Railway deployment status: success
 
 ### Batas produk saat ini
 
@@ -60,10 +62,12 @@ Validasi terakhir yang lulus sebelum commit edge diagnostics:
 | Triad retest hypothesis | Research-only | Trigger → retest level candle sebelumnya ≤3 candle; belum production |
 | Historical backfill | Berhasil | 90 hari BTCUSDT/ETHUSDT, interval 15M/1H |
 | Public market polling | Tersedia | REST/polling, belum WebSocket production |
-| Paper state machine | Fondasi dan test berfungsi | End-to-end production masih perlu smoke test |
+| Paper state machine | Fondasi dan test berfungsi | Approval lifecycle, stale approval, restore, cooldown, dan daily-loss guard tervalidasi |
 | Bot control API | Tersedia | Start, pause, approve, emergency; membutuhkan env Supabase server |
-| Paper P/L accounting | Implemented locally | Fee, slippage, funding, net realized P/L, dan cost metadata sudah dihitung; production smoke test masih perlu |
-| Daily-loss hard block | Implemented locally | Risk Governor memblokir entry dan mem-pause engine setelah limit tercapai; persistence production masih perlu smoke test |
+| Paper P/L accounting | Implemented | Fee, slippage, funding, net realized P/L, cost metadata, dan dashboard metrics tersedia |
+| Daily-loss hard block | Implemented | Risk Governor memblokir entry dan mem-pause engine setelah limit tercapai |
+| Worker heartbeat | Implemented | Worker menyentuh `bot_sessions.updated_at`; dashboard menandai ACTIVE/STALE |
+| Paper metrics API | Implemented | Equity, realized P/L, daily loss, signal count, dan paper trades dari Supabase |
 | Testnet | Belum dimulai | Jangan diaktifkan sebelum paper dan OOS lulus |
 | Live trading | Tidak dimulai | Jangan menghubungkan private API |
 | Temporal out-of-sample | Implemented | 70/30 split tersedia di API/dashboard; BTCUSDT sudah dijalankan |
@@ -191,16 +195,14 @@ Research-only `TRIAD_TIMING_HYPOTHESIS` menolak trigger dengan range `>=1.2 ATR`
 
 ## Pekerjaan Berikutnya
 
-Urutan kerja yang disepakati:
+Urutan kerja yang disepakati sekarang:
 
-1. Deployment commit `f34a7ad` sedang diverifikasi di Vercel/Railway.
-2. Jalankan ulang BTCUSDT dan ETHUSDT agar entry timing diagnostics serta dua research variant terisi.
-3. Bandingkan baseline, `TRIAD_TIMING_HYPOTHESIS`, dan `TRIAD_RETEST_HYPOTHESIS` pada full-sample dan OOS.
-4. Candidate hanya boleh dipromosikan jika OOS membaik tanpa mengorbankan sample dan konsisten di fold.
-5. Jika retest candidate layak, jalankan walk-forward khusus candidate; jika tidak, audit exit architecture.
-6. Jalankan production smoke test paper: start → signal → approval → open → costed close → daily-loss block → recovery.
-7. Hanya jika edge stabil dan positif, lanjutkan evaluasi paper execution yang lebih lama.
-8. Testnet/live tetap terkunci sampai seluruh research dan security gate lulus.
+1. Pertahankan observation BTCUSDT/ETHUSDT dan pantau `Worker heartbeat` serta `Market data`.
+2. Kumpulkan paper observation yang lebih panjang; jangan melakukan tuning acak.
+3. Kandidat baru hanya diuji jika gross/net expectancy positif, PF di atas 1, OOS minimal 30 trade, dan walk-forward stabil.
+4. Setelah research edge lulus, jalankan paper execution yang lebih panjang dengan metrics persistence.
+5. Baru setelah paper, recovery, idempotency, dan security review lulus, evaluasi Demo/Testnet adapter.
+6. Testnet dan live order tetap terkunci; tidak ada private Binance API pada fase ini.
 
 ## Deployment dan Environment
 
@@ -278,6 +280,7 @@ git log --oneline -5
 - `apps/web/app/components/BacktestPanel.tsx` — research gate, edge diagnostics, entry timing diagnostics, dan trade diagnostics.
 - `apps/web/app/components/BotControls.tsx` — kontrol paper session.
 - `apps/web/app/api/bot/session/route.ts` — API start/pause/approve/emergency.
+- `apps/web/app/api/bot/metrics/route.ts` — paper equity, realized P/L, daily loss, signal count, dan paper trade metrics.
 - `packages/core/src/intelligence.ts` — intelligence layer dan cost-aware quantity sizing.
 - `packages/core/src/backtest.ts` — simulator, cost model, exit handling, temporal OOS, walk-forward, dan entry timing diagnostics.
 - `packages/core/src/backtest.test.ts` — test backtest.

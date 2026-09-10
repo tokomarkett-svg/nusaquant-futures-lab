@@ -4,6 +4,7 @@ import SupabaseStatus from './components/SupabaseStatus';
 import BotControls from './components/BotControls';
 import BacktestPanel from './components/BacktestPanel';
 import MarketIntelligence from './components/MarketIntelligence';
+import PaperMetrics from './components/PaperMetrics';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,12 +44,7 @@ export default async function HomePage() {
 
           <BacktestPanel />
 
-          <div className="metrics">
-            <div className="metric-card"><div className="metric-label">Paper equity</div><div className="metric-value">10,000.00</div><div className="metric-foot">USDT · sandbox</div></div>
-            <div className="metric-card"><div className="metric-label">Risk / trade</div><div className="metric-value">0.25%</div><div className="metric-foot">25.00 USDT cap</div></div>
-            <div className="metric-card"><div className="metric-label">Daily loss limit</div><div className="metric-value">1.00%</div><div className="metric-foot">Circuit breaker ready</div></div>
-            <div className="metric-card"><div className="metric-label">Market mode</div><div className="metric-value">{btcSignal.regime.replace('_', ' ')}</div><div className="metric-foot">1H regime filter</div></div>
-          </div>
+          <PaperMetrics />
 
           <MarketIntelligence
             source={market.source}
@@ -58,7 +54,7 @@ export default async function HomePage() {
             ]}
           />
 
-          <div className="footer-note"><span><strong>Next build:</strong> paper metrics → Testnet adapter → security gate.</span><span>v0.3.0 · 09 Sep 2026</span></div>
+          <div className="footer-note"><span><strong>Next gate:</strong> research edge → paper duration → Demo/Testnet adapter (locked).</span><span>v0.3.0 · 11 Sep 2026</span></div>
         </main>
       </div>
     </div>

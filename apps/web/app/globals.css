@@ -61,6 +61,7 @@ h1 { max-width: 760px; margin: 12px 0 15px; font-size: clamp(34px, 5vw, 62px); l
 .metric-label { color: var(--muted); font-size: 12px; }
 .metric-value { margin-top: 10px; font-family: 'DM Mono', monospace; font-size: 22px; letter-spacing: -.05em; }
 .metric-foot { margin-top: 10px; color: var(--green); font-size: 11px; }
+.metric-error { grid-column: 1 / -1; color: var(--red); font-size: 11px; }
 
 .control-panel { display: grid; grid-template-columns: 1.2fr auto auto; gap: 12px 18px; align-items: center; border-radius: 18px; padding: 18px 20px; margin: 12px 0; }
 .symbol-picker { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
