@@ -10,7 +10,7 @@ export interface BacktestConfig {
   fundingRatePerBar?: number;
   maxBarsInTrade?: number;
   timezone?: string;
-  entryPolicy?: 'BASELINE' | 'TRIAD_TIMING_HYPOTHESIS';
+  entryPolicy?: 'BASELINE' | 'TRIAD_TIMING_HYPOTHESIS' | 'TRIAD_RETEST_HYPOTHESIS';
 }
 
 export interface BacktestTrade {
@@ -283,6 +283,73 @@ function buildDiagnostics(trades: BacktestTrade[], timezone: string): BacktestDi
   };
 }
 
+function findRetestEntry({
+  signal,
+  previousCandle,
+  futureCandles,
+}: {
+  signal: IntelligentSignal;
+  previousCandle: Candle;
+  futureCandles: Array<{ candle: Candle; index: number }>;
+}): { candle: Candle; index: number } | null {
+  if (signal.decision === 'NO_TRADE') return null;
+  const retestLevel = signal.decision === 'LONG' ? previousCandle.high : previousCandle.low;
+  for (const candidate of futureCandles.slice(0, 3)) {
+    const bullishHold = candidate.candle.low <= retestLevel
+      && candidate.candle.close > retestLevel
+      && candidate.candle.close > candidate.candle.open;
+    const bearishHold = candidate.candle.high >= retestLevel
+      && candidate.candle.close < retestLevel
+      && candidate.candle.close < candidate.candle.open;
+    if ((signal.decision === 'LONG' && bullishHold) || (signal.decision === 'SHORT' && bearishHold)) return candidate;
+  }
+  return null;
+}
+
+function rebaseRetestSignal({
+  signal,
+  entryCandle,
+  atrValue,
+  equity,
+  riskFraction,
+  feeRate,
+  slippageRate,
+  fundingRatePerBar,
+  maxBarsInTrade,
+}: {
+  signal: IntelligentSignal;
+  entryCandle: Candle;
+  atrValue: number;
+  equity: number;
+  riskFraction: number;
+  feeRate: number;
+  slippageRate: number;
+  fundingRatePerBar: number;
+  maxBarsInTrade: number;
+}): IntelligentSignal {
+  const safeAtr = Number.isFinite(atrValue) && atrValue > Number.EPSILON ? atrValue : Number.EPSILON;
+  const minimumStopDistance = safeAtr * 1.2;
+  const originalStopDistance = signal.stopLoss === null ? minimumStopDistance : Math.abs(entryCandle.close - signal.stopLoss);
+  const stopDistance = Math.max(originalStopDistance, minimumStopDistance);
+  const stopLoss = signal.decision === 'LONG' ? entryCandle.close - stopDistance : entryCandle.close + stopDistance;
+  const takeProfit = signal.decision === 'LONG' ? entryCandle.close + stopDistance * 2 : entryCandle.close - stopDistance * 2;
+  const riskAmount = equity * riskFraction;
+  const roundTripCostRate = feeRate + slippageRate;
+  const estimatedCostPerUnit = (entryCandle.close + stopLoss) * roundTripCostRate
+    + entryCandle.close * fundingRatePerBar * maxBarsInTrade;
+  const quantity = riskAmount / Math.max(stopDistance + estimatedCostPerUnit, Number.EPSILON);
+  return {
+    ...signal,
+    entry: entryCandle.close,
+    stopLoss,
+    takeProfit,
+    quantity,
+    riskAmount,
+    riskReward: 2,
+    triggerPrice: entryCandle.close,
+  };
+}
+
 export function runBacktest({
   symbol = 'BTCUSDT',
   higherTimeframe,
@@ -309,26 +376,66 @@ export function runBacktest({
   let index = 0;
 
   while (index < entryTimeframe.length) {
-    const entryCandle = entryTimeframe[index];
-    const higher = higherTimeframe.filter((candle) => candle.time <= entryCandle.time);
+    const triggerCandle = entryTimeframe[index];
+    const higher = higherTimeframe.filter((candle) => candle.time <= triggerCandle.time);
     if (higher.length < 220 || index < 80) {
       index += 1;
       continue;
     }
 
-    const signal = evaluateIntelligentSignal({
+    const baseSignal = evaluateIntelligentSignal({
       higherTimeframe: higher,
       entryTimeframe: entryTimeframe.slice(0, index + 1),
       equity,
       riskFraction,
       ...signalConfig,
     });
-    if (signal.decision === 'NO_TRADE' || signal.entry === null || signal.stopLoss === null || signal.takeProfit === null) {
+    if (baseSignal.decision === 'NO_TRADE' || baseSignal.entry === null || baseSignal.stopLoss === null || baseSignal.takeProfit === null) {
       index += 1;
       continue;
     }
 
-    const auditCandles = entryTimeframe.slice(0, index + 1);
+    const entryPolicy = config.entryPolicy ?? 'BASELINE';
+    let executionIndex = index;
+    let entryCandle = triggerCandle;
+    let signal = baseSignal;
+    if (entryPolicy === 'TRIAD_RETEST_HYPOTHESIS') {
+      const previousCandle = entryTimeframe[index - 1];
+      if (!previousCandle) {
+        index += 1;
+        continue;
+      }
+      const retest = findRetestEntry({
+        signal: baseSignal,
+        previousCandle,
+        futureCandles: entryTimeframe.slice(index + 1).map((candle, offset) => ({ candle, index: index + 1 + offset })),
+      });
+      if (!retest) {
+        index += 1;
+        continue;
+      }
+      executionIndex = retest.index;
+      entryCandle = retest.candle;
+      const retestAtr = atr(entryTimeframe.slice(0, executionIndex + 1)).at(-1) ?? Number.NaN;
+      signal = rebaseRetestSignal({
+        signal: baseSignal,
+        entryCandle,
+        atrValue: retestAtr,
+        equity,
+        riskFraction,
+        feeRate,
+        slippageRate,
+        fundingRatePerBar,
+        maxBarsInTrade,
+      });
+    }
+
+    if (signal.decision === 'NO_TRADE' || signal.entry === null || signal.stopLoss === null || signal.takeProfit === null) {
+      index = executionIndex + 1;
+      continue;
+    }
+
+    const auditCandles = entryTimeframe.slice(0, executionIndex + 1);
     const currentAtr = atr(auditCandles).at(-1) ?? Number.NaN;
     const currentEma20 = ema(auditCandles.map((candle) => candle.close), 20).at(-1) ?? Number.NaN;
     const safeAtr = Number.isFinite(currentAtr) && currentAtr > Number.EPSILON ? currentAtr : Number.EPSILON;
@@ -337,16 +444,15 @@ export function runBacktest({
       ? Math.abs(signal.entry - currentEma20) / safeAtr
       : Number.POSITIVE_INFINITY;
     const stopDistanceAtr = Math.abs(signal.entry - signal.stopLoss) / safeAtr;
-    const entryPolicy = config.entryPolicy ?? 'BASELINE';
     const triadTimingPasses = triggerRangeAtr < 1.2 && entryDistanceToEmaAtr >= 0.25;
     if (entryPolicy === 'TRIAD_TIMING_HYPOTHESIS' && !triadTimingPasses) {
       index += 1;
       continue;
     }
 
-    const exit = findExit({ signal, futureCandles: entryTimeframe.slice(index + 1), maxBars: maxBarsInTrade });
+    const exit = findExit({ signal, futureCandles: entryTimeframe.slice(executionIndex + 1), maxBars: maxBarsInTrade });
     if (!exit) {
-      index += 1;
+      index = executionIndex + 1;
       continue;
     }
 
@@ -362,7 +468,7 @@ export function runBacktest({
     const grossPnl = signal.decision === 'LONG'
       ? (exitPrice - signal.entry) * quantity
       : (signal.entry - exitPrice) * quantity;
-    const barsHeld = Math.max(1, entryTimeframe.slice(index + 1).findIndex((candle) => candle.time === exit.candle.time) + 1);
+    const barsHeld = Math.max(1, entryTimeframe.slice(executionIndex + 1).findIndex((candle) => candle.time === exit.candle.time) + 1);
     const costs = (entryNotional + exitNotional) * (feeRate + slippageRate) + entryNotional * fundingRatePerBar * barsHeld;
     const netPnl = grossPnl - costs;
     const riskAmount = Math.max(signal.riskAmount, Number.EPSILON);
@@ -394,7 +500,7 @@ export function runBacktest({
     peakEquity = Math.max(peakEquity, equity);
     maxDrawdown = Math.max(maxDrawdown, peakEquity - equity);
     const exitIndex = entryTimeframe.findIndex((candle) => candle.time === exit.candle.time);
-    index = exitIndex >= index ? exitIndex + 1 : index + 1;
+    index = exitIndex >= executionIndex ? exitIndex + 1 : executionIndex + 1;
   }
 
   const wins = trades.filter((trade) => trade.netPnl > 0);

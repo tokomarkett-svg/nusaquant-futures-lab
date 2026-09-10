@@ -129,6 +129,16 @@ export async function POST(request: Request) {
     trainFraction: 0.7,
     warmupBars: 80,
   });
+  const retestConfig = { ...config, entryPolicy: 'TRIAD_RETEST_HYPOTHESIS' as const };
+  const retestReport = runBacktest({ symbol, higherTimeframe, entryTimeframe, config: retestConfig });
+  const retestValidation = runTemporalValidation({
+    symbol,
+    higherTimeframe,
+    entryTimeframe,
+    config: retestConfig,
+    trainFraction: 0.7,
+    warmupBars: 80,
+  });
 
   return NextResponse.json({
     ok: true,
@@ -178,6 +188,14 @@ export async function POST(request: Request) {
         baselineValidation: validation,
         candidate: reportSummary(hypothesisReport, entryTimeframe),
         candidateValidation: hypothesisValidation,
+      },
+      researchRetestVariant: {
+        name: 'TRIAD_RETEST_HYPOTHESIS',
+        rule: 'Setup trigger harus diikuti retest level candle sebelumnya dalam maksimal 3 candle; close harus kembali menahan level. Research-only, bukan rule paper/live.',
+        baseline: reportSummary(report, entryTimeframe),
+        baselineValidation: validation,
+        candidate: reportSummary(retestReport, entryTimeframe),
+        candidateValidation: retestValidation,
       },
       notes: report.notes,
     },
