@@ -100,6 +100,43 @@ test('paper position state can be restored after a worker restart', () => {
   assert.equal(snapshot.position?.id, 'paper-4');
 });
 
+test('paper approval opens, closes with costs, and returns to cooldown', () => {
+  const bot = new PaperBotEngine({ mode: 'PAPER_APPROVAL', symbol: 'BTCUSDT' });
+  bot.start(new Date('2026-09-09T00:00:00.000Z'));
+  const signal = {
+    decision: 'LONG',
+    candidate: 'LONG',
+    stage: 'TRIGGERED',
+    timing: 'ENTER_NOW',
+    regime: 'TREND_UP',
+    qualityScore: 82,
+    scoreMax: 100,
+    entry: 100,
+    triggerPrice: 100,
+    stopLoss: 90,
+    takeProfit: 120,
+    quantity: 1,
+    riskAmount: 10,
+    riskReward: 2,
+    maxChaseDistance: 1,
+    patterns: [],
+    structure: { bias: 'BULLISH', lastSwingHigh: 100, lastSwingLow: 90, breakOfStructure: 'BULLISH', reason: 'test' },
+    evidence: [],
+    blockers: [],
+    explanation: 'test',
+  } satisfies IntelligentSignal;
+  bot.restorePendingSignal(signal);
+  const opened = bot.approvePending(new Date('2026-09-09T00:00:00.000Z'));
+  assert.equal(opened.status, 'POSITION_OPEN');
+  assert.equal(opened.position?.symbol, 'BTCUSDT');
+  const closed = bot.onPriceTick(90, new Date('2026-09-09T00:15:00.000Z'));
+  assert.equal(closed.status, 'COOLDOWN');
+  assert.equal(closed.position, null);
+  assert.equal(closed.lastClosedPosition?.closeReason, 'STOP_LOSS');
+  assert.ok((closed.lastClosedPosition?.totalCosts ?? 0) > 0);
+  assert.ok((closed.lastClosedPosition?.realizedPnl ?? 0) < 0);
+});
+
 test('paper exit records costs and daily loss governor blocks new entries', () => {
   const bot = new PaperBotEngine({ mode: 'PAPER_APPROVAL', dailyLossFraction: 0.0005 });
   bot.restorePosition({
