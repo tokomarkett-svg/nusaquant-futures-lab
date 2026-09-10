@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { PaperBotEngine } from './index.ts';
+import { MAX_PENDING_SIGNAL_AGE_MS, PaperBotEngine } from './index.ts';
 import type { IntelligentSignal } from '@nusaquant/core';
 import { desiredStatusAction, isFreshMarketCandle, resolveBotSessionIds } from './session-control.ts';
 
@@ -135,6 +135,40 @@ test('paper approval opens, closes with costs, and returns to cooldown', () => {
   assert.equal(closed.lastClosedPosition?.closeReason, 'STOP_LOSS');
   assert.ok((closed.lastClosedPosition?.totalCosts ?? 0) > 0);
   assert.ok((closed.lastClosedPosition?.realizedPnl ?? 0) < 0);
+});
+
+test('stale paper approval is canceled after the signal candle expires', () => {
+  const bot = new PaperBotEngine({ mode: 'PAPER_APPROVAL', symbol: 'BTCUSDT' });
+  const signal = {
+    decision: 'LONG',
+    candidate: 'LONG',
+    stage: 'TRIGGERED',
+    timing: 'ENTER_NOW',
+    regime: 'TREND_UP',
+    qualityScore: 82,
+    scoreMax: 100,
+    entry: 100,
+    triggerPrice: 100,
+    stopLoss: 90,
+    takeProfit: 120,
+    quantity: 1,
+    riskAmount: 10,
+    riskReward: 2,
+    maxChaseDistance: 1,
+    patterns: [],
+    structure: { bias: 'BULLISH', lastSwingHigh: 100, lastSwingLow: 90, breakOfStructure: 'BULLISH', reason: 'test' },
+    evidence: [],
+    blockers: [],
+    explanation: 'test',
+  } satisfies IntelligentSignal;
+  bot.restorePendingSignal({
+    ...signal,
+    structure: { ...signal.structure, candle_open_time: '2026-09-09T00:00:00.000Z' },
+  } as IntelligentSignal);
+  const snapshot = bot.approvePending(new Date(Date.parse('2026-09-09T00:00:00.000Z') + MAX_PENDING_SIGNAL_AGE_MS + 1));
+  assert.equal(snapshot.status, 'RUNNING');
+  assert.equal(snapshot.position, null);
+  assert.match(snapshot.lastEvent ?? '', /kedaluwarsa/);
 });
 
 test('paper exit records costs and daily loss governor blocks new entries', () => {

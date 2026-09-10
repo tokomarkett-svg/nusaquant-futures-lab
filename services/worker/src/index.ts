@@ -10,6 +10,7 @@ import {
 export type BotStatus = 'IDLE' | 'STARTING' | 'RUNNING' | 'WAITING_APPROVAL' | 'POSITION_OPEN' | 'PAUSED' | 'COOLDOWN' | 'EMERGENCY';
 export type ExecutionMode = 'PAPER_APPROVAL' | 'PAPER_AUTO';
 export type PositionSide = 'LONG' | 'SHORT';
+export const MAX_PENDING_SIGNAL_AGE_MS = 15 * 60 * 1000;
 
 export interface PaperPosition {
   id: string;
@@ -142,6 +143,7 @@ export class PaperBotEngine {
   private plan: DailyMarketPlan | null = null;
   private latestSignal: IntelligentSignal | null = null;
   private pendingSignal: IntelligentSignal | null = null;
+  private pendingSignalCandleTime: number | null = null;
   private readonly broker = new PaperBroker();
   private realizedPnl = 0;
   private dailyRealizedPnl = 0;
@@ -229,6 +231,7 @@ export class PaperBotEngine {
     if (this.dailyRealizedPnl > -this.dailyLossLimit) return;
     this.riskBlocked = true;
     this.pendingSignal = null;
+    this.pendingSignalCandleTime = null;
     this.status = 'PAUSED';
     this.emit('STATUS', `Daily loss limit tercapai (${this.dailyRealizedPnl.toFixed(2)} USDT); entry baru diblokir.`);
   }
@@ -257,6 +260,7 @@ export class PaperBotEngine {
   pause(): WorkerSnapshot {
     if (this.status !== 'EMERGENCY') this.status = 'PAUSED';
     this.pendingSignal = null;
+    this.pendingSignalCandleTime = null;
     this.emit('STATUS', 'Entry baru dihentikan. Posisi terbuka tetap dipantau.');
     return this.snapshot();
   }
@@ -265,6 +269,7 @@ export class PaperBotEngine {
     this.syncDay(now);
     if (this.riskBlocked || this.status === 'EMERGENCY' || this.broker.getPosition()) return this.snapshot();
     this.pendingSignal = null;
+    this.pendingSignalCandleTime = null;
     this.status = 'RUNNING';
     this.emit('STATUS', 'Pending signal lama dibersihkan; bot kembali ke observation mode.');
     return this.snapshot();
@@ -273,6 +278,7 @@ export class PaperBotEngine {
   emergencyStop(): WorkerSnapshot {
     this.status = 'EMERGENCY';
     this.pendingSignal = null;
+    this.pendingSignalCandleTime = null;
     this.emit('STATUS', 'Emergency stop aktif; tidak ada entry baru.');
     return this.snapshot();
   }
@@ -320,10 +326,12 @@ export class PaperBotEngine {
       riskFraction: this.riskFraction,
     });
     this.latestSignal = signal;
+    this.pendingSignalCandleTime = entryTimeframe.at(-1)?.time ?? null;
     this.emit('SIGNAL', `${signal.decision} · ${signal.stage} · score ${signal.qualityScore}/100.`);
 
     if (signal.decision === 'NO_TRADE') {
       this.pendingSignal = null;
+      this.pendingSignalCandleTime = null;
       this.status = 'RUNNING';
       return this.snapshot();
     }
@@ -351,6 +359,8 @@ export class PaperBotEngine {
     if (this.broker.getPosition() || this.pendingSignal) return this.snapshot();
     this.latestSignal = signal;
     this.pendingSignal = signal;
+    const candleOpenTime = (signal.structure as IntelligentSignal['structure'] & { candle_open_time?: string }).candle_open_time;
+    this.pendingSignalCandleTime = candleOpenTime ? Date.parse(candleOpenTime) : null;
     this.status = 'WAITING_APPROVAL';
     this.emit('SIGNAL', 'Pending paper signal dipulihkan dari Supabase.');
     return this.snapshot();
@@ -359,6 +369,13 @@ export class PaperBotEngine {
   approvePending(now = new Date()): WorkerSnapshot {
     if (this.status !== 'WAITING_APPROVAL' || !this.pendingSignal) {
       this.emit('ERROR', 'Tidak ada entry valid yang menunggu persetujuan.');
+      return this.snapshot();
+    }
+    if (this.pendingSignalCandleTime !== null && now.getTime() - this.pendingSignalCandleTime > MAX_PENDING_SIGNAL_AGE_MS) {
+      this.pendingSignal = null;
+      this.pendingSignalCandleTime = null;
+      this.status = 'RUNNING';
+      this.emit('STATUS', 'Pending signal kedaluwarsa setelah candle berikutnya; entry dibatalkan dan bot kembali observasi.');
       return this.snapshot();
     }
     this.openPending(now);
@@ -374,6 +391,7 @@ export class PaperBotEngine {
     });
     this.lastClosedPosition = null;
     this.pendingSignal = null;
+    this.pendingSignalCandleTime = null;
     this.status = 'POSITION_OPEN';
     this.emit('ORDER', `Paper order ${position.side} ${position.quantity} ${position.symbol} dibuka.`);
   }

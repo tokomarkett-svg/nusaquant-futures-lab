@@ -480,7 +480,8 @@ export class PaperSessionController {
   private async persistDerivedStatus(sessionId: string, requestedStatus: BotStatus, actualStatus: BotStatus): Promise<void> {
     const derivedStatus = actualStatus === 'RUNNING' && requestedStatus === 'COOLDOWN' ? 'RUNNING' : actualStatus;
     const riskPause = derivedStatus === 'PAUSED' && requestedStatus !== 'PAUSED';
-    if (derivedStatus !== 'WAITING_APPROVAL' && derivedStatus !== 'POSITION_OPEN' && derivedStatus !== 'COOLDOWN' && !riskPause && !(requestedStatus === 'COOLDOWN' && derivedStatus === 'RUNNING')) return;
+    const staleApprovalRecovery = derivedStatus === 'RUNNING' && requestedStatus === 'POSITION_OPEN';
+    if (derivedStatus !== 'WAITING_APPROVAL' && derivedStatus !== 'POSITION_OPEN' && derivedStatus !== 'COOLDOWN' && !riskPause && !(requestedStatus === 'COOLDOWN' && derivedStatus === 'RUNNING') && !staleApprovalRecovery) return;
     if (requestedStatus === derivedStatus) return;
     const { error } = await this.client.from('bot_sessions').update({ status: derivedStatus }).eq('id', sessionId).eq('status', requestedStatus);
     if (error) throw new Error(`Gagal memperbarui status worker: ${error.message}`);
