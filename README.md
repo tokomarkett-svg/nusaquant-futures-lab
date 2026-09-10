@@ -99,52 +99,56 @@ supabase/migrations
 
 ## Hasil Backtest Terakhir
 
-### BTCUSDT, sample 90 hari
+### BTCUSDT, sample 90 hari setelah fill-model fix
 
-Dashboard terbaru menampilkan sekitar `2.169 candle 1H` dan `8.678 candle 15M`.
+Dashboard terbaru menampilkan `2.169 candle 1H` dan `8.679 candle 15M`.
 
 - Trades: `84`
 - Win/loss: `23W / 61L`
 - Win rate: `27.4%`
-- Net P/L: `-599.06 USDT`
-- Expectancy: `-0.293R`
-- Profit factor: `0.52`
-- Max drawdown: `-705.51 USDT / 7.06%`
+- Net P/L: `-634.39 USDT`
+- Expectancy: `-0.311R`
+- Profit factor: `0.47`
+- Max drawdown: `-729.87 USDT / 7.30%`
 - Research gate: `FAIL`
 
-### BTCUSDT edge breakdown
+Hasil ini menggantikan angka sebelum fill-model fix (`-599.06 USDT`). Penurunan performa setelah fill yang lebih konsisten membuat baseline sekarang lebih konservatif.
+
+### BTCUSDT edge breakdown terbaru
 
 #### By side
 
-- LONG: 53 trade, win rate 30,2%, expectancy -0,25R, net -325,46 USDT
-- SHORT: 31 trade, win rate 22,6%, expectancy -0,36R, net -273,60 USDT
+- LONG: 53 trade, win rate 30,2%, expectancy -0,38R, net -380,73 USDT
+- SHORT: 31 trade, win rate 22,6%, expectancy -0,34R, net -253,67 USDT
 
-Kedua arah negatif. Ini bukan masalah long-only atau short-only secara sederhana.
+Kedua arah tetap negatif. Ini bukan masalah long-only atau short-only secara sederhana.
 
 #### By quality score
 
-- 72–79: 17 trade, expectancy -0,43R
-- 80–89: 58 trade, expectancy -0,24R
-- 90–100: 9 trade, expectancy -0,38R
+- 72–79: 17 trade, expectancy -0,50R, net -206,37 USDT
+- 80–89: 58 trade, expectancy -0,24R, net -336,95 USDT
+- 90–100: 9 trade, expectancy -0,42R, net -91,07 USDT
 
-Score belum terkalibrasi sebagai probabilitas kemenangan. Jangan menaikkan threshold hanya untuk mempercantik hasil.
+Score belum terkalibrasi sebagai probabilitas kemenangan. Bucket score tinggi belum menghasilkan expectancy positif.
 
 #### By exit reason
 
-- Stop-loss: 58 trade, win rate 0%, net -1.218,20 USDT, expectancy -0,86R
-- Take-profit: 21 trade, net +605,62 USDT, expectancy +1,18R
-- Time exit: 5 trade, net +13,53 USDT, expectancy +0,10R
+- Stop-loss: 58 trade, win rate 0%, net -1.168,09 USDT, expectancy -0,83R
+- Take-profit: 21 trade, net +520,23 USDT, expectancy +1,01R
+- Time exit: 5 trade, net +13,46 USDT, expectancy +0,10R
 
-Masalah dominan adalah terlalu banyak trade yang terkena stop-loss sebelum keuntungan target menutup kerugian.
+Stop-loss masih menjadi sumber kerugian dominan. Exit reason adalah klasifikasi hasil, bukan bukti bahwa target memiliki probabilitas 95% secara keseluruhan.
 
 #### By periode entry
 
-- 2026-06: 11 trade, net +13,86 USDT; sample kecil
-- 2026-07: 36 trade, net -298,95 USDT
-- 2026-08: 30 trade, net -246,89 USDT
-- 2026-09: 7 trade, net -67,08 USDT; sample parsial
+- 2026-06: 11 trade, net +26,46 USDT; sample kecil
+- 2026-07: 36 trade, net -300,95 USDT
+- 2026-08: 30 trade, net -295,79 USDT
+- 2026-09: 7 trade, net -64,11 USDT; sample parsial
 
-### ETHUSDT, hasil sebelumnya
+Juli dan Agustus menyumbang mayoritas kerugian pada sample yang lebih besar.
+
+### ETHUSDT, hasil sebelumnya sebelum fill-model fix
 
 - Trades: `81`
 - Win/loss: `28W / 53L`
@@ -155,6 +159,7 @@ Masalah dominan adalah terlalu banyak trade yang terkena stop-loss sebelum keunt
 - Max drawdown: `-553.72 USDT / 5.54%`
 - Research gate: `FAIL`
 
+ETHUSDT wajib di-rerun setelah deployment fill-model fix sebelum dibandingkan dengan BTCUSDT.
 ## Perbaikan Teknis Terbaru
 
 Commit `edf7b4e` sudah memperbaiki ketidakkonsistenan harga fill backtest. Sebelumnya simulator mendeteksi stop/target menggunakan `high`/`low` candle, tetapi memakai `candle.close` sebagai harga exit.
@@ -172,7 +177,7 @@ Test regresi khusus untuk ketiga jalur exit sudah ditambahkan dan seluruh valida
 
 Urutan kerja yang disepakati:
 
-1. Tunggu Vercel/Railway selesai deploy untuk commit `edf7b4e`.
+1. Deployment commit `edf7b4e` sudah terdeteksi sukses di Vercel dan Railway worker.
 2. Rerun backtest BTCUSDT dan ETHUSDT dengan fill model yang sudah diperbaiki.
 3. Bandingkan edge diagnostics sebelum dan sesudah fill-model fix.
 4. Simpan hasil rerun dan jangan mengubah rule hanya karena satu bucket membaik.
