@@ -254,8 +254,8 @@ export class PaperSessionController {
 
   private async evaluateLatestCandles(sessionId: string, session: SessionRecord, current: WorkerSnapshot): Promise<WorkerSnapshot> {
     const [higherResult, entryResult] = await Promise.all([
-      this.client.from('market_candles').select('open_time,open,high,low,close,volume').eq('symbol', session.symbol).eq('interval', '1h').order('open_time', { ascending: false }).limit(250),
-      this.client.from('market_candles').select('open_time,open,high,low,close,volume').eq('symbol', session.symbol).eq('interval', '15m').order('open_time', { ascending: false }).limit(120),
+      this.client.from('market_candles').select('open_time,open,high,low,close,volume').eq('symbol', session.symbol).eq('interval', '1h').order('open_time', { ascending: false }).limit(500),
+      this.client.from('market_candles').select('open_time,open,high,low,close,volume').eq('symbol', session.symbol).eq('interval', '15m').order('open_time', { ascending: false }).limit(500),
     ]);
     if (higherResult.error) throw new Error(`Gagal membaca candle 1h: ${higherResult.error.message}`);
     if (entryResult.error) throw new Error(`Gagal membaca candle 15m: ${entryResult.error.message}`);
