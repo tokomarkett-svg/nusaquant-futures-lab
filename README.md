@@ -8,7 +8,7 @@ NusaQuant Futures Lab adalah platform riset dan paper-trading untuk Binance USD�
 
 **Tanggal status:** 10 September 2026, Asia/Jakarta
 **Branch:** `main`
-**Commit fitur terakhir:** `da77d4e feat: add execution audit to backtest`
+**Commit fitur terakhir:** `26df0f9 fix: reject stale worker market data`
 **Repository:** `tokomarkett-svg/nusaquant-futures-lab`
 
 ### Mulai dari sini
@@ -291,6 +291,7 @@ git log --oneline -5
 
 ## Ringkasan Historis Commit
 
+- `26df0f9` — worker menolak evaluasi dari candle market stale dan dev script benar-benar menjalankan ingestion/control watch.
 - `da77d4e` — execution audit gross/net/cost dan exit-reason rates di backtest.
 - `f34a7ad` — surface stale market data, explicit backtest errors, request timeout, dan latest candle/run timestamp.
 - `9b7bf22` — research-only retest entry hypothesis.
