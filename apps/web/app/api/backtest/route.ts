@@ -28,6 +28,30 @@ function toCandle(row: CandleRow): Candle {
   };
 }
 
+function reportSummary(report: ReturnType<typeof runBacktest>, periodCandles: Candle[]) {
+  return {
+    periodStart: periodCandles[0]?.time ?? null,
+    periodEnd: periodCandles.at(-1)?.time ?? null,
+    sampleCandles: periodCandles.length,
+    totalTrades: report.totalTrades,
+    winningTrades: report.winningTrades,
+    losingTrades: report.losingTrades,
+    winRate: report.winRate,
+    profitFactor: report.profitFactor,
+    expectancyR: report.expectancyR,
+    netPnl: report.netPnl,
+    grossWins: report.trades.filter((trade) => trade.netPnl > 0).reduce((sum, trade) => sum + trade.netPnl, 0),
+    grossLosses: Math.abs(report.trades.filter((trade) => trade.netPnl < 0).reduce((sum, trade) => sum + trade.netPnl, 0)),
+    maxDrawdown: report.maxDrawdown,
+    maxDrawdownPct: report.maxDrawdownPct,
+    gate: report.totalTrades < 30
+      ? 'NOT_READY_SAMPLE'
+      : report.profitFactor !== null && report.profitFactor > 1 && report.expectancyR > 0
+        ? 'PASS_RESEARCH_GATE'
+        : 'FAIL_NEGATIVE_EXPECTANCY',
+  } as const;
+}
+
 async function readCandles(supabase: SupabaseClient, symbol: string, interval: string): Promise<CandleRow[]> {
   const rows: CandleRow[] = [];
   for (let offset = 0; offset < MAX_CANDLES; offset += PAGE_SIZE) {
@@ -95,6 +119,16 @@ export async function POST(request: Request) {
     foldCount: 3,
     warmupBars: 80,
   });
+  const hypothesisConfig = { ...config, entryPolicy: 'TRIAD_TIMING_HYPOTHESIS' as const };
+  const hypothesisReport = runBacktest({ symbol, higherTimeframe, entryTimeframe, config: hypothesisConfig });
+  const hypothesisValidation = runTemporalValidation({
+    symbol,
+    higherTimeframe,
+    entryTimeframe,
+    config: hypothesisConfig,
+    trainFraction: 0.7,
+    warmupBars: 80,
+  });
 
   return NextResponse.json({
     ok: true,
@@ -137,6 +171,13 @@ export async function POST(request: Request) {
       diagnostics: report.diagnostics,
       validation,
       walkForward,
+      researchVariant: {
+        name: 'TRIAD_TIMING_HYPOTHESIS',
+        rule: 'triggerRangeAtr < 1.2 dan entryDistanceToEmaAtr >= 0.25; research-only, bukan rule paper/live.',
+        baseline: reportSummary(report, entryTimeframe),
+        candidate: reportSummary(hypothesisReport, entryTimeframe),
+        candidateValidation: hypothesisValidation,
+      },
       notes: report.notes,
     },
   });

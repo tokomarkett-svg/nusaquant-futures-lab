@@ -63,6 +63,13 @@ type Validation = {
   outOfSample: ValidationSummary;
   notes: string[];
 };
+type ResearchVariant = {
+  name: string;
+  rule: string;
+  baseline: ValidationSummary;
+  candidate: ValidationSummary;
+  candidateValidation: Validation;
+};
 type Report = {
   initialEquity: number;
   finalEquity: number;
@@ -80,6 +87,7 @@ type Report = {
   diagnostics: Diagnostics;
   validation: Validation;
   walkForward: WalkForward;
+  researchVariant: ResearchVariant;
   notes: string[];
 };
 
@@ -142,6 +150,20 @@ function ValidationCard({ title, summary }: { title: string; summary: Validation
         <span>Expectancy</span><strong className={summary.expectancyR >= 0 ? 'positive' : 'negative'}>{summary.expectancyR.toFixed(3)}R</strong>
         <span>Profit factor</span><strong>{profitFactor(summary.profitFactor)}</strong>
         <span>Sample</span><strong>{summary.sampleCandles} candles</strong>
+      </div>
+    </div>
+  );
+}
+
+function ResearchVariantPanel({ variant }: { variant: ResearchVariant }) {
+  return (
+    <div className="research-variant-wrap">
+      <div className="validation-card-title">Research-only candidate · {variant.name}</div>
+      <div className="backtest-note">{variant.rule}</div>
+      <div className="validation-grid">
+        <ValidationCard title="Baseline full sample" summary={variant.baseline} />
+        <ValidationCard title="Candidate full sample" summary={variant.candidate} />
+        <ValidationCard title="Candidate OOS 30%" summary={variant.candidateValidation.outOfSample} />
       </div>
     </div>
   );
@@ -230,6 +252,8 @@ export default function BacktestPanel() {
             <ValidationCard title="Out-of-sample · 30%" summary={report.validation.outOfSample} />
           </div>
           {report.validation.notes.map((note) => <div className="backtest-note" key={note}>• {note}</div>)}
+          <div className="backtest-trades-title">Research-only entry hypothesis</div>
+          <ResearchVariantPanel variant={report.researchVariant} />
           <div className="backtest-trades-title">Walk-forward validation</div>
           <div className="backtest-note">Tiga test window berurutan dipakai untuk melihat konsistensi performa lintas waktu. Ini bukan parameter tuning dan belum menggantikan paper execution.</div>
           <WalkForwardTable validation={report.walkForward} />

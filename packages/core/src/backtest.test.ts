@@ -56,6 +56,20 @@ test('backtest always returns auditable metrics and cost-aware trade fields', ()
   });
 });
 
+test('triad timing hypothesis is a research-only filter and never increases trades', () => {
+  const hour = 60 * 60 * 1000;
+  const quarterHour = 15 * 60 * 1000;
+  const higher = candles(320, 100, hour, 0.1, 0);
+  const entry = candles(400, 140, quarterHour, 0.02, 220 * hour);
+  const baseline = runBacktest({ higherTimeframe: higher, entryTimeframe: entry });
+  const hypothesis = runBacktest({
+    higherTimeframe: higher,
+    entryTimeframe: entry,
+    config: { entryPolicy: 'TRIAD_TIMING_HYPOTHESIS' },
+  });
+  assert.ok(hypothesis.totalTrades <= baseline.totalTrades);
+});
+
 test('temporal validation keeps OOS trades after the split and reports both slices', () => {
   const hour = 60 * 60 * 1000;
   const quarterHour = 15 * 60 * 1000;

@@ -10,6 +10,7 @@ export interface BacktestConfig {
   fundingRatePerBar?: number;
   maxBarsInTrade?: number;
   timezone?: string;
+  entryPolicy?: 'BASELINE' | 'TRIAD_TIMING_HYPOTHESIS';
 }
 
 export interface BacktestTrade {
@@ -327,6 +328,22 @@ export function runBacktest({
       continue;
     }
 
+    const auditCandles = entryTimeframe.slice(0, index + 1);
+    const currentAtr = atr(auditCandles).at(-1) ?? Number.NaN;
+    const currentEma20 = ema(auditCandles.map((candle) => candle.close), 20).at(-1) ?? Number.NaN;
+    const safeAtr = Number.isFinite(currentAtr) && currentAtr > Number.EPSILON ? currentAtr : Number.EPSILON;
+    const triggerRangeAtr = (entryCandle.high - entryCandle.low) / safeAtr;
+    const entryDistanceToEmaAtr = Number.isFinite(currentEma20)
+      ? Math.abs(signal.entry - currentEma20) / safeAtr
+      : Number.POSITIVE_INFINITY;
+    const stopDistanceAtr = Math.abs(signal.entry - signal.stopLoss) / safeAtr;
+    const entryPolicy = config.entryPolicy ?? 'BASELINE';
+    const triadTimingPasses = triggerRangeAtr < 1.2 && entryDistanceToEmaAtr >= 0.25;
+    if (entryPolicy === 'TRIAD_TIMING_HYPOTHESIS' && !triadTimingPasses) {
+      index += 1;
+      continue;
+    }
+
     const exit = findExit({ signal, futureCandles: entryTimeframe.slice(index + 1), maxBars: maxBarsInTrade });
     if (!exit) {
       index += 1;
@@ -346,15 +363,6 @@ export function runBacktest({
       ? (exitPrice - signal.entry) * quantity
       : (signal.entry - exitPrice) * quantity;
     const barsHeld = Math.max(1, entryTimeframe.slice(index + 1).findIndex((candle) => candle.time === exit.candle.time) + 1);
-    const auditCandles = entryTimeframe.slice(0, index + 1);
-    const currentAtr = atr(auditCandles).at(-1) ?? Number.NaN;
-    const currentEma20 = ema(auditCandles.map((candle) => candle.close), 20).at(-1) ?? Number.NaN;
-    const safeAtr = Number.isFinite(currentAtr) && currentAtr > Number.EPSILON ? currentAtr : Number.EPSILON;
-    const triggerRangeAtr = (entryCandle.high - entryCandle.low) / safeAtr;
-    const entryDistanceToEmaAtr = Number.isFinite(currentEma20)
-      ? Math.abs(signal.entry - currentEma20) / safeAtr
-      : Number.POSITIVE_INFINITY;
-    const stopDistanceAtr = Math.abs(signal.entry - signal.stopLoss) / safeAtr;
     const costs = (entryNotional + exitNotional) * (feeRate + slippageRate) + entryNotional * fundingRatePerBar * barsHeld;
     const netPnl = grossPnl - costs;
     const riskAmount = Math.max(signal.riskAmount, Number.EPSILON);
