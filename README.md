@@ -8,7 +8,7 @@ NusaQuant Futures Lab adalah platform riset dan paper-trading untuk Binance USD�
 
 **Tanggal status:** 10 September 2026, Asia/Jakarta
 **Branch:** `main`
-**Commit fitur terakhir:** `7c9d6a4 fix: improve cost audit and shared symbol selection`
+**Commit fitur terakhir:** `0e2a3d4 feat: add gross edge audit metrics`
 **Repository:** `tokomarkett-svg/nusaquant-futures-lab`
 
 ### Mulai dari sini
@@ -291,6 +291,7 @@ git log --oneline -5
 
 ## Ringkasan Historis Commit
 
+- `0e2a3d4` — audit gross expectancy dan gross profit factor sebelum biaya.
 - `7c9d6a4` — audit biaya menampilkan nilai cost positif dan rata-rata gross/cost per trade; selector symbol dashboard disinkronkan.
 - `81d3a7b` — intelligence panel memiliki selector BTCUSDT/ETHUSDT dan tidak lagi hardcode BTC.
 - `ae7986d` — worker selalu memonitor session BTC dan ETH serta dashboard menampilkan signal candle time.
