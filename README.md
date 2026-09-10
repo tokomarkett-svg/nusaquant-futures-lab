@@ -8,7 +8,7 @@ NusaQuant Futures Lab adalah platform riset dan paper-trading untuk Binance USD�
 
 **Tanggal status:** 10 September 2026, Asia/Jakarta
 **Branch:** `main`
-**Commit fitur terakhir:** `233e7b2 feat: add walk-forward validation report`
+**Commit fitur terakhir:** `b1f79b5 feat: add entry timing diagnostics`
 **Repository:** `tokomarkett-svg/nusaquant-futures-lab`
 
 ### Mulai dari sini
@@ -16,7 +16,7 @@ NusaQuant Futures Lab adalah platform riset dan paper-trading untuk Binance USD�
 1. Baca bagian **Status Saat Ini**, **Temuan Backtest**, dan **Pekerjaan Berikutnya**.
 2. Jalankan `git status --short --branch` dan pastikan tidak ada perubahan yang hilang.
 3. Jangan mengubah threshold, stop-loss, atau rule entry untuk mempercantik metrik.
-4. Perbaiki model harga fill backtest terlebih dahulu sebelum menarik kesimpulan strategi baru.
+4. Baca entry timing diagnostics sebelum mengubah rule entry atau stop-loss.
 5. Jalankan seluruh validasi sebelum commit dan push.
 6. Jangan meminta atau memasukkan credential ke source code, `.env` ter-commit, log, README, atau chat.
 
@@ -34,6 +34,7 @@ NusaQuant Futures Lab adalah platform riset dan paper-trading untuk Binance USD�
 - Cost-aware position sizing.
 - Research gate dan trade diagnostics.
 - Edge diagnostics berdasarkan side, quality score, exit reason, regime, dan periode.
+- Entry timing diagnostics berdasarkan trigger candle range/ATR, entry distance/EMA20, dan stop distance/ATR.
 - State machine paper trading dengan approval, pause, emergency stop, stop-loss, take-profit, cooldown, dan restore state.
 
 Validasi terakhir yang lulus sebelum commit edge diagnostics:
@@ -54,6 +55,7 @@ Validasi terakhir yang lulus sebelum commit edge diagnostics:
 | Risk sizing | Berfungsi secara lokal | Stop distance, fee, slippage, funding, dan max holding bars masuk estimasi quantity |
 | Backtest | Berfungsi | Sudah membaca sample besar dan menghitung biaya |
 | Edge diagnostics | Berfungsi | Tabel sudah tampil di dashboard |
+| Entry timing diagnostics | Implemented | Trigger range/ATR, entry distance/EMA20, stop distance/ATR |
 | Historical backfill | Berhasil | 90 hari BTCUSDT/ETHUSDT, interval 15M/1H |
 | Public market polling | Tersedia | REST/polling, belum WebSocket production |
 | Paper state machine | Fondasi dan test berfungsi | End-to-end production masih perlu smoke test |
@@ -187,10 +189,10 @@ Test regresi khusus untuk ketiga jalur exit sudah ditambahkan dan seluruh valida
 
 Urutan kerja yang disepakati:
 
-1. Deployment commit `233e7b2` selesai di Vercel/Railway.
-2. Jalankan ulang BTCUSDT dan ETHUSDT agar kartu temporal serta walk-forward terisi dengan dataset terbaru.
+1. Deployment commit `b1f79b5` selesai di Vercel/Railway.
+2. Jalankan ulang BTCUSDT dan ETHUSDT agar entry timing diagnostics terisi.
 3. Bandingkan full-sample, in-sample, OOS, dan tiap forward fold tanpa tuning rule.
-4. Jika edge tetap negatif, diagnosis fitur/entry/exit secara terukur; jangan menaikkan threshold secara acak.
+4. Gunakan bucket trigger range, entry distance, dan stop distance untuk menemukan sumber stop-loss.
 5. Perkuat paper execution: cost accounting dan daily-loss hard block.
 6. Hanya jika edge stabil dan positif, lanjutkan evaluasi paper execution yang lebih lama.
 7. Testnet/live tetap terkunci sampai seluruh research dan security gate lulus.
@@ -268,11 +270,11 @@ git log --oneline -5
 ## File Penting
 
 - `apps/web/app/api/backtest/route.ts` — backtest API dengan pagination 1.000 row/page dan maksimum 20.000 candle.
-- `apps/web/app/components/BacktestPanel.tsx` — research gate, edge diagnostics, dan trade diagnostics.
+- `apps/web/app/components/BacktestPanel.tsx` — research gate, edge diagnostics, entry timing diagnostics, dan trade diagnostics.
 - `apps/web/app/components/BotControls.tsx` — kontrol paper session.
 - `apps/web/app/api/bot/session/route.ts` — API start/pause/approve/emergency.
 - `packages/core/src/intelligence.ts` — intelligence layer dan cost-aware quantity sizing.
-- `packages/core/src/backtest.ts` — simulator, cost model, diagnostics, exit handling, temporal OOS, dan walk-forward validation.
+- `packages/core/src/backtest.ts` — simulator, cost model, exit handling, temporal OOS, walk-forward, dan entry timing diagnostics.
 - `packages/core/src/backtest.test.ts` — test backtest.
 - `services/worker/src/index.ts` — paper bot state machine.
 - `services/worker/src/session-control.ts` — restore/persist paper state ke Supabase.
@@ -284,6 +286,7 @@ git log --oneline -5
 
 ## Ringkasan Historis Commit
 
+- `b1f79b5` — entry timing diagnostics untuk membaca kualitas trigger dan jarak entry.
 - `233e7b2` — walk-forward validation report 3 forward folds di API/dashboard.
 - `8106760` — temporal out-of-sample validation 70/30 di API/dashboard.
 - `edf7b4e` — gunakan stop/target fill price yang benar di backtest.
