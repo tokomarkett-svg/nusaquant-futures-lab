@@ -16,15 +16,15 @@
 | 6 | Intelligence layer | SELESAI SEBAGIAN | Price action, candle, structure, timing sudah ada |
 | 7 | Triad doctrine | SELESAI SEBAGIAN | Doktrin v0.1 dan modul intelligence sudah ditulis; kalibrasi statistik masih berjalan |
 | 8 | Daily opportunity planner | SELESAI SEBAGIAN | Planner dan status window sudah ada; profile nyata menunggu data backtest |
-| 9 | Paper trading state machine | SELESAI SEBAGIAN | Worker dan paper broker lokal sudah ada; belum terhubung stream/API |
-| 10 | Historical data adapter | SELESAI SEBAGIAN | Parser public Binance klines dan worker ingestion tersedia; scheduler production belum |
-| 11 | Backtest dengan fee, funding, spread, slippage | SELESAI SEBAGIAN | Core runner dan cost model tersedia; perlu dataset nyata dan walk-forward |
-| 12 | Persistent worker dan market stream | SELESAI SEBAGIAN | REST public klines + polling adapter tersedia; persistent service/WebSocket belum |
-| 13 | API start/pause/approval | BELUM | Worker state machine lokal sudah ada; dashboard belum terhubung |
-| 14 | Supabase schema dan persistence | SELESAI SEBAGIAN | Schema, RLS, client health check, dan ingestion adapter tersedia; Auth dan persistence signal belum |
-| 15 | Binance Futures Testnet | BELUM | Hanya setelah paper engine stabil |
-| 16 | Security audit dan recovery | BELUM | API key, idempotency, reconnect, emergency stop |
-| 17 | Vercel deployment | SIAP DIIMPOR | Memerlukan konfigurasi project Vercel; secret tidak boleh masuk repo |
+| 9 | Paper trading state machine | SELESAI SEBAGIAN | Worker, paper broker, restore state, cost accounting, daily-loss guard, dan lifecycle smoke test tersedia |
+| 10 | Historical data adapter | SELESAI SEBAGIAN | Parser public Binance klines, backfill, dan worker ingestion tersedia; monitoring production masih berjalan |
+| 11 | Backtest dengan fee, funding, spread, slippage | SELESAI SEBAGIAN | Runner cost-aware, temporal OOS, walk-forward, dan gross/net audit tersedia; research gate BTC/ETH masih FAIL |
+| 12 | Persistent worker dan market stream | SELESAI SEBAGIAN | REST public klines + polling worker berjalan di Railway; WebSocket belum diperlukan untuk observation MVP |
+| 13 | API start/pause/approval | SELESAI SEBAGIAN | Dashboard sudah terhubung ke paper session BTCUSDT/ETHUSDT; production smoke membutuhkan observasi berkelanjutan |
+| 14 | Supabase schema dan persistence | SELESAI SEBAGIAN | Schema, RLS, signal/paper persistence, journal, equity snapshot, dan worker restore tersedia |
+| 15 | Binance Futures Testnet | BELUM | Tetap dikunci sampai research dan paper gate lulus |
+| 16 | Security audit dan recovery | SELESAI SEBAGIAN | API key tetap server-only, emergency stop, stale-data guard, dan restore tersedia; review escalation belum |
+| 17 | Vercel deployment | SELESAI | Deployment dashboard berhasil; secret tetap di environment server dan tidak masuk repository |
 | 18 | Live trading | TIDAK DIMULAI | Tidak boleh sebelum fase sebelumnya lulus |
 | 19 | Komersialisasi | BELUM | Perlu performa teruji, dokumentasi, terms, privacy, risk disclosure, dan review hukum |
 
@@ -75,3 +75,21 @@ PAUSED
 ```
 
 Waktu hanya menjadi prioritas pengamatan. Waktu tidak pernah menjadi alasan tunggal untuk membuka posisi.
+
+
+## Status riset terbaru — 11 September 2026
+
+- BTCUSDT baseline: gross PF `0.90`, gross expectancy `-0.038R`, net PF `0.48`; research gate `FAIL`.
+- ETHUSDT baseline: gross PF `0.99`, gross expectancy `-0.003R`, net PF `0.63`; research gate `FAIL`.
+- Kedua OOS slice memiliki 27 trade dan expectancy negatif; status formal tetap `NOT READY` karena sample OOS di bawah 30.
+- `TRIAD_TIMING_HYPOTHESIS` dan `TRIAD_RETEST_HYPOTHESIS` tetap research-only dan ditolak.
+- Dashboard menunjukkan candle fresh, `NO_TRADE` yang valid, dan tidak ada posisi paper terbuka.
+- Smoke test lifecycle paper lokal mencakup approval, open, costed stop, cooldown, restore, dan daily-loss block.
+
+### Langkah setelah ini
+
+1. Pertahankan BTCUSDT dan ETHUSDT dalam observation/research mode.
+2. Jangan tuning parameter secara acak dan jangan mempromosikan candidate yang gagal OOS.
+3. Kumpulkan data observasi yang lebih panjang sebelum membuat satu hipotesis baru yang telah didefinisikan sebelumnya.
+4. Uji hipotesis baru dengan gross/net audit, minimal 30 trade OOS, dan walk-forward sebelum mempertimbangkan paper promotion.
+5. Testnet dan live tetap terkunci.
