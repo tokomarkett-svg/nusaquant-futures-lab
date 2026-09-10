@@ -8,7 +8,7 @@ NusaQuant Futures Lab adalah platform riset dan paper-trading untuk Binance USD�
 
 **Tanggal status:** 10 September 2026, Asia/Jakarta
 **Branch:** `main`
-**Commit fitur terakhir:** `f34a7ad fix: surface stale data and backtest failures`
+**Commit fitur terakhir:** `da77d4e feat: add execution audit to backtest`
 **Repository:** `tokomarkett-svg/nusaquant-futures-lab`
 
 ### Mulai dari sini
@@ -185,7 +185,7 @@ Sekarang model fill menjadi:
 - `TIME_EXIT` → exit pada close candle
 - Fee, slippage, dan funding dihitung setelah harga fill tersebut
 
-Test regresi khusus untuk ketiga jalur exit sudah ditambahkan dan seluruh validasi lokal lulus. Metrik dashboard sebelum commit ini tetap dianggap diagnosis awal; hasil final harus diambil dari rerun setelah deployment terbaru.
+Test regresi khusus untuk ketiga jalur exit sudah ditambahkan dan seluruh validasi lokal lulus. Metrik dashboard sebelum commit ini tetap dianggap diagnosis awal; hasil final harus diambil dari rerun setelah deployment terbaru. Backtest sekarang juga menampilkan execution audit gross P/L sebelum biaya, total biaya, net P/L setelah biaya, dan proporsi stop/target/time exit agar masalah signal tidak tertukar dengan masalah fill.
 
 Research-only `TRIAD_TIMING_HYPOTHESIS` menolak trigger dengan range `>=1.2 ATR` atau entry dengan jarak `<0.25 ATR` dari EMA20. Variant ini menghasilkan full-sample lebih kecil tetapi OOS lebih buruk, sehingga ditolak dan tidak mengubah signal paper/live. `TRIAD_RETEST_HYPOTHESIS` menguji entry setelah retest level candle sebelumnya dalam maksimal tiga candle, juga hanya sebagai research comparison.
 
@@ -291,6 +291,7 @@ git log --oneline -5
 
 ## Ringkasan Historis Commit
 
+- `da77d4e` — execution audit gross/net/cost dan exit-reason rates di backtest.
 - `f34a7ad` — surface stale market data, explicit backtest errors, request timeout, dan latest candle/run timestamp.
 - `9b7bf22` — research-only retest entry hypothesis.
 - `8ee1dd0` — automatic rejection verdict untuk candidate OOS yang tidak membaik.
