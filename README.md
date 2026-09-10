@@ -8,7 +8,7 @@ NusaQuant Futures Lab adalah platform riset dan paper-trading untuk Binance USD�
 
 **Tanggal status:** 10 September 2026, Asia/Jakarta
 **Branch:** `main`
-**Commit fitur terakhir:** `edf7b4e fix: use stop and target fill prices in backtest`
+**Commit fitur terakhir:** `233e7b2 feat: add walk-forward validation report`
 **Repository:** `tokomarkett-svg/nusaquant-futures-lab`
 
 ### Mulai dari sini
@@ -40,7 +40,7 @@ Validasi terakhir yang lulus sebelum commit edge diagnostics:
 
 - Web typecheck: pass
 - Worker typecheck: pass
-- Core tests: 11 pass
+- Core tests: 12 pass
 - Worker tests: 8 pass
 - Production build: pass
 - `npm audit --omit=dev`: 0 vulnerability
@@ -62,8 +62,8 @@ Validasi terakhir yang lulus sebelum commit edge diagnostics:
 | Daily-loss hard block | Belum lengkap | Field limit dan guardrail dasar ada, enforcement penuh perlu diverifikasi/ditambahkan |
 | Testnet | Belum dimulai | Jangan diaktifkan sebelum paper dan OOS lulus |
 | Live trading | Tidak dimulai | Jangan menghubungkan private API |
-| Temporal out-of-sample | Implemented | 70/30 split tersedia di API/dashboard; harus dijalankan pada BTC dan ETH terbaru |
-| Walk-forward validation | Belum selesai | Wajib sebelum perubahan strategi atau eskalasi |
+| Temporal out-of-sample | Implemented | 70/30 split tersedia di API/dashboard; BTCUSDT sudah dijalankan |
+| Walk-forward validation | Implemented | 3 forward folds tersedia di API/dashboard; hasil BTC terbaru perlu dijalankan ulang |
 
 ## Arsitektur
 
@@ -149,6 +149,15 @@ Stop-loss masih menjadi sumber kerugian dominan. Exit reason adalah klasifikasi 
 
 Juli dan Agustus menyumbang mayoritas kerugian pada sample yang lebih besar.
 
+### Temporal validation BTCUSDT terbaru
+
+Split `70/30` menghasilkan:
+
+- In-sample: 58 trade, win rate 27,6%, net -460,71 USDT, expectancy -0,324R, profit factor 0,45
+- Out-of-sample: 26 trade, win rate 26,9%, net -182,08 USDT, expectancy -0,282R, profit factor 0,51
+
+OOS masih berstatus `NOT READY` karena kurang dari 30 trade. Walaupun sampelnya belum cukup untuk gate formal, OOS tetap negatif dan arahnya konsisten dengan in-sample. Jangan menjumlahkan net P/L dua slice sebagai equity curve karena masing-masing slice dimulai dari initial equity terpisah.
+
 ### ETHUSDT, hasil sebelumnya sebelum fill-model fix
 
 - Trades: `81`
@@ -178,14 +187,13 @@ Test regresi khusus untuk ketiga jalur exit sudah ditambahkan dan seluruh valida
 
 Urutan kerja yang disepakati:
 
-1. Deployment commit `edf7b4e` sudah terdeteksi sukses di Vercel dan Railway worker.
-2. Jalankan ulang BTCUSDT dan ETHUSDT agar kartu temporal validation 70/30 terisi.
-3. Bandingkan full-sample, in-sample, dan out-of-sample tanpa tuning rule.
-4. Tambahkan walk-forward validation beberapa jendela waktu.
-5. Jika edge tetap negatif, diagnosis fitur/entry/exit secara terukur; jangan menaikkan threshold secara acak.
-6. Perkuat paper execution: cost accounting dan daily-loss hard block.
-7. Hanya jika edge stabil dan positif, lanjutkan evaluasi paper execution yang lebih lama.
-8. Testnet/live tetap terkunci sampai seluruh research dan security gate lulus.
+1. Deployment commit `233e7b2` selesai di Vercel/Railway.
+2. Jalankan ulang BTCUSDT dan ETHUSDT agar kartu temporal serta walk-forward terisi dengan dataset terbaru.
+3. Bandingkan full-sample, in-sample, OOS, dan tiap forward fold tanpa tuning rule.
+4. Jika edge tetap negatif, diagnosis fitur/entry/exit secara terukur; jangan menaikkan threshold secara acak.
+5. Perkuat paper execution: cost accounting dan daily-loss hard block.
+6. Hanya jika edge stabil dan positif, lanjutkan evaluasi paper execution yang lebih lama.
+7. Testnet/live tetap terkunci sampai seluruh research dan security gate lulus.
 
 ## Deployment dan Environment
 
@@ -264,7 +272,7 @@ git log --oneline -5
 - `apps/web/app/components/BotControls.tsx` — kontrol paper session.
 - `apps/web/app/api/bot/session/route.ts` — API start/pause/approve/emergency.
 - `packages/core/src/intelligence.ts` — intelligence layer dan cost-aware quantity sizing.
-- `packages/core/src/backtest.ts` — simulator, cost model, diagnostics, exit handling, dan temporal OOS validation.
+- `packages/core/src/backtest.ts` — simulator, cost model, diagnostics, exit handling, temporal OOS, dan walk-forward validation.
 - `packages/core/src/backtest.test.ts` — test backtest.
 - `services/worker/src/index.ts` — paper bot state machine.
 - `services/worker/src/session-control.ts` — restore/persist paper state ke Supabase.
@@ -276,6 +284,7 @@ git log --oneline -5
 
 ## Ringkasan Historis Commit
 
+- `233e7b2` — walk-forward validation report 3 forward folds di API/dashboard.
 - `8106760` — temporal out-of-sample validation 70/30 di API/dashboard.
 - `edf7b4e` — gunakan stop/target fill price yang benar di backtest.
 - `eb0cdb3` — README handoff, status riset, dan batas scope.
