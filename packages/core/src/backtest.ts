@@ -23,6 +23,7 @@ export interface BacktestTrade {
   stopLoss: number;
   takeProfit: number;
   quantity: number;
+  riskAmount: number;
   grossPnl: number;
   costs: number;
   netPnl: number;
@@ -65,6 +66,8 @@ export interface BacktestExecutionAudit {
   costImpactPctOfGross: number;
   averageGrossPnlPerTrade: number;
   averageCostPerTrade: number;
+  grossProfitFactor: number | null;
+  grossExpectancyR: number;
   stopLossTrades: number;
   takeProfitTrades: number;
   timeExitTrades: number;
@@ -300,12 +303,15 @@ function buildDiagnostics(trades: BacktestTrade[], timezone: string): BacktestDi
 }
 
 function buildExecutionAudit(trades: BacktestTrade[]): BacktestExecutionAudit {
+  const totalTrades = trades.length;
   const grossPnlBeforeCosts = trades.reduce((sum, trade) => sum + trade.grossPnl, 0);
   const totalCosts = trades.reduce((sum, trade) => sum + trade.costs, 0);
+  const grossWins = trades.filter((trade) => trade.grossPnl > 0).reduce((sum, trade) => sum + trade.grossPnl, 0);
+  const grossLosses = Math.abs(trades.filter((trade) => trade.grossPnl < 0).reduce((sum, trade) => sum + trade.grossPnl, 0));
+  const grossExpectancyR = totalTrades === 0 ? 0 : trades.reduce((sum, trade) => sum + trade.grossPnl / Math.max(trade.riskAmount, Number.EPSILON), 0) / totalTrades;
   const stopLossTrades = trades.filter((trade) => trade.exitReason === 'STOP_LOSS').length;
   const takeProfitTrades = trades.filter((trade) => trade.exitReason === 'TAKE_PROFIT').length;
   const timeExitTrades = trades.filter((trade) => trade.exitReason === 'TIME_EXIT').length;
-  const totalTrades = trades.length;
   return {
     grossPnlBeforeCosts,
     totalCosts,
@@ -313,6 +319,8 @@ function buildExecutionAudit(trades: BacktestTrade[]): BacktestExecutionAudit {
     costImpactPctOfGross: Math.abs(grossPnlBeforeCosts) <= Number.EPSILON ? 0 : totalCosts / Math.abs(grossPnlBeforeCosts),
     averageGrossPnlPerTrade: totalTrades === 0 ? 0 : grossPnlBeforeCosts / totalTrades,
     averageCostPerTrade: totalTrades === 0 ? 0 : totalCosts / totalTrades,
+    grossProfitFactor: grossLosses === 0 ? (grossWins > 0 ? Number.POSITIVE_INFINITY : null) : grossWins / grossLosses,
+    grossExpectancyR,
     stopLossTrades,
     takeProfitTrades,
     timeExitTrades,
@@ -522,6 +530,7 @@ export function runBacktest({
       stopLoss: signal.stopLoss,
       takeProfit: signal.takeProfit,
       quantity,
+      riskAmount: signal.riskAmount,
       grossPnl,
       costs,
       netPnl,

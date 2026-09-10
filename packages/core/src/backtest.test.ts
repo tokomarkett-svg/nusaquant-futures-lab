@@ -53,6 +53,7 @@ test('backtest always returns auditable metrics and cost-aware trade fields', ()
   assert.equal(diagnosticGroups.flat().reduce((sum, bucket) => sum + bucket.trades, 0) / diagnosticGroups.length, report.totalTrades);
   report.trades.forEach((trade) => {
     assert.equal(Number.isFinite(trade.costs), true);
+    assert.equal(Number.isFinite(trade.riskAmount), true);
     assert.equal(Number.isFinite(trade.rMultiple), true);
     assert.equal(Number.isFinite(trade.barsHeld), true);
     assert.equal(Number.isFinite(trade.triggerRangeAtr), true);

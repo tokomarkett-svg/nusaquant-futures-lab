@@ -30,6 +30,8 @@ type ExecutionAudit = {
   costImpactPctOfGross: number;
   averageGrossPnlPerTrade: number;
   averageCostPerTrade: number;
+  grossProfitFactor: number | null;
+  grossExpectancyR: number;
   stopLossTrades: number;
   takeProfitTrades: number;
   timeExitTrades: number;
@@ -163,9 +165,11 @@ function ExecutionAuditCard({ audit }: { audit: ExecutionAudit }) {
         <div><span>Gross P/L sebelum biaya</span><strong className={audit.grossPnlBeforeCosts >= 0 ? 'positive' : 'negative'}>{money(audit.grossPnlBeforeCosts)}</strong></div>
         <div><span>Total biaya</span><strong className="negative">{audit.totalCosts.toFixed(2)} USDT</strong></div>
         <div><span>Net P/L sesudah biaya</span><strong className={audit.netPnlAfterCosts >= 0 ? 'positive' : 'negative'}>{money(audit.netPnlAfterCosts)}</strong></div>
-        <div><span>Cost impact / gross</span><strong>{(audit.costImpactPctOfGross * 100).toFixed(2)}%</strong></div>
+        <div><span>Cost / gross reference</span><strong>{(audit.costImpactPctOfGross * 100).toFixed(2)}%</strong></div>
         <div><span>Gross rata-rata / trade</span><strong className={audit.averageGrossPnlPerTrade >= 0 ? 'positive' : 'negative'}>{money(audit.averageGrossPnlPerTrade)}</strong></div>
         <div><span>Biaya rata-rata / trade</span><strong className="negative">{audit.averageCostPerTrade.toFixed(2)} USDT</strong></div>
+        <div><span>Gross expectancy</span><strong className={audit.grossExpectancyR >= 0 ? 'positive' : 'negative'}>{audit.grossExpectancyR.toFixed(3)}R</strong></div>
+        <div><span>Gross profit factor</span><strong>{profitFactor(audit.grossProfitFactor)}</strong></div>
         <div><span>Stop loss</span><strong className="negative">{audit.stopLossTrades} · {(audit.stopLossRate * 100).toFixed(1)}%</strong></div>
         <div><span>Take profit</span><strong className="positive">{audit.takeProfitTrades} · {(audit.takeProfitRate * 100).toFixed(1)}%</strong></div>
         <div><span>Time exit</span><strong>{audit.timeExitTrades} · {(audit.timeExitRate * 100).toFixed(1)}%</strong></div>
