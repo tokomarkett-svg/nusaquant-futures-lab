@@ -8,7 +8,7 @@ NusaQuant Futures Lab adalah platform riset dan paper-trading untuk Binance USD�
 
 **Tanggal status:** 10 September 2026, Asia/Jakarta
 **Branch:** `main`
-**Commit fitur terakhir:** `b1f79b5 feat: add entry timing diagnostics`
+**Commit fitur terakhir:** `3e7660a fix: enforce paper costs and daily loss guard`
 **Repository:** `tokomarkett-svg/nusaquant-futures-lab`
 
 ### Mulai dari sini
@@ -42,7 +42,7 @@ Validasi terakhir yang lulus sebelum commit edge diagnostics:
 - Web typecheck: pass
 - Worker typecheck: pass
 - Core tests: 12 pass
-- Worker tests: 8 pass
+- Worker tests: 9 pass
 - Production build: pass
 - `npm audit --omit=dev`: 0 vulnerability
 - `git diff --check`: pass
@@ -60,8 +60,8 @@ Validasi terakhir yang lulus sebelum commit edge diagnostics:
 | Public market polling | Tersedia | REST/polling, belum WebSocket production |
 | Paper state machine | Fondasi dan test berfungsi | End-to-end production masih perlu smoke test |
 | Bot control API | Tersedia | Start, pause, approve, emergency; membutuhkan env Supabase server |
-| Paper P/L accounting | Belum sempurna | Engine paper saat ini masih mencatat realized P/L kotor; cost accounting execution perlu disempurnakan |
-| Daily-loss hard block | Belum lengkap | Field limit dan guardrail dasar ada, enforcement penuh perlu diverifikasi/ditambahkan |
+| Paper P/L accounting | Implemented locally | Fee, slippage, funding, net realized P/L, dan cost metadata sudah dihitung; production smoke test masih perlu |
+| Daily-loss hard block | Implemented locally | Risk Governor memblokir entry dan mem-pause engine setelah limit tercapai; persistence production masih perlu smoke test |
 | Testnet | Belum dimulai | Jangan diaktifkan sebelum paper dan OOS lulus |
 | Live trading | Tidak dimulai | Jangan menghubungkan private API |
 | Temporal out-of-sample | Implemented | 70/30 split tersedia di API/dashboard; BTCUSDT sudah dijalankan |
@@ -193,7 +193,7 @@ Urutan kerja yang disepakati:
 2. Jalankan ulang BTCUSDT dan ETHUSDT agar entry timing diagnostics terisi.
 3. Bandingkan full-sample, in-sample, OOS, dan tiap forward fold tanpa tuning rule.
 4. Gunakan bucket trigger range, entry distance, dan stop distance untuk menemukan sumber stop-loss.
-5. Perkuat paper execution: cost accounting dan daily-loss hard block.
+5. Jalankan production smoke test paper: start → signal → approval → open → costed close → daily-loss block → recovery.
 6. Hanya jika edge stabil dan positif, lanjutkan evaluasi paper execution yang lebih lama.
 7. Testnet/live tetap terkunci sampai seluruh research dan security gate lulus.
 
@@ -286,6 +286,7 @@ git log --oneline -5
 
 ## Ringkasan Historis Commit
 
+- `3e7660a` — paper cost accounting dan daily-loss guard.
 - `b1f79b5` — entry timing diagnostics untuk membaca kualitas trigger dan jarak entry.
 - `233e7b2` — walk-forward validation report 3 forward folds di API/dashboard.
 - `8106760` — temporal out-of-sample validation 70/30 di API/dashboard.
