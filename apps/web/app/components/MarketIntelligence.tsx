@@ -1,10 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Candle, IntelligentSignal } from '@nusaquant/core';
 
 type Symbol = 'BTCUSDT' | 'ETHUSDT';
 type MarketItem = { symbol: Symbol; candles: Candle[]; signal: IntelligentSignal };
+
+function broadcastSymbol(symbol: Symbol): void {
+  window.dispatchEvent(new CustomEvent('nusaquant-symbol-change', { detail: symbol }));
+}
 
 function formatPrice(value: number | null): string {
   if (value === null) return '—';
@@ -92,6 +96,14 @@ function DecisionPanel({ item }: { item: MarketItem }) {
 
 export default function MarketIntelligence({ items, source }: { items: MarketItem[]; source: string }) {
   const [selected, setSelected] = useState<Symbol>('BTCUSDT');
+  useEffect(() => {
+    const handleSymbolChange = (event: Event) => {
+      const next = (event as CustomEvent<Symbol>).detail;
+      if (next === 'BTCUSDT' || next === 'ETHUSDT') setSelected(next);
+    };
+    window.addEventListener('nusaquant-symbol-change', handleSymbolChange);
+    return () => window.removeEventListener('nusaquant-symbol-change', handleSymbolChange);
+  }, []);
   const selectedItem = items.find((item) => item.symbol === selected) ?? items[0];
   if (!selectedItem) return null;
   return (
@@ -114,7 +126,11 @@ export default function MarketIntelligence({ items, source }: { items: MarketIte
       <div>
         <div className="intelligence-selector">
           <span>Analysing symbol</span>
-          <select value={selected} onChange={(event) => setSelected(event.target.value as Symbol)}>
+          <select value={selected} onChange={(event) => {
+            const next = event.target.value as Symbol;
+            setSelected(next);
+            broadcastSymbol(next);
+          }}>
             {items.map((item) => <option value={item.symbol} key={item.symbol}>{item.symbol}</option>)}
           </select>
         </div>

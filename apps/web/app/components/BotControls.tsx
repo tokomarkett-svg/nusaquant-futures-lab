@@ -12,6 +12,10 @@ type LatestCandle = { open_time: string; close: number | string };
 
 type ResponsePayload = { ok: boolean; configured?: boolean; error?: string; session?: Session; latestSignal?: LatestSignal | null; position?: LatestPosition | null; latestCandle?: LatestCandle | null; serverTime?: string };
 
+function broadcastSymbol(symbol: SupportedSymbol): void {
+  window.dispatchEvent(new CustomEvent('nusaquant-symbol-change', { detail: symbol }));
+}
+
 function readableStatus(status: BotStatus | null): string {
   if (!status) return 'Checking';
   if (status === 'RUNNING') return 'Observing';
@@ -74,6 +78,15 @@ export default function BotControls() {
     return () => window.clearInterval(timer);
   }, [load, router]);
 
+  useEffect(() => {
+    const handleSymbolChange = (event: Event) => {
+      const next = (event as CustomEvent<SupportedSymbol>).detail;
+      if (next === 'BTCUSDT' || next === 'ETHUSDT') setSymbol(next);
+    };
+    window.addEventListener('nusaquant-symbol-change', handleSymbolChange);
+    return () => window.removeEventListener('nusaquant-symbol-change', handleSymbolChange);
+  }, []);
+
   async function command(action: 'start' | 'pause' | 'approve' | 'emergency') {
     if (action === 'emergency' && !window.confirm('Aktifkan emergency stop untuk paper bot?')) return;
     setBusy(true);
@@ -106,7 +119,11 @@ export default function BotControls() {
         <div className="panel-kicker">Session: {session?.symbol ?? symbol} · Paper approval only</div>
       </div>
       <label className="symbol-picker">Symbol
-        <select value={symbol} onChange={(event) => setSymbol(event.target.value as SupportedSymbol)}>
+        <select value={symbol} onChange={(event) => {
+          const next = event.target.value as SupportedSymbol;
+          setSymbol(next);
+          broadcastSymbol(next);
+        }}>
           <option value="BTCUSDT">BTCUSDT</option>
           <option value="ETHUSDT">ETHUSDT</option>
         </select>

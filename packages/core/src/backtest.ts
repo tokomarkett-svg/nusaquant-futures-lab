@@ -63,6 +63,8 @@ export interface BacktestExecutionAudit {
   totalCosts: number;
   netPnlAfterCosts: number;
   costImpactPctOfGross: number;
+  averageGrossPnlPerTrade: number;
+  averageCostPerTrade: number;
   stopLossTrades: number;
   takeProfitTrades: number;
   timeExitTrades: number;
@@ -309,6 +311,8 @@ function buildExecutionAudit(trades: BacktestTrade[]): BacktestExecutionAudit {
     totalCosts,
     netPnlAfterCosts: grossPnlBeforeCosts - totalCosts,
     costImpactPctOfGross: Math.abs(grossPnlBeforeCosts) <= Number.EPSILON ? 0 : totalCosts / Math.abs(grossPnlBeforeCosts),
+    averageGrossPnlPerTrade: totalTrades === 0 ? 0 : grossPnlBeforeCosts / totalTrades,
+    averageCostPerTrade: totalTrades === 0 ? 0 : totalCosts / totalTrades,
     stopLossTrades,
     takeProfitTrades,
     timeExitTrades,
