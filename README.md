@@ -8,7 +8,7 @@ NusaQuant Futures Lab adalah platform riset dan paper-trading untuk Binance USDâ
 
 **Tanggal status:** 11 September 2026, Asia/Jakarta
 **Branch:** `main`
-**Commit fitur terakhir:** update berikutnya sedang divalidasi
+**Commit fitur terakhir:** `04e03ab feat: add persisted paper metrics dashboard`
 **Repository:** `tokomarkett-svg/nusaquant-futures-lab`
 
 ### Mulai dari sini
