@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 type Symbol = 'BTCUSDT' | 'ETHUSDT';
 type DiagnosticBucket = {
@@ -87,6 +87,10 @@ type ResearchVariant = {
   candidate: ValidationSummary;
   candidateValidation: Validation;
 };
+function broadcastSymbol(symbol: Symbol): void {
+  window.dispatchEvent(new CustomEvent('nusaquant-symbol-change', { detail: symbol }));
+}
+
 type Report = {
   initialEquity: number;
   finalEquity: number;
@@ -247,6 +251,21 @@ export default function BacktestPanel() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('Belum ada backtest yang dijalankan.');
 
+  useEffect(() => {
+    const handleSymbolChange = (event: Event) => {
+      const nextSymbol = (event as CustomEvent<Symbol>).detail;
+      if (nextSymbol === 'BTCUSDT' || nextSymbol === 'ETHUSDT') {
+        setSymbol(nextSymbol);
+        setReport(null);
+        setSample(null);
+        setLastRunAt(null);
+        setMessage(`Siap menjalankan backtest ${nextSymbol}.`);
+      }
+    };
+    window.addEventListener('nusaquant-symbol-change', handleSymbolChange);
+    return () => window.removeEventListener('nusaquant-symbol-change', handleSymbolChange);
+  }, []);
+
   async function run() {
     setBusy(true);
     setReport(null);
@@ -293,6 +312,7 @@ export default function BacktestPanel() {
           <select value={symbol} onChange={(event) => {
             const nextSymbol = event.target.value as Symbol;
             setSymbol(nextSymbol);
+            broadcastSymbol(nextSymbol);
             setReport(null);
             setSample(null);
             setLastRunAt(null);
