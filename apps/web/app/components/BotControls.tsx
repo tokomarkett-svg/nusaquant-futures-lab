@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 type BotStatus = 'IDLE' | 'STARTING' | 'RUNNING' | 'WAITING_APPROVAL' | 'POSITION_OPEN' | 'PAUSED' | 'COOLDOWN' | 'EMERGENCY';
 type SupportedSymbol = 'BTCUSDT' | 'ETHUSDT';
 type Session = { status: BotStatus; mode: string; symbol: string; risk_fraction: number; daily_loss_limit: number };
-type LatestSignal = { decision: string; stage: string; timing: string; quality_score: number; evaluated_at: string; blockers: string[] };
+type LatestSignal = { decision: string; stage: string; timing: string; quality_score: number; evaluated_at: string; blockers: string[]; structure?: { candle_open_time?: string } | null };
 type LatestPosition = { side: string; symbol: string; quantity: number | string; entry_price: number | string; stop_loss: number | string; take_profit: number | string; opened_at: string };
 type LatestCandle = { open_time: string; close: number | string };
 
@@ -122,6 +122,10 @@ export default function BotControls() {
       <div className="control-signal">
         <span>Last signal saved</span>
         {latestSignal ? <strong>{latestSignal.decision} · {latestSignal.stage} · {latestSignal.quality_score}/100 · {formatTimestamp(latestSignal.evaluated_at)}</strong> : <strong>Belum ada evaluasi dari worker</strong>}
+      </div>
+      <div className="control-signal">
+        <span>Signal candle</span>
+        <strong>{formatTimestamp(latestSignal?.structure?.candle_open_time)}</strong>
       </div>
       <div className="control-signal">
         <span>Market data 15M</span>

@@ -8,6 +8,11 @@ export const ETH_BOT_SESSION_ID = '00000000-0000-4000-8000-000000000002';
 export const DEFAULT_BOT_SESSION_IDS = [DEFAULT_BOT_SESSION_ID, ETH_BOT_SESSION_ID] as const;
 export const DEFAULT_MARKET_DATA_MAX_AGE_MS = 45 * 60 * 1000;
 
+export function resolveBotSessionIds(configured?: string): string[] {
+  const extra = (configured ?? '').split(',').map((id) => id.trim()).filter(Boolean);
+  return [...new Set([...DEFAULT_BOT_SESSION_IDS, ...extra])];
+}
+
 export function isFreshMarketCandle(openTime: string, now = Date.now(), maxAgeMs = DEFAULT_MARKET_DATA_MAX_AGE_MS): boolean {
   const timestamp = Date.parse(openTime);
   const age = now - timestamp;

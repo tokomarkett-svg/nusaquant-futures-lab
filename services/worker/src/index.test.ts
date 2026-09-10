@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PaperBotEngine } from './index.ts';
 import type { IntelligentSignal } from '@nusaquant/core';
-import { desiredStatusAction, isFreshMarketCandle } from './session-control.ts';
+import { desiredStatusAction, isFreshMarketCandle, resolveBotSessionIds } from './session-control.ts';
 
 test('bot starts in observation mode without opening a position', () => {
   const bot = new PaperBotEngine({ mode: 'PAPER_APPROVAL' });
@@ -65,6 +65,15 @@ test('stale market candles are rejected before signal evaluation', () => {
   assert.equal(isFreshMarketCandle('2026-09-10T02:45:00.000Z', now), true);
   assert.equal(isFreshMarketCandle('2026-09-10T02:14:59.000Z', now), false);
   assert.equal(isFreshMarketCandle('2026-09-10T03:15:00.000Z', now), false);
+});
+
+test('worker watch always includes BTC and ETH sessions', () => {
+  const sessions = resolveBotSessionIds('custom-session,00000000-0000-4000-8000-000000000001');
+  assert.deepEqual(sessions, [
+    '00000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000002',
+    'custom-session',
+  ]);
 });
 
 test('session commands map to safe paper-only worker actions', () => {
