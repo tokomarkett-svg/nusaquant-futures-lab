@@ -36,8 +36,12 @@ test('backtest always returns auditable metrics and cost-aware trade fields', ()
   assert.equal(report.totalTrades, report.trades.length);
   assert.equal(Number.isFinite(report.maxDrawdownPct), true);
   assert.ok(report.notes.length >= 3);
+  assert.ok(report.diagnostics);
+  const diagnosticGroups = Object.values(report.diagnostics);
+  assert.equal(diagnosticGroups.flat().reduce((sum, bucket) => sum + bucket.trades, 0) / diagnosticGroups.length, report.totalTrades);
   report.trades.forEach((trade) => {
     assert.equal(Number.isFinite(trade.costs), true);
     assert.equal(Number.isFinite(trade.rMultiple), true);
+    assert.ok(['TREND_UP', 'TREND_DOWN', 'RANGE', 'UNCERTAIN'].includes(trade.regime));
   });
 });

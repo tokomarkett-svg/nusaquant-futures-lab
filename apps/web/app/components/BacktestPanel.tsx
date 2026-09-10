@@ -3,6 +3,24 @@
 import { useState } from 'react';
 
 type Symbol = 'BTCUSDT' | 'ETHUSDT';
+type DiagnosticBucket = {
+  label: string;
+  trades: number;
+  winningTrades: number;
+  losingTrades: number;
+  winRate: number;
+  netPnl: number;
+  expectancyR: number;
+  profitFactor: number | null;
+  averageCosts: number;
+};
+type Diagnostics = {
+  bySide: DiagnosticBucket[];
+  byQualityScore: DiagnosticBucket[];
+  byExitReason: DiagnosticBucket[];
+  byRegime: DiagnosticBucket[];
+  byPeriod: DiagnosticBucket[];
+};
 type Report = {
   initialEquity: number;
   finalEquity: number;
@@ -16,12 +34,50 @@ type Report = {
   maxDrawdown: number;
   maxDrawdownPct: number;
   gate: 'NOT_READY_SAMPLE' | 'PASS_RESEARCH_GATE' | 'FAIL_NEGATIVE_EXPECTANCY';
-  trades: Array<{ side: string; entryTime: number; exitTime: number; entry: number; exit: number; netPnl: number; costs: number; rMultiple: number; exitReason: string; qualityScore: number }>;
+  trades: Array<{ side: string; entryTime: number; exitTime: number; entry: number; exit: number; netPnl: number; costs: number; rMultiple: number; exitReason: string; qualityScore: number; regime: string }>;
+  diagnostics: Diagnostics;
   notes: string[];
 };
 
 function money(value: number): string {
   return `${value >= 0 ? '+' : ''}${value.toFixed(2)} USDT`;
+}
+
+function readableLabel(value: string): string {
+  return value.replaceAll('_', ' ');
+}
+
+function profitFactor(value: number | null): string {
+  if (value === null) return '—';
+  return Number.isFinite(value) ? value.toFixed(2) : '∞';
+}
+
+function DiagnosticTable({ title, rows }: { title: string; rows: DiagnosticBucket[] }) {
+  return (
+    <div className="diagnostic-table-wrap">
+      <div className="diagnostic-table-title">{title}</div>
+      {rows.length === 0 ? <div className="backtest-note">Belum ada trade.</div> : (
+        <div className="diagnostic-scroll">
+          <div className="diagnostic-table" role="table" aria-label={title}>
+            <div className="diagnostic-row diagnostic-head" role="row">
+              <span>Bucket</span><span>Trades</span><span>Win</span><span>Net P/L</span><span>Exp.</span><span>PF</span><span>Avg cost</span>
+            </div>
+            {rows.map((bucket) => (
+              <div className="diagnostic-row" role="row" key={bucket.label}>
+                <span>{readableLabel(bucket.label)}</span>
+                <span>{bucket.trades}</span>
+                <span>{(bucket.winRate * 100).toFixed(1)}%</span>
+                <span className={bucket.netPnl >= 0 ? 'positive' : 'negative'}>{money(bucket.netPnl)}</span>
+                <span className={bucket.expectancyR >= 0 ? 'positive' : 'negative'}>{bucket.expectancyR.toFixed(2)}R</span>
+                <span>{profitFactor(bucket.profitFactor)}</span>
+                <span>{bucket.averageCosts.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function BacktestPanel() {
@@ -82,11 +138,20 @@ export default function BacktestPanel() {
             <div className="detail"><div className="detail-label">Win rate</div><div className="detail-value">{(report.winRate * 100).toFixed(1)}%</div></div>
             <div className="detail"><div className="detail-label">Expectancy</div><div className="detail-value">{report.expectancyR.toFixed(3)}R</div></div>
             <div className="detail"><div className="detail-label">Max drawdown</div><div className="detail-value negative">{money(-report.maxDrawdown)} · {(report.maxDrawdownPct * 100).toFixed(2)}%</div></div>
-            <div className="detail"><div className="detail-label">Profit factor</div><div className="detail-value">{report.profitFactor === null ? '—' : Number.isFinite(report.profitFactor) ? report.profitFactor.toFixed(2) : '∞'}</div></div>
+            <div className="detail"><div className="detail-label">Profit factor</div><div className="detail-value">{profitFactor(report.profitFactor)}</div></div>
           </div>
           <div className="backtest-sample">Sample: {sample?.higherCandles ?? 0} candle 1H · {sample?.entryCandles ?? 0} candle 15M</div>
+          <div className="backtest-trades-title">Edge diagnostics</div>
+          <div className="backtest-note">Breakdown ini memakai trade yang benar-benar dieksekusi. Gunakan untuk mencari pola kelemahan, bukan untuk tuning threshold secara acak.</div>
+          <div className="diagnostic-grid">
+            <DiagnosticTable title="By side" rows={report.diagnostics.bySide} />
+            <DiagnosticTable title="By quality score" rows={report.diagnostics.byQualityScore} />
+            <DiagnosticTable title="By exit reason" rows={report.diagnostics.byExitReason} />
+            <DiagnosticTable title="By regime" rows={report.diagnostics.byRegime} />
+            <DiagnosticTable title="By entry period" rows={report.diagnostics.byPeriod} />
+          </div>
           <div className="backtest-trades-title">Trade diagnostics</div>
-          {report.trades.length === 0 ? <div className="backtest-note">Belum ada trade pada sample ini.</div> : <div className="backtest-trades">{report.trades.map((trade, index) => <div className="backtest-trade" key={`${trade.entryTime}-${index}`}><span>#{index + 1} {trade.side} · score {trade.qualityScore}</span><strong className={trade.netPnl >= 0 ? 'positive' : 'negative'}>{money(trade.netPnl)} · {trade.rMultiple.toFixed(2)}R</strong><span>{trade.exitReason} · costs {trade.costs.toFixed(2)}</span></div>)}</div>}
+          {report.trades.length === 0 ? <div className="backtest-note">Belum ada trade pada sample ini.</div> : <div className="backtest-trades">{report.trades.map((trade, index) => <div className="backtest-trade" key={`${trade.entryTime}-${index}`}><span>#{index + 1} {trade.side} · {trade.regime} · score {trade.qualityScore}</span><strong className={trade.netPnl >= 0 ? 'positive' : 'negative'}>{money(trade.netPnl)} · {trade.rMultiple.toFixed(2)}R</strong><span>{trade.exitReason} · costs {trade.costs.toFixed(2)}</span></div>)}</div>}
           {report.notes.map((note) => <div className="backtest-note" key={note}>• {note}</div>)}
         </>
       ) : <div className="control-message">{message}</div>}

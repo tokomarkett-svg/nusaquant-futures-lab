@@ -116,7 +116,9 @@ export async function POST(request: Request) {
         rMultiple: trade.rMultiple,
         exitReason: trade.exitReason,
         qualityScore: trade.qualityScore,
+        regime: trade.regime,
       })),
+      diagnostics: report.diagnostics,
       notes: report.notes,
     },
   });

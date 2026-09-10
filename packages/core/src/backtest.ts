@@ -1,5 +1,5 @@
 import { evaluateIntelligentSignal, type IntelligentSignal } from './intelligence';
-import type { Candle } from './index';
+import type { Candle, Regime } from './index';
 import type { WindowProfile } from './opportunity';
 
 export interface BacktestConfig {
@@ -28,6 +28,27 @@ export interface BacktestTrade {
   rMultiple: number;
   exitReason: 'STOP_LOSS' | 'TAKE_PROFIT' | 'TIME_EXIT';
   qualityScore: number;
+  regime: Regime;
+}
+
+export interface BacktestDiagnosticBucket {
+  label: string;
+  trades: number;
+  winningTrades: number;
+  losingTrades: number;
+  winRate: number;
+  netPnl: number;
+  expectancyR: number;
+  profitFactor: number | null;
+  averageCosts: number;
+}
+
+export interface BacktestDiagnostics {
+  bySide: BacktestDiagnosticBucket[];
+  byQualityScore: BacktestDiagnosticBucket[];
+  byExitReason: BacktestDiagnosticBucket[];
+  byRegime: BacktestDiagnosticBucket[];
+  byPeriod: BacktestDiagnosticBucket[];
 }
 
 export interface BacktestReport {
@@ -43,6 +64,7 @@ export interface BacktestReport {
   maxDrawdown: number;
   maxDrawdownPct: number;
   trades: BacktestTrade[];
+  diagnostics: BacktestDiagnostics;
   windowProfiles: WindowProfile[];
   notes: string[];
 }
@@ -107,6 +129,75 @@ function buildWindowProfiles(trades: BacktestTrade[], timezone: string): WindowP
       notes: 'Profile berasal dari hasil backtest; tetap membutuhkan validasi out-of-sample.',
     } satisfies WindowProfile;
   });
+}
+
+function diagnosticStats(label: string, trades: BacktestTrade[]): BacktestDiagnosticBucket {
+  const wins = trades.filter((trade) => trade.netPnl > 0);
+  const losses = trades.filter((trade) => trade.netPnl < 0);
+  const grossWins = wins.reduce((sum, trade) => sum + trade.netPnl, 0);
+  const grossLosses = Math.abs(losses.reduce((sum, trade) => sum + trade.netPnl, 0));
+  return {
+    label,
+    trades: trades.length,
+    winningTrades: wins.length,
+    losingTrades: losses.length,
+    winRate: trades.length === 0 ? 0 : wins.length / trades.length,
+    netPnl: trades.reduce((sum, trade) => sum + trade.netPnl, 0),
+    expectancyR: trades.length === 0 ? 0 : trades.reduce((sum, trade) => sum + trade.rMultiple, 0) / trades.length,
+    profitFactor: grossLosses === 0 ? (grossWins > 0 ? Number.POSITIVE_INFINITY : null) : grossWins / grossLosses,
+    averageCosts: trades.length === 0 ? 0 : trades.reduce((sum, trade) => sum + trade.costs, 0) / trades.length,
+  };
+}
+
+function groupedDiagnostics(
+  trades: BacktestTrade[],
+  getLabel: (trade: BacktestTrade) => string,
+  order: string[],
+): BacktestDiagnosticBucket[] {
+  const groups = new Map<string, BacktestTrade[]>();
+  for (const trade of trades) {
+    const label = getLabel(trade);
+    const group = groups.get(label) ?? [];
+    group.push(trade);
+    groups.set(label, group);
+  }
+  return [...groups.entries()]
+    .sort(([left], [right]) => {
+      const leftIndex = order.indexOf(left);
+      const rightIndex = order.indexOf(right);
+      if (leftIndex >= 0 || rightIndex >= 0) return (leftIndex < 0 ? order.length : leftIndex) - (rightIndex < 0 ? order.length : rightIndex);
+      return left.localeCompare(right);
+    })
+    .map(([label, bucket]) => diagnosticStats(label, bucket));
+}
+
+function qualityBucket(score: number): string {
+  if (score < 60) return '<60';
+  if (score < 72) return '60-71';
+  if (score < 80) return '72-79';
+  if (score < 90) return '80-89';
+  return '90-100';
+}
+
+function localPeriod(timestamp: number, timezone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(new Date(timestamp));
+  const year = parts.find((part) => part.type === 'year')?.value ?? '0000';
+  const month = parts.find((part) => part.type === 'month')?.value ?? '00';
+  return `${year}-${month}`;
+}
+
+function buildDiagnostics(trades: BacktestTrade[], timezone: string): BacktestDiagnostics {
+  return {
+    bySide: groupedDiagnostics(trades, (trade) => trade.side, ['LONG', 'SHORT']),
+    byQualityScore: groupedDiagnostics(trades, (trade) => qualityBucket(trade.qualityScore), ['<60', '60-71', '72-79', '80-89', '90-100']),
+    byExitReason: groupedDiagnostics(trades, (trade) => trade.exitReason, ['STOP_LOSS', 'TAKE_PROFIT', 'TIME_EXIT']),
+    byRegime: groupedDiagnostics(trades, (trade) => trade.regime, ['TREND_UP', 'TREND_DOWN', 'RANGE', 'UNCERTAIN']),
+    byPeriod: groupedDiagnostics(trades, (trade) => localPeriod(trade.entryTime, timezone), []),
+  };
 }
 
 export function runBacktest({
@@ -187,6 +278,7 @@ export function runBacktest({
       rMultiple,
       exitReason: exit.reason,
       qualityScore: signal.qualityScore,
+      regime: signal.regime,
     };
     trades.push(trade);
     equity += netPnl;
@@ -215,10 +307,12 @@ export function runBacktest({
     maxDrawdown,
     maxDrawdownPct: initialEquity === 0 ? 0 : clamp(maxDrawdown / initialEquity, 0, 1),
     trades,
+    diagnostics: buildDiagnostics(trades, timezone),
     windowProfiles: buildWindowProfiles(trades, timezone),
     notes: [
       'Backtest menggunakan asumsi konservatif: stop loss diprioritaskan jika stop dan target tersentuh pada candle yang sama.',
       'Hasil backtest bukan jaminan performa live; gunakan out-of-sample dan walk-forward validation.',
+      'Diagnostics dikelompokkan dari trade yang benar-benar dieksekusi; setup yang ditolak belum masuk tabel ini.',
       'Jika total trade nol atau sampel kecil, jangan membuat kesimpulan strategi.',
     ],
   };
