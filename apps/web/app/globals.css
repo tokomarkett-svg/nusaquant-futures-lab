@@ -110,6 +110,13 @@ h1 { max-width: 760px; margin: 12px 0 15px; font-size: clamp(34px, 5vw, 62px); l
 .validation-card-gate { display: inline-block; margin-top: 8px; padding: 4px 7px; border-radius: 999px; background: #fff4e8; color: var(--amber); font-size: 9px; font-weight: 800; letter-spacing: .06em; }
 .validation-card-grid { display: grid; grid-template-columns: .8fr 1.2fr; gap: 6px 8px; margin-top: 10px; color: var(--muted); font-family: 'DM Mono', monospace; font-size: 10px; }
 .validation-card-grid strong { color: var(--ink); font-weight: 500; text-align: right; }
+.walk-forward-wrap { margin-top: 10px; padding: 12px; border: 1px solid #edf2ee; border-radius: 12px; background: #fbfdfb; }
+.walk-forward-table { min-width: 600px; margin-top: 10px; font-family: 'DM Mono', monospace; font-size: 10px; }
+.walk-forward-row { display: grid; grid-template-columns: .55fr .8fr .8fr .7fr .7fr 1.2fr .7fr .6fr; gap: 8px; align-items: center; padding: 7px 0; border-top: 1px solid #edf2ee; color: var(--muted); }
+.walk-forward-head { border-top: 0; color: var(--muted); font-family: 'Manrope', sans-serif; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
+.walk-forward-row > :not(:first-child) { text-align: right; }
+.walk-forward-row > :first-child { color: var(--ink); }
+.walk-forward-total { color: var(--ink); font-weight: 600; }
 
 .grid { display: grid; grid-template-columns: 1.35fr .9fr; gap: 12px; margin-top: 12px; }
 .panel { border-radius: 22px; padding: 23px; }

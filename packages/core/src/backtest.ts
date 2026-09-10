@@ -62,6 +62,8 @@ export interface BacktestSummary {
   profitFactor: number | null;
   expectancyR: number;
   netPnl: number;
+  grossWins: number;
+  grossLosses: number;
   maxDrawdown: number;
   maxDrawdownPct: number;
   gate: 'NOT_READY_SAMPLE' | 'PASS_RESEARCH_GATE' | 'FAIL_NEGATIVE_EXPECTANCY';
@@ -73,6 +75,23 @@ export interface TemporalValidation {
   splitTime: number | null;
   inSample: BacktestSummary;
   outOfSample: BacktestSummary;
+  notes: string[];
+}
+
+export interface WalkForwardFold {
+  index: number;
+  trainCandles: number;
+  testCandles: number;
+  testStart: number | null;
+  testEnd: number | null;
+  summary: BacktestSummary;
+}
+
+export interface WalkForwardValidation {
+  foldCount: number;
+  warmupBars: number;
+  aggregate: BacktestSummary;
+  folds: WalkForwardFold[];
   notes: string[];
 }
 
@@ -384,6 +403,8 @@ function summarizeBacktest(report: BacktestReport, periodCandles: Candle[]): Bac
     profitFactor: report.profitFactor,
     expectancyR: report.expectancyR,
     netPnl: report.netPnl,
+    grossWins: report.trades.filter((trade) => trade.netPnl > 0).reduce((sum, trade) => sum + trade.netPnl, 0),
+    grossLosses: Math.abs(report.trades.filter((trade) => trade.netPnl < 0).reduce((sum, trade) => sum + trade.netPnl, 0)),
     maxDrawdown: report.maxDrawdown,
     maxDrawdownPct: report.maxDrawdownPct,
     gate: backtestGate(report),
@@ -430,4 +451,82 @@ export function runTemporalValidation({
     outOfSample: summarizeBacktest(outOfSampleReport, outOfSamplePeriod),
     notes,
   };
+}
+
+function combineSummaries(summaries: BacktestSummary[], periodCandles: Candle[]): BacktestSummary {
+  const totalTrades = summaries.reduce((sum, summary) => sum + summary.totalTrades, 0);
+  const winningTrades = summaries.reduce((sum, summary) => sum + summary.winningTrades, 0);
+  const losingTrades = summaries.reduce((sum, summary) => sum + summary.losingTrades, 0);
+  const grossWins = summaries.reduce((sum, summary) => sum + summary.grossWins, 0);
+  const grossLosses = summaries.reduce((sum, summary) => sum + summary.grossLosses, 0);
+  const totalR = summaries.reduce((sum, summary) => sum + summary.expectancyR * summary.totalTrades, 0);
+  const maxDrawdown = Math.max(...summaries.map((summary) => summary.maxDrawdown), 0);
+  return {
+    periodStart: periodCandles[0]?.time ?? null,
+    periodEnd: periodCandles.at(-1)?.time ?? null,
+    sampleCandles: periodCandles.length,
+    totalTrades,
+    winningTrades,
+    losingTrades,
+    winRate: totalTrades === 0 ? 0 : winningTrades / totalTrades,
+    profitFactor: grossLosses === 0 ? (grossWins > 0 ? Number.POSITIVE_INFINITY : null) : grossWins / grossLosses,
+    expectancyR: totalTrades === 0 ? 0 : totalR / totalTrades,
+    netPnl: summaries.reduce((sum, summary) => sum + summary.netPnl, 0),
+    grossWins,
+    grossLosses,
+    maxDrawdown,
+    maxDrawdownPct: summaries.length === 0 ? 0 : Math.max(...summaries.map((summary) => summary.maxDrawdownPct)),
+    gate: totalTrades < 30
+      ? 'NOT_READY_SAMPLE'
+      : grossLosses > 0 && grossWins / grossLosses > 1 && totalR / totalTrades > 0
+        ? 'PASS_RESEARCH_GATE'
+        : 'FAIL_NEGATIVE_EXPECTANCY',
+  };
+}
+
+export function runWalkForwardValidation({
+  symbol = 'BTCUSDT',
+  higherTimeframe,
+  entryTimeframe,
+  config = {},
+  foldCount = 3,
+  warmupBars = 80,
+}: {
+  symbol?: string;
+  higherTimeframe: Candle[];
+  entryTimeframe: Candle[];
+  config?: BacktestConfig;
+  foldCount?: number;
+  warmupBars?: number;
+}): WalkForwardValidation {
+  const safeFoldCount = Math.max(1, Math.min(Math.floor(foldCount), 5));
+  const testBars = Math.max(Math.floor(entryTimeframe.length / (safeFoldCount + 2)), 1);
+  const firstTestStart = Math.max(entryTimeframe.length - testBars * safeFoldCount, 1);
+  const folds: WalkForwardFold[] = [];
+
+  for (let index = 0; index < safeFoldCount; index += 1) {
+    const testStartIndex = Math.min(firstTestStart + index * testBars, Math.max(entryTimeframe.length - 1, 0));
+    const testEndIndex = Math.min(testStartIndex + testBars, entryTimeframe.length);
+    const contextStart = Math.max(0, testStartIndex - Math.max(warmupBars, 0));
+    const testInput = entryTimeframe.slice(contextStart, testEndIndex);
+    const testPeriod = entryTimeframe.slice(testStartIndex, testEndIndex);
+    const report = runBacktest({ symbol, higherTimeframe, entryTimeframe: testInput, config });
+    folds.push({
+      index: index + 1,
+      trainCandles: testStartIndex,
+      testCandles: testPeriod.length,
+      testStart: testPeriod[0]?.time ?? null,
+      testEnd: testPeriod.at(-1)?.time ?? null,
+      summary: summarizeBacktest(report, testPeriod),
+    });
+  }
+
+  const aggregate = combineSummaries(folds.map((fold) => fold.summary), entryTimeframe.slice(firstTestStart));
+  const notes = [
+    `${safeFoldCount} forward fold; setiap test window berjalan setelah periode train sebelumnya dan memakai ${Math.max(warmupBars, 0)} candle warmup.`,
+    'Rule dan parameter tetap sama di semua fold; tidak ada fitting atau tuning menggunakan data test.',
+    'Aggregate fold tidak dipakai sebagai equity curve gabungan; gunakan untuk melihat konsistensi generalisasi antarperiode.',
+  ];
+  if (folds.some((fold) => fold.summary.totalTrades < 30)) notes.push('Sebagian fold memiliki kurang dari 30 trade; baca hasil per fold dengan hati-hati.');
+  return { foldCount: safeFoldCount, warmupBars: Math.max(warmupBars, 0), aggregate, folds, notes };
 }

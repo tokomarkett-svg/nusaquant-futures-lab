@@ -1,4 +1,4 @@
-import { runBacktest, runTemporalValidation, type Candle } from '@nusaquant/core';
+import { runBacktest, runTemporalValidation, runWalkForwardValidation, type Candle } from '@nusaquant/core';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
@@ -87,6 +87,14 @@ export async function POST(request: Request) {
     trainFraction: 0.7,
     warmupBars: 80,
   });
+  const walkForward = runWalkForwardValidation({
+    symbol,
+    higherTimeframe,
+    entryTimeframe,
+    config,
+    foldCount: 3,
+    warmupBars: 80,
+  });
 
   return NextResponse.json({
     ok: true,
@@ -124,6 +132,7 @@ export async function POST(request: Request) {
       })),
       diagnostics: report.diagnostics,
       validation,
+      walkForward,
       notes: report.notes,
     },
   });

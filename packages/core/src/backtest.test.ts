@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resolveExitPrice, runBacktest, runTemporalValidation, type Candle } from './backtest.ts';
+import { resolveExitPrice, runBacktest, runTemporalValidation, runWalkForwardValidation, type Candle } from './backtest.ts';
 
 test('backtest resolves stop and target fills at their levels, not candle close', () => {
   assert.equal(resolveExitPrice({ reason: 'STOP_LOSS', stopLoss: 95, takeProfit: 110, candleClose: 104 }), 95);
@@ -69,5 +69,24 @@ test('temporal validation keeps OOS trades after the split and reports both slic
   assert.equal(validation.inSample.sampleCandles, 280);
   assert.equal(validation.outOfSample.sampleCandles, 120);
   assert.equal(validation.splitTime, entry[280].time);
+  assert.ok(validation.notes.length >= 3);
+});
+
+test('walk-forward validation returns ordered forward folds without tuning', () => {
+  const hour = 60 * 60 * 1000;
+  const quarterHour = 15 * 60 * 1000;
+  const higher = candles(360, 100, hour, 0.1, 0);
+  const entry = candles(500, 140, quarterHour, 0.02, 220 * hour);
+  const validation = runWalkForwardValidation({
+    higherTimeframe: higher,
+    entryTimeframe: entry,
+    config: { initialEquity: 10_000 },
+    foldCount: 3,
+    warmupBars: 80,
+  });
+
+  assert.equal(validation.folds.length, 3);
+  assert.equal(validation.aggregate.sampleCandles, validation.folds.reduce((sum, fold) => sum + fold.testCandles, 0));
+  assert.ok(validation.folds.every((fold) => fold.trainCandles > fold.testCandles));
   assert.ok(validation.notes.length >= 3);
 });

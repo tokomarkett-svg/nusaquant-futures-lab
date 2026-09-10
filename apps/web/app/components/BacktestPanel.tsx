@@ -32,9 +32,26 @@ type ValidationSummary = {
   profitFactor: number | null;
   expectancyR: number;
   netPnl: number;
+  grossWins: number;
+  grossLosses: number;
   maxDrawdown: number;
   maxDrawdownPct: number;
   gate: 'NOT_READY_SAMPLE' | 'PASS_RESEARCH_GATE' | 'FAIL_NEGATIVE_EXPECTANCY';
+};
+type WalkForwardFold = {
+  index: number;
+  trainCandles: number;
+  testCandles: number;
+  testStart: number | null;
+  testEnd: number | null;
+  summary: ValidationSummary;
+};
+type WalkForward = {
+  foldCount: number;
+  warmupBars: number;
+  aggregate: ValidationSummary;
+  folds: WalkForwardFold[];
+  notes: string[];
 };
 type Validation = {
   trainFraction: number;
@@ -60,6 +77,7 @@ type Report = {
   trades: Array<{ side: string; entryTime: number; exitTime: number; entry: number; exit: number; netPnl: number; costs: number; rMultiple: number; exitReason: string; qualityScore: number; regime: string }>;
   diagnostics: Diagnostics;
   validation: Validation;
+  walkForward: WalkForward;
   notes: string[];
 };
 
@@ -122,6 +140,21 @@ function ValidationCard({ title, summary }: { title: string; summary: Validation
         <span>Expectancy</span><strong className={summary.expectancyR >= 0 ? 'positive' : 'negative'}>{summary.expectancyR.toFixed(3)}R</strong>
         <span>Profit factor</span><strong>{profitFactor(summary.profitFactor)}</strong>
         <span>Sample</span><strong>{summary.sampleCandles} candles</strong>
+      </div>
+    </div>
+  );
+}
+
+function WalkForwardTable({ validation }: { validation: WalkForward }) {
+  return (
+    <div className="walk-forward-wrap">
+      <div className="validation-card-title">{validation.foldCount} forward folds · aggregate {validationGate(validation.aggregate.gate)}</div>
+      <div className="diagnostic-scroll">
+        <div className="walk-forward-table">
+          <div className="walk-forward-row walk-forward-head"><span>Fold</span><span>Train</span><span>Test</span><span>Trades</span><span>Win</span><span>Net P/L</span><span>Exp.</span><span>PF</span></div>
+          {validation.folds.map((fold) => <div className="walk-forward-row" key={fold.index}><span>#{fold.index}</span><span>{fold.trainCandles}</span><span>{fold.testCandles}</span><span>{fold.summary.totalTrades}</span><span>{(fold.summary.winRate * 100).toFixed(1)}%</span><span className={fold.summary.netPnl >= 0 ? 'positive' : 'negative'}>{money(fold.summary.netPnl)}</span><span className={fold.summary.expectancyR >= 0 ? 'positive' : 'negative'}>{fold.summary.expectancyR.toFixed(2)}R</span><span>{profitFactor(fold.summary.profitFactor)}</span></div>)}
+          <div className="walk-forward-row walk-forward-total"><span>ALL</span><span>—</span><span>{validation.aggregate.sampleCandles}</span><span>{validation.aggregate.totalTrades}</span><span>{(validation.aggregate.winRate * 100).toFixed(1)}%</span><span className={validation.aggregate.netPnl >= 0 ? 'positive' : 'negative'}>{money(validation.aggregate.netPnl)}</span><span className={validation.aggregate.expectancyR >= 0 ? 'positive' : 'negative'}>{validation.aggregate.expectancyR.toFixed(2)}R</span><span>{profitFactor(validation.aggregate.profitFactor)}</span></div>
+        </div>
       </div>
     </div>
   );
@@ -195,6 +228,10 @@ export default function BacktestPanel() {
             <ValidationCard title="Out-of-sample · 30%" summary={report.validation.outOfSample} />
           </div>
           {report.validation.notes.map((note) => <div className="backtest-note" key={note}>• {note}</div>)}
+          <div className="backtest-trades-title">Walk-forward validation</div>
+          <div className="backtest-note">Tiga test window berurutan dipakai untuk melihat konsistensi performa lintas waktu. Ini bukan parameter tuning dan belum menggantikan paper execution.</div>
+          <WalkForwardTable validation={report.walkForward} />
+          {report.walkForward.notes.map((note) => <div className="backtest-note" key={note}>• {note}</div>)}
           <div className="backtest-trades-title">Edge diagnostics</div>
           <div className="backtest-note">Breakdown ini memakai trade yang benar-benar dieksekusi. Gunakan untuk mencari pola kelemahan, bukan untuk tuning threshold secara acak.</div>
           <div className="diagnostic-grid">
