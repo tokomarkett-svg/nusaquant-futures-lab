@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PaperBotEngine } from './index.ts';
+import type { IntelligentSignal } from '@nusaquant/core';
 import { desiredStatusAction, isFreshMarketCandle } from './session-control.ts';
 
 test('bot starts in observation mode without opening a position', () => {
@@ -17,6 +18,38 @@ test('pause stops new work and clears pending approval', () => {
   const snapshot = bot.pause();
   assert.equal(snapshot.status, 'PAUSED');
   assert.equal(snapshot.pendingSignal, null);
+});
+
+test('observation resume clears a stale pending approval signal', () => {
+  const bot = new PaperBotEngine({ mode: 'PAPER_APPROVAL' });
+  bot.start();
+  const signal = {
+    decision: 'LONG',
+    candidate: 'LONG',
+    stage: 'TRIGGERED',
+    timing: 'ENTER_NOW',
+    regime: 'TREND_UP',
+    qualityScore: 80,
+    scoreMax: 100,
+    entry: 100,
+    triggerPrice: 100,
+    stopLoss: 95,
+    takeProfit: 110,
+    quantity: 1,
+    riskAmount: 10,
+    riskReward: 2,
+    maxChaseDistance: 1,
+    patterns: [],
+    structure: { bias: 'BULLISH', lastSwingHigh: 100, lastSwingLow: 95, breakOfStructure: 'BULLISH', reason: 'test' },
+    evidence: [],
+    blockers: [],
+    explanation: 'test',
+  } satisfies IntelligentSignal;
+  bot.restorePendingSignal(signal);
+  assert.equal(bot.snapshot().status, 'WAITING_APPROVAL');
+  const resumed = bot.resumeObservation();
+  assert.equal(resumed.status, 'RUNNING');
+  assert.equal(resumed.pendingSignal, null);
 });
 
 test('insufficient candle data cannot create a paper order', () => {

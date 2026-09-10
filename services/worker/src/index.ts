@@ -261,6 +261,15 @@ export class PaperBotEngine {
     return this.snapshot();
   }
 
+  resumeObservation(now = new Date()): WorkerSnapshot {
+    this.syncDay(now);
+    if (this.riskBlocked || this.status === 'EMERGENCY' || this.broker.getPosition()) return this.snapshot();
+    this.pendingSignal = null;
+    this.status = 'RUNNING';
+    this.emit('STATUS', 'Pending signal lama dibersihkan; bot kembali ke observation mode.');
+    return this.snapshot();
+  }
+
   emergencyStop(): WorkerSnapshot {
     this.status = 'EMERGENCY';
     this.pendingSignal = null;

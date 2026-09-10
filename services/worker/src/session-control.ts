@@ -169,7 +169,9 @@ export class PaperSessionController {
 
     const action = desiredStatusAction(data.status);
     const before = this.engine.snapshot().status;
-    if (action === 'START' && before !== 'RUNNING' && before !== 'WAITING_APPROVAL' && before !== 'POSITION_OPEN') {
+    if (action === 'START' && data.status === 'RUNNING' && before === 'WAITING_APPROVAL') {
+      this.engine.resumeObservation();
+    } else if (action === 'START' && before !== 'RUNNING' && before !== 'WAITING_APPROVAL' && before !== 'POSITION_OPEN') {
       this.engine.start();
     } else if (action === 'PAUSE' && before !== 'PAUSED') {
       this.engine.pause();
