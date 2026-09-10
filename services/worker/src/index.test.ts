@@ -50,3 +50,25 @@ test('paper position state can be restored after a worker restart', () => {
   assert.equal(snapshot.status, 'POSITION_OPEN');
   assert.equal(snapshot.position?.id, 'paper-4');
 });
+
+test('paper exit records costs and daily loss governor blocks new entries', () => {
+  const bot = new PaperBotEngine({ mode: 'PAPER_APPROVAL', dailyLossFraction: 0.0005 });
+  bot.restorePosition({
+    id: 'paper-5',
+    symbol: 'BTCUSDT',
+    side: 'LONG',
+    entry: 100,
+    quantity: 1,
+    stopLoss: 90,
+    takeProfit: 120,
+    openedAt: '2026-09-09T00:00:00.000Z',
+  });
+
+  const snapshot = bot.onPriceTick(90, new Date('2026-09-09T00:15:00.000Z'));
+  assert.equal(snapshot.status, 'PAUSED');
+  assert.equal(snapshot.riskBlocked, true);
+  assert.ok((snapshot.lastClosedPosition?.totalCosts ?? 0) > 0);
+  assert.ok((snapshot.lastClosedPosition?.realizedPnl ?? 0) < -10);
+  assert.ok(snapshot.dailyRealizedPnl <= -snapshot.dailyLossLimit);
+  assert.equal(bot.start(new Date('2026-09-09T00:30:00.000Z')).status, 'PAUSED');
+});

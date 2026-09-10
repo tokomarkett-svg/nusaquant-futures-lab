@@ -13,6 +13,7 @@ type SessionRecord = {
   mode: ExecutionMode | 'OBSERVATION' | 'TESTNET' | 'LIVE';
   symbol: string;
   risk_fraction: number;
+  daily_loss_limit: number;
 };
 
 type CandleRow = {
@@ -136,7 +137,7 @@ export class PaperSessionController {
     const sessionId = this.sessionId;
     const { data, error } = await this.client
       .from('bot_sessions')
-      .select('id,status,mode,symbol,risk_fraction')
+      .select('id,status,mode,symbol,risk_fraction,daily_loss_limit')
       .eq('id', sessionId)
       .maybeSingle<SessionRecord>();
 
@@ -199,6 +200,7 @@ export class PaperSessionController {
     this.engine = new PaperBotEngine({
       symbol: session.symbol,
       riskFraction: Number(session.risk_fraction),
+      dailyLossFraction: Number(session.daily_loss_limit),
       mode,
     });
 
@@ -343,7 +345,7 @@ export class PaperSessionController {
           quantity: snapshot.position.quantity,
           requested_price: snapshot.position.entry,
           filled_price: snapshot.position.entry,
-          metadata: { mode: snapshot.mode, source: 'PAPER_APPROVAL' },
+          metadata: { mode: snapshot.mode, source: 'PAPER_APPROVAL', estimated_entry_costs: snapshot.position.entryCosts ?? 0 },
         }, { onConflict: 'client_order_id', ignoreDuplicates: true });
         if (order.error) throw new Error(`Gagal menyimpan paper order: ${order.error.message}`);
 
@@ -357,7 +359,12 @@ export class PaperSessionController {
           stop_loss: snapshot.position.stopLoss,
           take_profit: snapshot.position.takeProfit,
           opened_at: snapshot.position.openedAt,
-          metadata: { engine_position_id: snapshot.position.id, mode: snapshot.mode },
+          metadata: {
+            engine_position_id: snapshot.position.id,
+            mode: snapshot.mode,
+            risk_amount: snapshot.position.riskAmount ?? null,
+            entry_costs: snapshot.position.entryCosts ?? 0,
+          },
         });
         if (position.error) throw new Error(`Gagal menyimpan paper position: ${position.error.message}`);
         await this.writeJournal(sessionId, snapshot.position.symbol, 'PAPER_OPEN', 'Paper approval disetujui dan position dibuat.', snapshot);
@@ -368,7 +375,20 @@ export class PaperSessionController {
     if (closed && closed.id !== this.lastPersistedClosedId) {
       const update = await this.client
         .from('paper_positions')
-        .update({ status: 'CLOSED', exit_price: closed.exit, realized_pnl: closed.realizedPnl, close_reason: closed.closeReason, closed_at: closed.closedAt })
+        .update({
+          status: 'CLOSED',
+          exit_price: closed.exit,
+          realized_pnl: closed.realizedPnl,
+          close_reason: closed.closeReason,
+          closed_at: closed.closedAt,
+          metadata: {
+            engine_position_id: closed.id,
+            risk_amount: closed.riskAmount ?? null,
+            entry_costs: closed.entryCosts ?? 0,
+            total_costs: closed.totalCosts ?? 0,
+            bars_held: closed.barsHeld ?? null,
+          },
+        })
         .eq('bot_session_id', sessionId)
         .eq('symbol', session.symbol)
         .eq('status', 'OPEN');
@@ -385,7 +405,7 @@ export class PaperSessionController {
         realized_pnl: snapshot.realizedPnl,
         unrealized_pnl: 0,
         drawdown: 0,
-        daily_loss: Math.max(0, -snapshot.realizedPnl),
+        daily_loss: Math.max(0, -snapshot.dailyRealizedPnl),
       });
       if (equity.error) throw new Error(`Gagal menyimpan equity snapshot: ${equity.error.message}`);
       this.lastEquitySnapshotAt = now;

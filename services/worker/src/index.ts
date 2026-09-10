@@ -24,6 +24,10 @@ export interface PaperPosition {
   exit?: number;
   realizedPnl?: number;
   closeReason?: string;
+  riskAmount?: number;
+  entryCosts?: number;
+  totalCosts?: number;
+  barsHeld?: number;
 }
 
 export interface WorkerSnapshot {
@@ -36,6 +40,9 @@ export interface WorkerSnapshot {
   lastClosedPosition: PaperPosition | null;
   equity: number;
   realizedPnl: number;
+  dailyRealizedPnl: number;
+  dailyLossLimit: number;
+  riskBlocked: boolean;
   lastEvent: string | null;
 }
 
@@ -53,12 +60,14 @@ class PaperBroker {
     return this.position;
   }
 
-  open(symbol: string, signal: IntelligentSignal, now: Date): PaperPosition {
+  open(symbol: string, signal: IntelligentSignal, now: Date, costs: { feeRate: number; slippageRate: number }): PaperPosition {
     if (this.position) throw new Error('Paper broker menolak order: posisi sudah terbuka.');
     if (signal.decision === 'NO_TRADE' || signal.entry === null || signal.stopLoss === null || signal.takeProfit === null) {
       throw new Error('Paper broker menolak order: signal belum valid.');
     }
     this.sequence += 1;
+    const entryNotional = signal.entry * signal.quantity;
+    const entryCosts = entryNotional * (costs.feeRate + costs.slippageRate);
     this.position = {
       id: `paper-${this.sequence}`,
       symbol,
@@ -68,11 +77,14 @@ class PaperBroker {
       stopLoss: signal.stopLoss,
       takeProfit: signal.takeProfit,
       openedAt: now.toISOString(),
+      riskAmount: signal.riskAmount,
+      entryCosts,
+      totalCosts: entryCosts,
     };
     return this.position;
   }
 
-  mark(price: number, now: Date): PaperPosition | null {
+  mark(price: number, now: Date, costs: { feeRate: number; slippageRate: number; fundingRatePerBar: number; barMs: number }): PaperPosition | null {
     if (!this.position) return null;
     const position = this.position;
     const stopHit = position.side === 'LONG' ? price <= position.stopLoss : price >= position.stopLoss;
@@ -83,11 +95,22 @@ class PaperBroker {
     const grossPnl = position.side === 'LONG'
       ? (exit - position.entry) * position.quantity
       : (position.entry - exit) * position.quantity;
+    const openedAt = Date.parse(position.openedAt);
+    const elapsedBars = Number.isFinite(openedAt)
+      ? Math.max(1, Math.ceil(Math.max(0, now.getTime() - openedAt) / costs.barMs))
+      : 1;
+    const exitNotional = exit * position.quantity;
+    const exitCosts = exitNotional * (costs.feeRate + costs.slippageRate);
+    const fundingCosts = position.entry * position.quantity * costs.fundingRatePerBar * elapsedBars;
+    const totalCosts = (position.entryCosts ?? 0) + exitCosts + fundingCosts;
+    const netPnl = grossPnl - totalCosts;
     this.position = {
       ...position,
       closedAt: now.toISOString(),
       exit,
-      realizedPnl: grossPnl,
+      realizedPnl: netPnl,
+      totalCosts,
+      barsHeld: elapsedBars,
       closeReason: stopHit ? 'STOP_LOSS' : 'TAKE_PROFIT',
     };
     return this.position;
@@ -110,6 +133,10 @@ export class PaperBotEngine {
   private readonly profiles: WindowProfile[];
   private readonly symbol: string;
   private readonly riskFraction: number;
+  private readonly feeRate: number;
+  private readonly slippageRate: number;
+  private readonly fundingRatePerBar: number;
+  private readonly dailyLossLimit: number;
   private status: BotStatus = 'IDLE';
   private readonly mode: ExecutionMode;
   private plan: DailyMarketPlan | null = null;
@@ -117,6 +144,9 @@ export class PaperBotEngine {
   private pendingSignal: IntelligentSignal | null = null;
   private readonly broker = new PaperBroker();
   private realizedPnl = 0;
+  private dailyRealizedPnl = 0;
+  private currentDayKey: string | null = null;
+  private riskBlocked = false;
   private cooldownUntil = 0;
   private lastClosedPosition: PaperPosition | null = null;
   private lastEvent: string | null = null;
@@ -126,18 +156,30 @@ export class PaperBotEngine {
     equity = 10_000,
     symbol = 'BTCUSDT',
     riskFraction = 0.0025,
+    feeRate = 0.0004,
+    slippageRate = 0.0002,
+    fundingRatePerBar = 0.00001,
+    dailyLossFraction = 0.01,
     mode = 'PAPER_APPROVAL',
     profiles = [],
   }: {
     equity?: number;
     symbol?: string;
     riskFraction?: number;
+    feeRate?: number;
+    slippageRate?: number;
+    fundingRatePerBar?: number;
+    dailyLossFraction?: number;
     mode?: ExecutionMode;
     profiles?: WindowProfile[];
   } = {}) {
     this.equityStart = equity;
     this.symbol = symbol;
     this.riskFraction = riskFraction;
+    this.feeRate = feeRate;
+    this.slippageRate = slippageRate;
+    this.fundingRatePerBar = fundingRatePerBar;
+    this.dailyLossLimit = Math.max(equity * dailyLossFraction, Number.EPSILON);
     this.mode = mode;
     this.profiles = profiles;
   }
@@ -158,11 +200,47 @@ export class PaperBotEngine {
       lastClosedPosition: this.lastClosedPosition,
       equity: this.equityStart + this.realizedPnl,
       realizedPnl: this.realizedPnl,
+      dailyRealizedPnl: this.dailyRealizedPnl,
+      dailyLossLimit: this.dailyLossLimit,
+      riskBlocked: this.riskBlocked,
       lastEvent: this.lastEvent,
     };
   }
 
+  private dayKey(now: Date): string {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Jakarta',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(now);
+  }
+
+  private syncDay(now: Date): void {
+    const day = this.dayKey(now);
+    if (this.currentDayKey === day) return;
+    this.currentDayKey = day;
+    this.dailyRealizedPnl = 0;
+    this.riskBlocked = false;
+  }
+
+  private enforceDailyLoss(now: Date): void {
+    this.syncDay(now);
+    if (this.dailyRealizedPnl > -this.dailyLossLimit) return;
+    this.riskBlocked = true;
+    this.pendingSignal = null;
+    this.status = 'PAUSED';
+    this.emit('STATUS', `Daily loss limit tercapai (${this.dailyRealizedPnl.toFixed(2)} USDT); entry baru diblokir.`);
+  }
+
   start(now = new Date()): WorkerSnapshot {
+    this.syncDay(now);
+    if (this.riskBlocked) {
+      this.status = 'PAUSED';
+      this.emit('STATUS', 'Risk Governor menahan start sampai hari perdagangan berganti.');
+      return this.snapshot();
+    }
+    if (this.status === 'EMERGENCY') return this.snapshot();
     if (this.status === 'RUNNING' || this.status === 'POSITION_OPEN') return this.snapshot();
     this.status = 'STARTING';
     this.emit('STATUS', 'Bot mulai sinkronisasi dan membuat market plan.');
@@ -191,14 +269,22 @@ export class PaperBotEngine {
   }
 
   onPriceTick(price: number, now = new Date()): WorkerSnapshot {
-    const closed = this.broker.mark(price, now);
+    this.syncDay(now);
+    const closed = this.broker.mark(price, now, {
+      feeRate: this.feeRate,
+      slippageRate: this.slippageRate,
+      fundingRatePerBar: this.fundingRatePerBar,
+      barMs: 15 * 60 * 1000,
+    });
     if (closed) {
       this.realizedPnl += closed.realizedPnl ?? 0;
+      this.dailyRealizedPnl += closed.realizedPnl ?? 0;
       this.lastClosedPosition = closed;
       this.status = 'COOLDOWN';
       this.cooldownUntil = now.getTime() + 3 * 15 * 60 * 1000;
-      this.emit('POSITION', `${closed.closeReason} pada ${closed.exit}. P/L kotor ${closed.realizedPnl?.toFixed(2)} USDT.`);
+      this.emit('POSITION', `${closed.closeReason} pada ${closed.exit}. P/L bersih ${closed.realizedPnl?.toFixed(2)} USDT; costs ${closed.totalCosts?.toFixed(2)} USDT.`);
       this.broker.clearClosedPosition();
+      this.enforceDailyLoss(now);
     }
     return this.snapshot();
   }
@@ -208,6 +294,11 @@ export class PaperBotEngine {
     entryTimeframe: Candle[];
     now?: Date;
   }): WorkerSnapshot {
+    this.syncDay(now);
+    if (this.riskBlocked) {
+      this.status = 'PAUSED';
+      return this.snapshot();
+    }
     if (this.status === 'PAUSED' || this.status === 'EMERGENCY' || this.status === 'IDLE') return this.snapshot();
     if (this.status === 'COOLDOWN' && now.getTime() < this.cooldownUntil) return this.snapshot();
     if (this.status === 'COOLDOWN') this.status = 'RUNNING';
@@ -266,8 +357,12 @@ export class PaperBotEngine {
   }
 
   private openPending(now: Date): void {
-    if (!this.pendingSignal) return;
-    const position = this.broker.open(this.symbol, this.pendingSignal, now);
+    this.syncDay(now);
+    if (this.riskBlocked || !this.pendingSignal) return;
+    const position = this.broker.open(this.symbol, this.pendingSignal, now, {
+      feeRate: this.feeRate,
+      slippageRate: this.slippageRate,
+    });
     this.lastClosedPosition = null;
     this.pendingSignal = null;
     this.status = 'POSITION_OPEN';
