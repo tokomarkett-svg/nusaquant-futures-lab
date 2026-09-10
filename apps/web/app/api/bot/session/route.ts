@@ -11,6 +11,7 @@ type SupportedSymbol = keyof typeof SESSIONS;
 type Action = 'start' | 'pause' | 'approve' | 'emergency';
 type LatestSignal = { decision: string; stage: string; timing: string; quality_score: number; evaluated_at: string; blockers: string[] };
 type LatestPosition = { side: string; symbol: string; quantity: number | string; entry_price: number | string; stop_loss: number | string; take_profit: number | string; opened_at: string };
+type LatestCandle = { open_time: string; close: number | string };
 
 function getAdminClient() {
   const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -51,6 +52,19 @@ async function latestPosition(client: NonNullable<ReturnType<typeof getAdminClie
   return result.data as LatestPosition | null;
 }
 
+async function latestCandle(client: NonNullable<ReturnType<typeof getAdminClient>>, symbol: string): Promise<LatestCandle | null> {
+  const result = await client
+    .from('market_candles')
+    .select('open_time,close')
+    .eq('symbol', symbol)
+    .eq('interval', '15m')
+    .order('open_time', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (result.error) return null;
+  return result.data as LatestCandle | null;
+}
+
 async function ensureSession(target: { symbol: SupportedSymbol; sessionId: string }) {
   const client = getAdminClient();
   if (!client) return { client: null, data: null, error: 'Server Supabase key belum dikonfigurasi.' };
@@ -84,6 +98,8 @@ export async function GET(request: Request) {
     session: result.data,
     latestSignal: await latestSignal(result.client!, target.sessionId),
     position: await latestPosition(result.client!, target.sessionId),
+    latestCandle: await latestCandle(result.client!, target.symbol),
+    serverTime: new Date().toISOString(),
   });
 }
 
@@ -110,5 +126,7 @@ export async function POST(request: Request) {
     session: updated.data,
     latestSignal: await latestSignal(result.client!, target.sessionId),
     position: await latestPosition(result.client!, target.sessionId),
+    latestCandle: await latestCandle(result.client!, target.symbol),
+    serverTime: new Date().toISOString(),
   });
 }

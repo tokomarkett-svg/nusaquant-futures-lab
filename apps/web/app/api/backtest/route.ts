@@ -93,6 +93,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : 'Candle query gagal.' }, { status: 502 });
   }
 
+  if (higherTimeframe.length < 220 || entryTimeframe.length < 80) {
+    return NextResponse.json({
+      ok: false,
+      error: `${symbol} belum memiliki cukup data untuk backtest: ${higherTimeframe.length} candle 1H dan ${entryTimeframe.length} candle 15M; minimum 220/80.`,
+      sample: { higherCandles: higherTimeframe.length, entryCandles: entryTimeframe.length },
+    }, { status: 422 });
+  }
+
   const config = {
     initialEquity: 10_000,
     riskFraction: 0.0025,
@@ -102,7 +110,8 @@ export async function POST(request: Request) {
     maxBarsInTrade: 96,
     timezone: 'Asia/Jakarta',
   } as const;
-  const report = runBacktest({ symbol, higherTimeframe, entryTimeframe, config });
+  try {
+    const report = runBacktest({ symbol, higherTimeframe, entryTimeframe, config });
   const validation = runTemporalValidation({
     symbol,
     higherTimeframe,
@@ -143,7 +152,7 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     symbol,
-    sample: { higherCandles: higherTimeframe.length, entryCandles: entryTimeframe.length },
+    sample: { higherCandles: higherTimeframe.length, entryCandles: entryTimeframe.length, latestEntryTime: entryTimeframe.at(-1)?.time ?? null },
     report: {
       initialEquity: report.initialEquity,
       finalEquity: report.finalEquity,
@@ -200,4 +209,7 @@ export async function POST(request: Request) {
       notes: report.notes,
     },
   });
+  } catch (error) {
+    return NextResponse.json({ ok: false, error: error instanceof Error ? `Backtest ${symbol} gagal: ${error.message}` : `Backtest ${symbol} gagal.` }, { status: 500 });
+  }
 }
