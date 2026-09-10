@@ -31,11 +31,15 @@ function formatTimestamp(value: string | null | undefined): string {
   return Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString('id-ID') : value;
 }
 
+const CANDLE_CLOSE_WAIT_MS = 30 * 60_000;
+const CANDLE_STALE_AFTER_MS = 45 * 60_000;
+
 function candleStatus(candle: LatestCandle | null): string {
   if (!candle) return 'Belum ada candle 15M untuk symbol ini.';
   const ageMs = Date.now() - Date.parse(candle.open_time);
   if (!Number.isFinite(ageMs)) return `Candle terakhir ${formatTimestamp(candle.open_time)}.`;
-  if (ageMs > 30 * 60_000) return `STALE · candle ${formatTimestamp(candle.open_time)} · worker belum menerima candle baru.`;
+  if (ageMs > CANDLE_STALE_AFTER_MS) return `STALE · candle ${formatTimestamp(candle.open_time)} · worker belum menerima candle baru.`;
+  if (ageMs > CANDLE_CLOSE_WAIT_MS) return `WAITING · candle ${formatTimestamp(candle.open_time)} · menunggu candle closed baru masuk.`;
   return `Fresh · candle ${formatTimestamp(candle.open_time)} · close ${candle.close}.`;
 }
 
@@ -171,7 +175,7 @@ export default function BotControls() {
       </div>
       <div className="control-signal">
         <span>Market data 15M</span>
-        <strong className={latestCandle && Date.now() - Date.parse(latestCandle.open_time) > 30 * 60_000 ? 'negative' : ''}>{candleStatus(latestCandle)}</strong>
+        <strong className={latestCandle && Date.now() - Date.parse(latestCandle.open_time) > CANDLE_STALE_AFTER_MS ? 'negative' : ''}>{candleStatus(latestCandle)}</strong>
       </div>
       <div className="control-signal">
         <span>Worker heartbeat</span>
