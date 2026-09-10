@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { runBacktest, type Candle } from './backtest.ts';
+import { resolveExitPrice, runBacktest, type Candle } from './backtest.ts';
+
+test('backtest resolves stop and target fills at their levels, not candle close', () => {
+  assert.equal(resolveExitPrice({ reason: 'STOP_LOSS', stopLoss: 95, takeProfit: 110, candleClose: 104 }), 95);
+  assert.equal(resolveExitPrice({ reason: 'TAKE_PROFIT', stopLoss: 95, takeProfit: 110, candleClose: 106 }), 110);
+  assert.equal(resolveExitPrice({ reason: 'TIME_EXIT', stopLoss: 95, takeProfit: 110, candleClose: 104 }), 104);
+});
 
 function candles(count: number, start: number, interval: number, trend: number, startTime: number): Candle[] {
   const output: Candle[] = [];

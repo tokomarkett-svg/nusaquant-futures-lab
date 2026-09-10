@@ -103,6 +103,22 @@ function findExit({ signal, futureCandles, maxBars }: {
   return last ? { candle: last, reason: 'TIME_EXIT' } : null;
 }
 
+export function resolveExitPrice({
+  reason,
+  stopLoss,
+  takeProfit,
+  candleClose,
+}: {
+  reason: BacktestTrade['exitReason'];
+  stopLoss: number;
+  takeProfit: number;
+  candleClose: number;
+}): number {
+  if (reason === 'STOP_LOSS') return stopLoss;
+  if (reason === 'TAKE_PROFIT') return takeProfit;
+  return candleClose;
+}
+
 function buildWindowProfiles(trades: BacktestTrade[], timezone: string): WindowProfile[] {
   const buckets = new Map<number, BacktestTrade[]>();
   for (const trade of trades) {
@@ -252,11 +268,17 @@ export function runBacktest({
     }
 
     const quantity = signal.quantity;
+    const exitPrice = resolveExitPrice({
+      reason: exit.reason,
+      stopLoss: signal.stopLoss,
+      takeProfit: signal.takeProfit,
+      candleClose: exit.candle.close,
+    });
     const entryNotional = signal.entry * quantity;
-    const exitNotional = exit.candle.close * quantity;
+    const exitNotional = exitPrice * quantity;
     const grossPnl = signal.decision === 'LONG'
-      ? (exit.candle.close - signal.entry) * quantity
-      : (signal.entry - exit.candle.close) * quantity;
+      ? (exitPrice - signal.entry) * quantity
+      : (signal.entry - exitPrice) * quantity;
     const barsHeld = Math.max(1, entryTimeframe.slice(index + 1).findIndex((candle) => candle.time === exit.candle.time) + 1);
     const costs = (entryNotional + exitNotional) * (feeRate + slippageRate) + entryNotional * fundingRatePerBar * barsHeld;
     const netPnl = grossPnl - costs;
@@ -268,7 +290,7 @@ export function runBacktest({
       entryTime: entryCandle.time,
       exitTime: exit.candle.time,
       entry: signal.entry,
-      exit: exit.candle.close,
+      exit: exitPrice,
       stopLoss: signal.stopLoss,
       takeProfit: signal.takeProfit,
       quantity,
