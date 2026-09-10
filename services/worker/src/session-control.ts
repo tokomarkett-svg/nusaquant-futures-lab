@@ -90,6 +90,10 @@ function mapStoredPosition(row: StoredPosition): PaperPosition {
     stopLoss: Number(row.stop_loss),
     takeProfit: Number(row.take_profit),
     openedAt: row.opened_at,
+    riskAmount: typeof row.metadata?.risk_amount === 'number' ? row.metadata.risk_amount : undefined,
+    entryCosts: typeof row.metadata?.entry_costs === 'number' ? row.metadata.entry_costs : undefined,
+    totalCosts: typeof row.metadata?.total_costs === 'number' ? row.metadata.total_costs : undefined,
+    barsHeld: typeof row.metadata?.bars_held === 'number' ? row.metadata.bars_held : undefined,
   };
 }
 
@@ -426,7 +430,8 @@ export class PaperSessionController {
 
   private async persistDerivedStatus(sessionId: string, requestedStatus: BotStatus, actualStatus: BotStatus): Promise<void> {
     const derivedStatus = actualStatus === 'RUNNING' && requestedStatus === 'COOLDOWN' ? 'RUNNING' : actualStatus;
-    if (derivedStatus !== 'WAITING_APPROVAL' && derivedStatus !== 'POSITION_OPEN' && derivedStatus !== 'COOLDOWN' && !(requestedStatus === 'COOLDOWN' && derivedStatus === 'RUNNING')) return;
+    const riskPause = derivedStatus === 'PAUSED' && requestedStatus !== 'PAUSED';
+    if (derivedStatus !== 'WAITING_APPROVAL' && derivedStatus !== 'POSITION_OPEN' && derivedStatus !== 'COOLDOWN' && !riskPause && !(requestedStatus === 'COOLDOWN' && derivedStatus === 'RUNNING')) return;
     if (requestedStatus === derivedStatus) return;
     const { error } = await this.client.from('bot_sessions').update({ status: derivedStatus }).eq('id', sessionId).eq('status', requestedStatus);
     if (error) throw new Error(`Gagal memperbarui status worker: ${error.message}`);
