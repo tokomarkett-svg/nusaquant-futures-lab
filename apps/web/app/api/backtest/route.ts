@@ -1,4 +1,4 @@
-import { runBacktest, type Candle } from '@nusaquant/core';
+import { runBacktest, runTemporalValidation, type Candle } from '@nusaquant/core';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
@@ -69,19 +69,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : 'Candle query gagal.' }, { status: 502 });
   }
 
-  const report = runBacktest({
+  const config = {
+    initialEquity: 10_000,
+    riskFraction: 0.0025,
+    feeRate: 0.0004,
+    slippageRate: 0.0002,
+    fundingRatePerBar: 0.00001,
+    maxBarsInTrade: 96,
+    timezone: 'Asia/Jakarta',
+  } as const;
+  const report = runBacktest({ symbol, higherTimeframe, entryTimeframe, config });
+  const validation = runTemporalValidation({
     symbol,
     higherTimeframe,
     entryTimeframe,
-    config: {
-      initialEquity: 10_000,
-      riskFraction: 0.0025,
-      feeRate: 0.0004,
-      slippageRate: 0.0002,
-      fundingRatePerBar: 0.00001,
-      maxBarsInTrade: 96,
-      timezone: 'Asia/Jakarta',
-    },
+    config,
+    trainFraction: 0.7,
+    warmupBars: 80,
   });
 
   return NextResponse.json({
@@ -119,6 +123,7 @@ export async function POST(request: Request) {
         regime: trade.regime,
       })),
       diagnostics: report.diagnostics,
+      validation,
       notes: report.notes,
     },
   });

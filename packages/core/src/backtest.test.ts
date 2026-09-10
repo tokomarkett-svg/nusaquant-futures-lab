@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resolveExitPrice, runBacktest, type Candle } from './backtest.ts';
+import { resolveExitPrice, runBacktest, runTemporalValidation, type Candle } from './backtest.ts';
 
 test('backtest resolves stop and target fills at their levels, not candle close', () => {
   assert.equal(resolveExitPrice({ reason: 'STOP_LOSS', stopLoss: 95, takeProfit: 110, candleClose: 104 }), 95);
@@ -50,4 +50,24 @@ test('backtest always returns auditable metrics and cost-aware trade fields', ()
     assert.equal(Number.isFinite(trade.rMultiple), true);
     assert.ok(['TREND_UP', 'TREND_DOWN', 'RANGE', 'UNCERTAIN'].includes(trade.regime));
   });
+});
+
+test('temporal validation keeps OOS trades after the split and reports both slices', () => {
+  const hour = 60 * 60 * 1000;
+  const quarterHour = 15 * 60 * 1000;
+  const higher = candles(320, 100, hour, 0.1, 0);
+  const entry = candles(400, 140, quarterHour, 0.02, 220 * hour);
+  const validation = runTemporalValidation({
+    higherTimeframe: higher,
+    entryTimeframe: entry,
+    config: { initialEquity: 10_000 },
+    trainFraction: 0.7,
+    warmupBars: 80,
+  });
+
+  assert.equal(validation.trainFraction, 0.7);
+  assert.equal(validation.inSample.sampleCandles, 280);
+  assert.equal(validation.outOfSample.sampleCandles, 120);
+  assert.equal(validation.splitTime, entry[280].time);
+  assert.ok(validation.notes.length >= 3);
 });

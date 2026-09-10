@@ -21,6 +21,29 @@ type Diagnostics = {
   byRegime: DiagnosticBucket[];
   byPeriod: DiagnosticBucket[];
 };
+type ValidationSummary = {
+  periodStart: number | null;
+  periodEnd: number | null;
+  sampleCandles: number;
+  totalTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+  winRate: number;
+  profitFactor: number | null;
+  expectancyR: number;
+  netPnl: number;
+  maxDrawdown: number;
+  maxDrawdownPct: number;
+  gate: 'NOT_READY_SAMPLE' | 'PASS_RESEARCH_GATE' | 'FAIL_NEGATIVE_EXPECTANCY';
+};
+type Validation = {
+  trainFraction: number;
+  warmupBars: number;
+  splitTime: number | null;
+  inSample: ValidationSummary;
+  outOfSample: ValidationSummary;
+  notes: string[];
+};
 type Report = {
   initialEquity: number;
   finalEquity: number;
@@ -36,6 +59,7 @@ type Report = {
   gate: 'NOT_READY_SAMPLE' | 'PASS_RESEARCH_GATE' | 'FAIL_NEGATIVE_EXPECTANCY';
   trades: Array<{ side: string; entryTime: number; exitTime: number; entry: number; exit: number; netPnl: number; costs: number; rMultiple: number; exitReason: string; qualityScore: number; regime: string }>;
   diagnostics: Diagnostics;
+  validation: Validation;
   notes: string[];
 };
 
@@ -76,6 +100,29 @@ function DiagnosticTable({ title, rows }: { title: string; rows: DiagnosticBucke
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function validationGate(value: ValidationSummary['gate']): string {
+  if (value === 'PASS_RESEARCH_GATE') return 'PASS';
+  if (value === 'NOT_READY_SAMPLE') return 'NOT READY';
+  return 'FAIL';
+}
+
+function ValidationCard({ title, summary }: { title: string; summary: ValidationSummary }) {
+  return (
+    <div className="validation-card">
+      <div className="validation-card-title">{title}</div>
+      <div className="validation-card-gate">{validationGate(summary.gate)}</div>
+      <div className="validation-card-grid">
+        <span>Trades</span><strong>{summary.totalTrades} · {summary.winningTrades}W / {summary.losingTrades}L</strong>
+        <span>Win rate</span><strong>{(summary.winRate * 100).toFixed(1)}%</strong>
+        <span>Net P/L</span><strong className={summary.netPnl >= 0 ? 'positive' : 'negative'}>{money(summary.netPnl)}</strong>
+        <span>Expectancy</span><strong className={summary.expectancyR >= 0 ? 'positive' : 'negative'}>{summary.expectancyR.toFixed(3)}R</strong>
+        <span>Profit factor</span><strong>{profitFactor(summary.profitFactor)}</strong>
+        <span>Sample</span><strong>{summary.sampleCandles} candles</strong>
+      </div>
     </div>
   );
 }
@@ -141,6 +188,13 @@ export default function BacktestPanel() {
             <div className="detail"><div className="detail-label">Profit factor</div><div className="detail-value">{profitFactor(report.profitFactor)}</div></div>
           </div>
           <div className="backtest-sample">Sample: {sample?.higherCandles ?? 0} candle 1H · {sample?.entryCandles ?? 0} candle 15M</div>
+          <div className="backtest-trades-title">Temporal validation · 70/30</div>
+          <div className="backtest-note">Periode in-sample dipakai untuk pengembangan, sedangkan out-of-sample hanya untuk menguji generalisasi. Tidak ada parameter yang dituning dari OOS.</div>
+          <div className="validation-grid">
+            <ValidationCard title="In-sample · 70%" summary={report.validation.inSample} />
+            <ValidationCard title="Out-of-sample · 30%" summary={report.validation.outOfSample} />
+          </div>
+          {report.validation.notes.map((note) => <div className="backtest-note" key={note}>• {note}</div>)}
           <div className="backtest-trades-title">Edge diagnostics</div>
           <div className="backtest-note">Breakdown ini memakai trade yang benar-benar dieksekusi. Gunakan untuk mencari pola kelemahan, bukan untuk tuning threshold secara acak.</div>
           <div className="diagnostic-grid">

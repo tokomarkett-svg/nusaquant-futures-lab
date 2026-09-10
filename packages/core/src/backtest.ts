@@ -51,6 +51,31 @@ export interface BacktestDiagnostics {
   byPeriod: BacktestDiagnosticBucket[];
 }
 
+export interface BacktestSummary {
+  periodStart: number | null;
+  periodEnd: number | null;
+  sampleCandles: number;
+  totalTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+  winRate: number;
+  profitFactor: number | null;
+  expectancyR: number;
+  netPnl: number;
+  maxDrawdown: number;
+  maxDrawdownPct: number;
+  gate: 'NOT_READY_SAMPLE' | 'PASS_RESEARCH_GATE' | 'FAIL_NEGATIVE_EXPECTANCY';
+}
+
+export interface TemporalValidation {
+  trainFraction: number;
+  warmupBars: number;
+  splitTime: number | null;
+  inSample: BacktestSummary;
+  outOfSample: BacktestSummary;
+  notes: string[];
+}
+
 export interface BacktestReport {
   initialEquity: number;
   finalEquity: number;
@@ -337,5 +362,72 @@ export function runBacktest({
       'Diagnostics dikelompokkan dari trade yang benar-benar dieksekusi; setup yang ditolak belum masuk tabel ini.',
       'Jika total trade nol atau sampel kecil, jangan membuat kesimpulan strategi.',
     ],
+  };
+}
+
+function backtestGate(report: BacktestReport): BacktestSummary['gate'] {
+  if (report.totalTrades < 30) return 'NOT_READY_SAMPLE';
+  return report.profitFactor !== null && report.profitFactor > 1 && report.expectancyR > 0
+    ? 'PASS_RESEARCH_GATE'
+    : 'FAIL_NEGATIVE_EXPECTANCY';
+}
+
+function summarizeBacktest(report: BacktestReport, periodCandles: Candle[]): BacktestSummary {
+  return {
+    periodStart: periodCandles[0]?.time ?? null,
+    periodEnd: periodCandles.at(-1)?.time ?? null,
+    sampleCandles: periodCandles.length,
+    totalTrades: report.totalTrades,
+    winningTrades: report.winningTrades,
+    losingTrades: report.losingTrades,
+    winRate: report.winRate,
+    profitFactor: report.profitFactor,
+    expectancyR: report.expectancyR,
+    netPnl: report.netPnl,
+    maxDrawdown: report.maxDrawdown,
+    maxDrawdownPct: report.maxDrawdownPct,
+    gate: backtestGate(report),
+  };
+}
+
+export function runTemporalValidation({
+  symbol = 'BTCUSDT',
+  higherTimeframe,
+  entryTimeframe,
+  config = {},
+  trainFraction = 0.7,
+  warmupBars = 80,
+}: {
+  symbol?: string;
+  higherTimeframe: Candle[];
+  entryTimeframe: Candle[];
+  config?: BacktestConfig;
+  trainFraction?: number;
+  warmupBars?: number;
+}): TemporalValidation {
+  const fraction = clamp(trainFraction, 0.5, 0.9);
+  const splitIndex = Math.min(
+    Math.max(Math.floor(entryTimeframe.length * fraction), 1),
+    Math.max(entryTimeframe.length - 1, 1),
+  );
+  const contextStart = Math.max(0, splitIndex - Math.max(warmupBars, 0));
+  const inSampleCandles = entryTimeframe.slice(0, splitIndex);
+  const outOfSampleCandles = entryTimeframe.slice(contextStart);
+  const outOfSamplePeriod = entryTimeframe.slice(splitIndex);
+  const inSampleReport = runBacktest({ symbol, higherTimeframe, entryTimeframe: inSampleCandles, config });
+  const outOfSampleReport = runBacktest({ symbol, higherTimeframe, entryTimeframe: outOfSampleCandles, config });
+  const notes = [
+    `Temporal split ${(fraction * 100).toFixed(0)}/${((1 - fraction) * 100).toFixed(0)}; OOS memakai ${Math.max(splitIndex - contextStart, 0)} candle warmup sebelum titik split.`,
+    'Parameter dan rule tidak dituning dari periode OOS; OOS hanya dipakai untuk menguji generalisasi.',
+    'Higher-timeframe candle tetap dipotong berdasarkan waktu entry sehingga data setelah titik evaluasi tidak dipakai untuk signal.',
+  ];
+  if (outOfSampleReport.totalTrades < 30) notes.push('OOS memiliki kurang dari 30 trade; hasilnya belum cukup untuk research gate.');
+  return {
+    trainFraction: fraction,
+    warmupBars: Math.max(warmupBars, 0),
+    splitTime: entryTimeframe[splitIndex]?.time ?? null,
+    inSample: summarizeBacktest(inSampleReport, inSampleCandles),
+    outOfSample: summarizeBacktest(outOfSampleReport, outOfSamplePeriod),
+    notes,
   };
 }
