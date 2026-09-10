@@ -40,7 +40,7 @@ Validasi terakhir yang lulus sebelum commit edge diagnostics:
 
 - Web typecheck: pass
 - Worker typecheck: pass
-- Core tests: 10 pass
+- Core tests: 11 pass
 - Worker tests: 8 pass
 - Production build: pass
 - `npm audit --omit=dev`: 0 vulnerability
@@ -62,7 +62,8 @@ Validasi terakhir yang lulus sebelum commit edge diagnostics:
 | Daily-loss hard block | Belum lengkap | Field limit dan guardrail dasar ada, enforcement penuh perlu diverifikasi/ditambahkan |
 | Testnet | Belum dimulai | Jangan diaktifkan sebelum paper dan OOS lulus |
 | Live trading | Tidak dimulai | Jangan menghubungkan private API |
-| Out-of-sample/walk-forward | Belum selesai | Wajib sebelum perubahan strategi atau eskalasi |
+| Temporal out-of-sample | Implemented | 70/30 split tersedia di API/dashboard; harus dijalankan pada BTC dan ETH terbaru |
+| Walk-forward validation | Belum selesai | Wajib sebelum perubahan strategi atau eskalasi |
 
 ## Arsitektur
 
@@ -178,11 +179,11 @@ Test regresi khusus untuk ketiga jalur exit sudah ditambahkan dan seluruh valida
 Urutan kerja yang disepakati:
 
 1. Deployment commit `edf7b4e` sudah terdeteksi sukses di Vercel dan Railway worker.
-2. Rerun backtest BTCUSDT dan ETHUSDT dengan fill model yang sudah diperbaiki.
-3. Bandingkan edge diagnostics sebelum dan sesudah fill-model fix.
-4. Simpan hasil rerun dan jangan mengubah rule hanya karena satu bucket membaik.
-5. Tambahkan atau jalankan out-of-sample temporal split.
-6. Lakukan walk-forward validation.
+2. Jalankan ulang BTCUSDT dan ETHUSDT agar kartu temporal validation 70/30 terisi.
+3. Bandingkan full-sample, in-sample, dan out-of-sample tanpa tuning rule.
+4. Tambahkan walk-forward validation beberapa jendela waktu.
+5. Jika edge tetap negatif, diagnosis fitur/entry/exit secara terukur; jangan menaikkan threshold secara acak.
+6. Perkuat paper execution: cost accounting dan daily-loss hard block.
 7. Hanya jika edge stabil dan positif, lanjutkan evaluasi paper execution yang lebih lama.
 8. Testnet/live tetap terkunci sampai seluruh research dan security gate lulus.
 
@@ -263,7 +264,7 @@ git log --oneline -5
 - `apps/web/app/components/BotControls.tsx` — kontrol paper session.
 - `apps/web/app/api/bot/session/route.ts` — API start/pause/approve/emergency.
 - `packages/core/src/intelligence.ts` — intelligence layer dan cost-aware quantity sizing.
-- `packages/core/src/backtest.ts` — simulator, cost model, diagnostics, dan exit handling.
+- `packages/core/src/backtest.ts` — simulator, cost model, diagnostics, exit handling, dan temporal OOS validation.
 - `packages/core/src/backtest.test.ts` — test backtest.
 - `services/worker/src/index.ts` — paper bot state machine.
 - `services/worker/src/session-control.ts` — restore/persist paper state ke Supabase.
@@ -275,6 +276,7 @@ git log --oneline -5
 
 ## Ringkasan Historis Commit
 
+- `8106760` — temporal out-of-sample validation 70/30 di API/dashboard.
 - `edf7b4e` — gunakan stop/target fill price yang benar di backtest.
 - `eb0cdb3` — README handoff, status riset, dan batas scope.
 - `7a644c8` — edge diagnostics di dashboard dan report backtest.
