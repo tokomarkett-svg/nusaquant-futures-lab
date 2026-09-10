@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 
 type BotStatus = 'IDLE' | 'STARTING' | 'RUNNING' | 'WAITING_APPROVAL' | 'POSITION_OPEN' | 'PAUSED' | 'COOLDOWN' | 'EMERGENCY';
 type SupportedSymbol = 'BTCUSDT' | 'ETHUSDT';
-type Session = { status: BotStatus; mode: string; symbol: string; risk_fraction: number; daily_loss_limit: number };
+type Session = { status: BotStatus; mode: string; symbol: string; risk_fraction: number; daily_loss_limit: number; updated_at?: string };
 type LatestSignal = { decision: string; stage: string; timing: string; quality_score: number; evaluated_at: string; blockers: string[]; structure?: { candle_open_time?: string } | null };
 type LatestPosition = { side: string; symbol: string; quantity: number | string; entry_price: number | string; stop_loss: number | string; take_profit: number | string; opened_at: string };
 type LatestCandle = { open_time: string; close: number | string };
@@ -39,6 +39,24 @@ function candleStatus(candle: LatestCandle | null): string {
   return `Fresh · candle ${formatTimestamp(candle.open_time)} · close ${candle.close}.`;
 }
 
+function workerHeartbeat(session: Session | null, nowMs: number | null): string {
+  if (!session?.updated_at || nowMs === null) return 'Menunggu heartbeat worker…';
+  const heartbeatMs = Date.parse(session.updated_at);
+  if (!Number.isFinite(heartbeatMs)) return 'Heartbeat worker tidak valid.';
+  const ageSeconds = Math.max(0, Math.floor((nowMs - heartbeatMs) / 1000));
+  const state = ageSeconds > 45 ? 'STALE' : 'ACTIVE';
+  return `${state} · ${formatTimestamp(session.updated_at)} · ${ageSeconds}s lalu`;
+}
+
+function nextEvaluation(nowMs: number | null): string {
+  if (nowMs === null) return 'Menghitung…';
+  const intervalMs = 15 * 60 * 1000;
+  const remainingSeconds = Math.max(1, Math.ceil((intervalMs - (nowMs % intervalMs)) / 1000));
+  const minutes = Math.floor(remainingSeconds / 60);
+  const seconds = remainingSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')} menuju candle 15M berikutnya`;
+}
+
 export default function BotControls() {
   const router = useRouter();
   const [symbol, setSymbol] = useState<SupportedSymbol>('BTCUSDT');
@@ -48,6 +66,7 @@ export default function BotControls() {
   const [latestCandle, setLatestCandle] = useState<LatestCandle | null>(null);
   const [configured, setConfigured] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [nowMs, setNowMs] = useState<number | null>(null);
   const [message, setMessage] = useState('Memeriksa bot session…');
 
   const load = useCallback(async () => {
@@ -77,6 +96,12 @@ export default function BotControls() {
     }, 15_000);
     return () => window.clearInterval(timer);
   }, [load, router]);
+
+  useEffect(() => {
+    setNowMs(Date.now());
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const handleSymbolChange = (event: Event) => {
@@ -147,6 +172,14 @@ export default function BotControls() {
       <div className="control-signal">
         <span>Market data 15M</span>
         <strong className={latestCandle && Date.now() - Date.parse(latestCandle.open_time) > 30 * 60_000 ? 'negative' : ''}>{candleStatus(latestCandle)}</strong>
+      </div>
+      <div className="control-signal">
+        <span>Worker heartbeat</span>
+        <strong className={session?.updated_at && nowMs !== null && nowMs - Date.parse(session.updated_at) > 45_000 ? 'negative' : ''}>{workerHeartbeat(session, nowMs)}</strong>
+      </div>
+      <div className="control-signal">
+        <span>Next 15M evaluation</span>
+        <strong>{nextEvaluation(nowMs)}</strong>
       </div>
       <div className="control-signal">
         <span>Paper position</span>

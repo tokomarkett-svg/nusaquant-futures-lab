@@ -26,6 +26,7 @@ type SessionRecord = {
   symbol: string;
   risk_fraction: number;
   daily_loss_limit: number;
+  updated_at: string;
 };
 
 type CandleRow = {
@@ -149,12 +150,13 @@ export class PaperSessionController {
   private lastSignalId: string | null = null;
   private lastPersistedClosedId: string | null = null;
   private lastEquitySnapshotAt = 0;
+  private lastHeartbeatAt = 0;
 
   async sync(): Promise<WorkerSnapshot | null> {
     const sessionId = this.sessionId;
     const { data, error } = await this.client
       .from('bot_sessions')
-      .select('id,status,mode,symbol,risk_fraction,daily_loss_limit')
+      .select('id,status,mode,symbol,risk_fraction,daily_loss_limit,updated_at')
       .eq('id', sessionId)
       .maybeSingle<SessionRecord>();
 
@@ -195,6 +197,7 @@ export class PaperSessionController {
     }
     await this.persistPaperState(sessionId, data, snapshot);
     await this.persistDerivedStatus(sessionId, data.status, snapshot.status);
+    await this.touchHeartbeat(sessionId);
     this.logState(data.status, `Command ${action}; engine ${snapshot.status}.`);
     this.lastEngineStatus = snapshot.status;
     return snapshot;
@@ -461,6 +464,17 @@ export class PaperSessionController {
       payload: { status: snapshot.status, mode: snapshot.mode, position: snapshot.position, lastClosedPosition: snapshot.lastClosedPosition },
     });
     if (error) throw new Error(`Gagal menyimpan trade journal: ${error.message}`);
+  }
+
+  private async touchHeartbeat(sessionId: string): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastHeartbeatAt < 30_000) return;
+    const { error } = await this.client
+      .from('bot_sessions')
+      .update({ updated_at: new Date(now).toISOString() })
+      .eq('id', sessionId);
+    if (error) throw new Error(`Gagal memperbarui worker heartbeat: ${error.message}`);
+    this.lastHeartbeatAt = now;
   }
 
   private async persistDerivedStatus(sessionId: string, requestedStatus: BotStatus, actualStatus: BotStatus): Promise<void> {
