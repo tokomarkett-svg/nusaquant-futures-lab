@@ -8,7 +8,7 @@ NusaQuant Futures Lab adalah platform riset dan paper-trading untuk Binance USD�
 
 **Tanggal status:** 10 September 2026, Asia/Jakarta
 **Branch:** `main`
-**Commit fitur terakhir:** `7a644c8 feat: add backtest edge diagnostics`
+**Commit fitur terakhir:** `edf7b4e fix: use stop and target fill prices in backtest`
 **Repository:** `tokomarkett-svg/nusaquant-futures-lab`
 
 ### Mulai dari sini
@@ -40,7 +40,7 @@ Validasi terakhir yang lulus sebelum commit edge diagnostics:
 
 - Web typecheck: pass
 - Worker typecheck: pass
-- Core tests: 9 pass
+- Core tests: 10 pass
 - Worker tests: 8 pass
 - Production build: pass
 - `npm audit --omit=dev`: 0 vulnerability
@@ -155,34 +155,31 @@ Masalah dominan adalah terlalu banyak trade yang terkena stop-loss sebelum keunt
 - Max drawdown: `-553.72 USDT / 5.54%`
 - Research gate: `FAIL`
 
-## Temuan Teknis yang Harus Diperbaiki Sebelum Run Berikutnya
+## Perbaikan Teknis Terbaru
 
-Backtest saat ini mendeteksi stop/target menggunakan `high`/`low` candle, tetapi harga exit trade masih menggunakan `candle.close`. Itu tidak konsisten.
+Commit `edf7b4e` sudah memperbaiki ketidakkonsistenan harga fill backtest. Sebelumnya simulator mendeteksi stop/target menggunakan `high`/`low` candle, tetapi memakai `candle.close` sebagai harga exit.
 
-Model fill yang harus digunakan:
+Sekarang model fill menjadi:
 
 - `STOP_LOSS` → exit pada `signal.stopLoss`
 - `TAKE_PROFIT` → exit pada `signal.takeProfit`
 - `TIME_EXIT` → exit pada close candle
 - Fee, slippage, dan funding dihitung setelah harga fill tersebut
 
-Jangan melakukan tuning rule sebelum perbaikan ini dan rerun BTCUSDT/ETHUSDT selesai. Hasil dashboard yang ada berguna untuk diagnosis awal, tetapi belum boleh dianggap hasil final sebelum fill model konsisten.
+Test regresi khusus untuk ketiga jalur exit sudah ditambahkan dan seluruh validasi lokal lulus. Metrik dashboard sebelum commit ini tetap dianggap diagnosis awal; hasil final harus diambil dari rerun setelah deployment terbaru.
 
 ## Pekerjaan Berikutnya
 
 Urutan kerja yang disepakati:
 
-1. Perbaiki harga fill stop/target pada `packages/core/src/backtest.ts`.
-2. Tambahkan test yang memastikan stop/target tidak memakai candle close.
-3. Jalankan typecheck, test, build, audit, dan diff check.
-4. Commit dan push perubahan.
-5. Tunggu Vercel/Railway selesai deploy.
-6. Rerun backtest BTCUSDT dan ETHUSDT.
-7. Bandingkan edge diagnostics sebelum dan sesudah fill-model fix.
-8. Tambahkan atau jalankan out-of-sample temporal split.
-9. Lakukan walk-forward validation.
-10. Hanya jika edge stabil dan positif, lanjutkan evaluasi paper execution yang lebih lama.
-11. Testnet/live tetap terkunci sampai seluruh research dan security gate lulus.
+1. Tunggu Vercel/Railway selesai deploy untuk commit `edf7b4e`.
+2. Rerun backtest BTCUSDT dan ETHUSDT dengan fill model yang sudah diperbaiki.
+3. Bandingkan edge diagnostics sebelum dan sesudah fill-model fix.
+4. Simpan hasil rerun dan jangan mengubah rule hanya karena satu bucket membaik.
+5. Tambahkan atau jalankan out-of-sample temporal split.
+6. Lakukan walk-forward validation.
+7. Hanya jika edge stabil dan positif, lanjutkan evaluasi paper execution yang lebih lama.
+8. Testnet/live tetap terkunci sampai seluruh research dan security gate lulus.
 
 ## Deployment dan Environment
 
@@ -273,6 +270,8 @@ git log --oneline -5
 
 ## Ringkasan Historis Commit
 
+- `edf7b4e` — gunakan stop/target fill price yang benar di backtest.
+- `eb0cdb3` — README handoff, status riset, dan batas scope.
 - `7a644c8` — edge diagnostics di dashboard dan report backtest.
 - `1cae534` — historical candle dengan volume nol diterima.
 - `7bdae50` — pagination backtest sampai 20.000 candle.
