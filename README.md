@@ -8,7 +8,7 @@ NusaQuant Futures Lab adalah platform riset dan paper-trading untuk Binance USD�
 
 **Tanggal status:** 10 September 2026, Asia/Jakarta
 **Branch:** `main`
-**Commit fitur terakhir:** `3e7660a fix: enforce paper costs and daily loss guard`
+**Commit fitur terakhir:** `4df73b9 fix: persist restored paper cost and risk pause`
 **Repository:** `tokomarkett-svg/nusaquant-futures-lab`
 
 ### Mulai dari sini
@@ -286,6 +286,7 @@ git log --oneline -5
 
 ## Ringkasan Historis Commit
 
+- `4df73b9` — persist cost metadata dan risk pause setelah restore.
 - `3e7660a` — paper cost accounting dan daily-loss guard.
 - `b1f79b5` — entry timing diagnostics untuk membaca kualitas trigger dan jarak entry.
 - `233e7b2` — walk-forward validation report 3 forward folds di API/dashboard.
