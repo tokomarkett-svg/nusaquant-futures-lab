@@ -6,6 +6,13 @@ export const DEFAULT_BOT_SESSION_ID = '00000000-0000-4000-8000-000000000001';
 export const ETH_BOT_SESSION_ID = '00000000-0000-4000-8000-000000000002';
 
 export const DEFAULT_BOT_SESSION_IDS = [DEFAULT_BOT_SESSION_ID, ETH_BOT_SESSION_ID] as const;
+export const DEFAULT_MARKET_DATA_MAX_AGE_MS = 45 * 60 * 1000;
+
+export function isFreshMarketCandle(openTime: string, now = Date.now(), maxAgeMs = DEFAULT_MARKET_DATA_MAX_AGE_MS): boolean {
+  const timestamp = Date.parse(openTime);
+  const age = now - timestamp;
+  return Number.isFinite(timestamp) && Number.isFinite(age) && age >= 0 && age <= maxAgeMs;
+}
 
 type SessionRecord = {
   id: string;
@@ -133,6 +140,7 @@ export class PaperSessionController {
   private lastDesiredStatus: BotStatus | null = null;
   private lastEngineStatus: BotStatus | null = null;
   private lastEvaluatedCandleTime: string | null = null;
+  private lastStaleMarketCandleTime: string | null = null;
   private lastSignalId: string | null = null;
   private lastPersistedClosedId: string | null = null;
   private lastEquitySnapshotAt = 0;
@@ -249,6 +257,26 @@ export class PaperSessionController {
     const entryRows = (entryResult.data ?? []) as CandleRow[];
     const latestRow = entryRows[0];
     if (!latestRow) return current;
+    const configuredMaxAge = Number(process.env.MARKET_DATA_MAX_AGE_MS ?? DEFAULT_MARKET_DATA_MAX_AGE_MS);
+    const maxAgeMs = Number.isFinite(configuredMaxAge) && configuredMaxAge >= 15 * 60 * 1000
+      ? configuredMaxAge
+      : DEFAULT_MARKET_DATA_MAX_AGE_MS;
+    if (!isFreshMarketCandle(latestRow.open_time, Date.now(), maxAgeMs)) {
+      if (this.lastStaleMarketCandleTime !== latestRow.open_time) {
+        console.error(JSON.stringify({
+          control: true,
+          staleMarketData: true,
+          sessionId,
+          symbol: session.symbol,
+          latestCandle: latestRow.open_time,
+          maxAgeMs,
+          at: new Date().toISOString(),
+        }));
+        this.lastStaleMarketCandleTime = latestRow.open_time;
+      }
+      return current;
+    }
+    this.lastStaleMarketCandleTime = null;
     if (this.lastEvaluatedCandleTime === latestRow.open_time) return current;
 
     const latestPersisted = await this.client

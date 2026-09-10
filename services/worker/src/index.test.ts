@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PaperBotEngine } from './index.ts';
-import { desiredStatusAction } from './session-control.ts';
+import { desiredStatusAction, isFreshMarketCandle } from './session-control.ts';
 
 test('bot starts in observation mode without opening a position', () => {
   const bot = new PaperBotEngine({ mode: 'PAPER_APPROVAL' });
@@ -25,6 +25,13 @@ test('insufficient candle data cannot create a paper order', () => {
   const snapshot = bot.onClosedCandle({ higherTimeframe: [], entryTimeframe: [] });
   assert.equal(snapshot.position, null);
   assert.equal(snapshot.latestSignal?.decision, 'NO_TRADE');
+});
+
+test('stale market candles are rejected before signal evaluation', () => {
+  const now = Date.parse('2026-09-10T03:00:00.000Z');
+  assert.equal(isFreshMarketCandle('2026-09-10T02:45:00.000Z', now), true);
+  assert.equal(isFreshMarketCandle('2026-09-10T02:14:59.000Z', now), false);
+  assert.equal(isFreshMarketCandle('2026-09-10T03:15:00.000Z', now), false);
 });
 
 test('session commands map to safe paper-only worker actions', () => {
