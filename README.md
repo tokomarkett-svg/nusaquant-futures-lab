@@ -8,7 +8,7 @@ NusaQuant Futures Lab adalah platform riset dan paper-trading untuk Binance USD�
 
 **Tanggal status:** 10 September 2026, Asia/Jakarta
 **Branch:** `main`
-**Commit fitur terakhir:** `c9c2cc7 feat: add research-only triad timing variant`
+**Commit fitur terakhir:** `9b7bf22 feat: add research-only retest entry hypothesis`
 **Repository:** `tokomarkett-svg/nusaquant-futures-lab`
 
 ### Mulai dari sini
@@ -56,7 +56,8 @@ Validasi terakhir yang lulus sebelum commit edge diagnostics:
 | Backtest | Berfungsi | Sudah membaca sample besar dan menghitung biaya |
 | Edge diagnostics | Berfungsi | Tabel sudah tampil di dashboard |
 | Entry timing diagnostics | Implemented | Trigger range/ATR, entry distance/EMA20, stop distance/ATR |
-| Triad timing hypothesis | Research-only | Trigger <1.2 ATR dan entry distance >=0.25 ATR; belum production |
+| Triad timing hypothesis | Research-only | Trigger <1.2 ATR dan entry distance >=0.25 ATR; ditolak setelah OOS |
+| Triad retest hypothesis | Research-only | Trigger → retest level candle sebelumnya ≤3 candle; belum production |
 | Historical backfill | Berhasil | 90 hari BTCUSDT/ETHUSDT, interval 15M/1H |
 | Public market polling | Tersedia | REST/polling, belum WebSocket production |
 | Paper state machine | Fondasi dan test berfungsi | End-to-end production masih perlu smoke test |
@@ -186,19 +187,20 @@ Sekarang model fill menjadi:
 
 Test regresi khusus untuk ketiga jalur exit sudah ditambahkan dan seluruh validasi lokal lulus. Metrik dashboard sebelum commit ini tetap dianggap diagnosis awal; hasil final harus diambil dari rerun setelah deployment terbaru.
 
-Research-only `TRIAD_TIMING_HYPOTHESIS` menolak trigger dengan range `>=1.2 ATR` atau entry dengan jarak `<0.25 ATR` dari EMA20. Variant ini hanya untuk perbandingan baseline/OOS dan tidak mengubah signal paper atau live.
+Research-only `TRIAD_TIMING_HYPOTHESIS` menolak trigger dengan range `>=1.2 ATR` atau entry dengan jarak `<0.25 ATR` dari EMA20. Variant ini menghasilkan full-sample lebih kecil tetapi OOS lebih buruk, sehingga ditolak dan tidak mengubah signal paper/live. `TRIAD_RETEST_HYPOTHESIS` menguji entry setelah retest level candle sebelumnya dalam maksimal tiga candle, juga hanya sebagai research comparison.
 
 ## Pekerjaan Berikutnya
 
 Urutan kerja yang disepakati:
 
-1. Deployment commit `c9c2cc7` selesai di Vercel/Railway.
-2. Jalankan ulang BTCUSDT dan ETHUSDT agar entry timing diagnostics serta research variant terisi.
-3. Bandingkan baseline dan `TRIAD_TIMING_HYPOTHESIS` pada full-sample, OOS, dan forward fold.
+1. Deployment commit `9b7bf22` selesai di Vercel/Railway.
+2. Jalankan ulang BTCUSDT dan ETHUSDT agar entry timing diagnostics serta dua research variant terisi.
+3. Bandingkan baseline, `TRIAD_TIMING_HYPOTHESIS`, dan `TRIAD_RETEST_HYPOTHESIS` pada full-sample dan OOS.
 4. Candidate hanya boleh dipromosikan jika OOS membaik tanpa mengorbankan sample dan konsisten di fold.
-5. Jalankan production smoke test paper: start → signal → approval → open → costed close → daily-loss block → recovery.
-6. Hanya jika edge stabil dan positif, lanjutkan evaluasi paper execution yang lebih lama.
-7. Testnet/live tetap terkunci sampai seluruh research dan security gate lulus.
+5. Jika retest candidate layak, jalankan walk-forward khusus candidate; jika tidak, audit exit architecture.
+6. Jalankan production smoke test paper: start → signal → approval → open → costed close → daily-loss block → recovery.
+7. Hanya jika edge stabil dan positif, lanjutkan evaluasi paper execution yang lebih lama.
+8. Testnet/live tetap terkunci sampai seluruh research dan security gate lulus.
 
 ## Deployment dan Environment
 
@@ -289,6 +291,8 @@ git log --oneline -5
 
 ## Ringkasan Historis Commit
 
+- `9b7bf22` — research-only retest entry hypothesis.
+- `8ee1dd0` — automatic rejection verdict untuk candidate OOS yang tidak membaik.
 - `c9c2cc7` — research-only triad timing hypothesis dan comparison cards.
 - `4df73b9` — persist cost metadata dan risk pause setelah restore.
 - `3e7660a` — paper cost accounting dan daily-loss guard.
