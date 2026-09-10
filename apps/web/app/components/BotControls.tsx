@@ -55,7 +55,10 @@ export default function BotControls() {
       setLatestSignal(payload.latestSignal ?? null);
       setPosition(payload.position ?? null);
       setLatestCandle(payload.latestCandle ?? null);
-      setMessage(payload.ok ? `Paper mode · ${candleStatus(payload.latestCandle ?? null)}` : payload.error ?? 'Bot session belum siap.');
+      const waitingMessage = payload.session?.status === 'WAITING_APPROVAL'
+        ? 'Pending approval · worker sengaja menahan evaluasi baru agar signal pending tidak terganti.'
+        : 'Paper mode';
+      setMessage(payload.ok ? `${waitingMessage} · ${candleStatus(payload.latestCandle ?? null)}` : payload.error ?? 'Bot session belum siap.');
     } catch {
       setConfigured(false);
       setMessage('Bot control API belum dapat dihubungi.');
@@ -117,8 +120,8 @@ export default function BotControls() {
       </div>
       <div className="control-message">{message}</div>
       <div className="control-signal">
-        <span>Worker result</span>
-        {latestSignal ? <strong>{latestSignal.decision} · {latestSignal.stage} · {latestSignal.quality_score}/100 · {new Date(latestSignal.evaluated_at).toLocaleString('id-ID')}</strong> : <strong>Belum ada evaluasi dari worker</strong>}
+        <span>Last signal saved</span>
+        {latestSignal ? <strong>{latestSignal.decision} · {latestSignal.stage} · {latestSignal.quality_score}/100 · {formatTimestamp(latestSignal.evaluated_at)}</strong> : <strong>Belum ada evaluasi dari worker</strong>}
       </div>
       <div className="control-signal">
         <span>Market data 15M</span>
