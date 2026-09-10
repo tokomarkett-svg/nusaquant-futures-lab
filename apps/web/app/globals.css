@@ -111,6 +111,11 @@ h1 { max-width: 760px; margin: 12px 0 15px; font-size: clamp(34px, 5vw, 62px); l
 .validation-card-grid { display: grid; grid-template-columns: .8fr 1.2fr; gap: 6px 8px; margin-top: 10px; color: var(--muted); font-family: 'DM Mono', monospace; font-size: 10px; }
 .validation-card-grid strong { color: var(--ink); font-weight: 500; text-align: right; }
 .research-variant-wrap { margin-top: 10px; padding: 12px; border: 1px dashed #d8c795; border-radius: 12px; background: #fffdf5; }
+.execution-audit-wrap { margin-top: 10px; padding: 12px; border: 1px solid #edf2ee; border-radius: 12px; background: #fbfdfb; }
+.execution-audit-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.execution-audit-grid > div { display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: 8px; background: #f5f9f6; }
+.execution-audit-grid span { color: #66736a; font-size: 11px; }
+.execution-audit-grid strong { font-size: 13px; }
 .variant-verdict { display: flex; flex-direction: column; gap: 4px; margin: 10px 0; padding: 9px 10px; border-radius: 9px; font-size: 12px; }
 .variant-verdict span { color: #66736a; }
 .variant-reject { background: #fff0ef; color: #a33a32; }
@@ -178,6 +183,7 @@ h1 { max-width: 760px; margin: 12px 0 15px; font-size: clamp(34px, 5vw, 62px); l
   .grid { grid-template-columns: 1fr; }
   .backtest-grid { grid-template-columns: 1fr 1fr; }
   .validation-grid { grid-template-columns: 1fr; }
+  .execution-audit-grid { grid-template-columns: 1fr 1fr; }
   .backtest-trade { grid-template-columns: 1fr 1fr; }
   .backtest-trade span:last-child { grid-column: 1 / -1; }
   .footer-note { display: block; }

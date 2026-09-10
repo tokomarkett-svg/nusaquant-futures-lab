@@ -58,6 +58,19 @@ export interface BacktestDiagnostics {
   byPeriod: BacktestDiagnosticBucket[];
 }
 
+export interface BacktestExecutionAudit {
+  grossPnlBeforeCosts: number;
+  totalCosts: number;
+  netPnlAfterCosts: number;
+  costImpactPctOfGross: number;
+  stopLossTrades: number;
+  takeProfitTrades: number;
+  timeExitTrades: number;
+  stopLossRate: number;
+  takeProfitRate: number;
+  timeExitRate: number;
+}
+
 export interface BacktestSummary {
   periodStart: number | null;
   periodEnd: number | null;
@@ -116,6 +129,7 @@ export interface BacktestReport {
   maxDrawdownPct: number;
   trades: BacktestTrade[];
   diagnostics: BacktestDiagnostics;
+  executionAudit: BacktestExecutionAudit;
   windowProfiles: WindowProfile[];
   notes: string[];
 }
@@ -280,6 +294,27 @@ function buildDiagnostics(trades: BacktestTrade[], timezone: string): BacktestDi
     byTriggerRange: groupedDiagnostics(trades, (trade) => rangeBucket(trade.triggerRangeAtr), ['<0.8 ATR', '0.8-1.2 ATR', '1.2-1.8 ATR', '>=1.8 ATR']),
     byEntryDistance: groupedDiagnostics(trades, (trade) => entryDistanceBucket(trade.entryDistanceToEmaAtr), ['<0.25 ATR', '0.25-0.5 ATR', '0.5-0.75 ATR', '>=0.75 ATR']),
     byPeriod: groupedDiagnostics(trades, (trade) => localPeriod(trade.entryTime, timezone), []),
+  };
+}
+
+function buildExecutionAudit(trades: BacktestTrade[]): BacktestExecutionAudit {
+  const grossPnlBeforeCosts = trades.reduce((sum, trade) => sum + trade.grossPnl, 0);
+  const totalCosts = trades.reduce((sum, trade) => sum + trade.costs, 0);
+  const stopLossTrades = trades.filter((trade) => trade.exitReason === 'STOP_LOSS').length;
+  const takeProfitTrades = trades.filter((trade) => trade.exitReason === 'TAKE_PROFIT').length;
+  const timeExitTrades = trades.filter((trade) => trade.exitReason === 'TIME_EXIT').length;
+  const totalTrades = trades.length;
+  return {
+    grossPnlBeforeCosts,
+    totalCosts,
+    netPnlAfterCosts: grossPnlBeforeCosts - totalCosts,
+    costImpactPctOfGross: Math.abs(grossPnlBeforeCosts) <= Number.EPSILON ? 0 : totalCosts / Math.abs(grossPnlBeforeCosts),
+    stopLossTrades,
+    takeProfitTrades,
+    timeExitTrades,
+    stopLossRate: totalTrades === 0 ? 0 : stopLossTrades / totalTrades,
+    takeProfitRate: totalTrades === 0 ? 0 : takeProfitTrades / totalTrades,
+    timeExitRate: totalTrades === 0 ? 0 : timeExitTrades / totalTrades,
   };
 }
 
@@ -523,6 +558,7 @@ export function runBacktest({
     maxDrawdownPct: initialEquity === 0 ? 0 : clamp(maxDrawdown / initialEquity, 0, 1),
     trades,
     diagnostics: buildDiagnostics(trades, timezone),
+    executionAudit: buildExecutionAudit(trades),
     windowProfiles: buildWindowProfiles(trades, timezone),
     notes: [
       'Backtest menggunakan asumsi konservatif: stop loss diprioritaskan jika stop dan target tersentuh pada candle yang sama.',

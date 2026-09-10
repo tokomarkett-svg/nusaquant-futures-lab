@@ -23,6 +23,18 @@ type Diagnostics = {
   byEntryDistance: DiagnosticBucket[];
   byPeriod: DiagnosticBucket[];
 };
+type ExecutionAudit = {
+  grossPnlBeforeCosts: number;
+  totalCosts: number;
+  netPnlAfterCosts: number;
+  costImpactPctOfGross: number;
+  stopLossTrades: number;
+  takeProfitTrades: number;
+  timeExitTrades: number;
+  stopLossRate: number;
+  takeProfitRate: number;
+  timeExitRate: number;
+};
 type ValidationSummary = {
   periodStart: number | null;
   periodEnd: number | null;
@@ -86,6 +98,7 @@ type Report = {
   gate: 'NOT_READY_SAMPLE' | 'PASS_RESEARCH_GATE' | 'FAIL_NEGATIVE_EXPECTANCY';
   trades: Array<{ side: string; entryTime: number; exitTime: number; entry: number; exit: number; netPnl: number; costs: number; rMultiple: number; exitReason: string; qualityScore: number; regime: string; barsHeld: number; triggerRangeAtr: number; entryDistanceToEmaAtr: number; stopDistanceAtr: number }>;
   diagnostics: Diagnostics;
+  executionAudit: ExecutionAudit;
   validation: Validation;
   walkForward: WalkForward;
   researchVariant: ResearchVariant;
@@ -135,6 +148,24 @@ function DiagnosticTable({ title, rows }: { title: string; rows: DiagnosticBucke
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function ExecutionAuditCard({ audit }: { audit: ExecutionAudit }) {
+  return (
+    <div className="execution-audit-wrap">
+      <div className="validation-card-title">Execution audit · baseline</div>
+      <div className="backtest-note">Membedakan masalah fill/biaya dari masalah kualitas signal. Ini diagnosis, bukan parameter tuning.</div>
+      <div className="execution-audit-grid">
+        <div><span>Gross P/L sebelum biaya</span><strong className={audit.grossPnlBeforeCosts >= 0 ? 'positive' : 'negative'}>{money(audit.grossPnlBeforeCosts)}</strong></div>
+        <div><span>Total biaya</span><strong className="negative">{money(-audit.totalCosts)}</strong></div>
+        <div><span>Net P/L sesudah biaya</span><strong className={audit.netPnlAfterCosts >= 0 ? 'positive' : 'negative'}>{money(audit.netPnlAfterCosts)}</strong></div>
+        <div><span>Cost impact / gross</span><strong>{(audit.costImpactPctOfGross * 100).toFixed(2)}%</strong></div>
+        <div><span>Stop loss</span><strong className="negative">{audit.stopLossTrades} · {(audit.stopLossRate * 100).toFixed(1)}%</strong></div>
+        <div><span>Take profit</span><strong className="positive">{audit.takeProfitTrades} · {(audit.takeProfitRate * 100).toFixed(1)}%</strong></div>
+        <div><span>Time exit</span><strong>{audit.timeExitTrades} · {(audit.timeExitRate * 100).toFixed(1)}%</strong></div>
+      </div>
     </div>
   );
 }
@@ -280,6 +311,7 @@ export default function BacktestPanel() {
             <div className="detail"><div className="detail-label">Profit factor</div><div className="detail-value">{profitFactor(report.profitFactor)}</div></div>
           </div>
           <div className="backtest-sample">Run terakhir {timestamp(lastRunAt)} · sample {sample?.higherCandles ?? 0} candle 1H · {sample?.entryCandles ?? 0} candle 15M · data terakhir {timestamp(sample?.latestEntryTime)}</div>
+          <ExecutionAuditCard audit={report.executionAudit} />
           <div className="backtest-trades-title">Temporal validation · 70/30</div>
           <div className="backtest-note">Periode in-sample dipakai untuk pengembangan, sedangkan out-of-sample hanya untuk menguji generalisasi. Tidak ada parameter yang dituning dari OOS.</div>
           <div className="validation-grid">

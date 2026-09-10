@@ -43,6 +43,10 @@ test('backtest always returns auditable metrics and cost-aware trade fields', ()
   assert.equal(Number.isFinite(report.maxDrawdownPct), true);
   assert.ok(report.notes.length >= 3);
   assert.ok(report.diagnostics);
+  assert.ok(report.executionAudit);
+  assert.equal(Number.isFinite(report.executionAudit.grossPnlBeforeCosts), true);
+  assert.equal(Number.isFinite(report.executionAudit.totalCosts), true);
+  assert.equal(Number.isFinite(report.executionAudit.costImpactPctOfGross), true);
   const diagnosticGroups = Object.values(report.diagnostics);
   assert.equal(diagnosticGroups.flat().reduce((sum, bucket) => sum + bucket.trades, 0) / diagnosticGroups.length, report.totalTrades);
   report.trades.forEach((trade) => {

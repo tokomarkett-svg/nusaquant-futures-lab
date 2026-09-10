@@ -188,6 +188,7 @@ export async function POST(request: Request) {
         stopDistanceAtr: trade.stopDistanceAtr,
       })),
       diagnostics: report.diagnostics,
+      executionAudit: report.executionAudit,
       validation,
       walkForward,
       researchVariant: {
