@@ -160,7 +160,7 @@ function ExecutionAuditCard({ audit }: { audit: ExecutionAudit }) {
   return (
     <div className="execution-audit-wrap">
       <div className="validation-card-title">Execution audit · baseline</div>
-      <div className="backtest-note">Membedakan masalah fill/biaya dari masalah kualitas signal. Ini diagnosis, bukan parameter tuning.</div>
+      <div className="backtest-note">Membedakan masalah fill/biaya dari masalah kualitas signal. Ini diagnosis, bukan parameter tuning. Persentase cost/gross hanya referensi; saat gross hampir nol, angkanya dapat melonjak.</div>
       <div className="execution-audit-grid">
         <div><span>Gross P/L sebelum biaya</span><strong className={audit.grossPnlBeforeCosts >= 0 ? 'positive' : 'negative'}>{money(audit.grossPnlBeforeCosts)}</strong></div>
         <div><span>Total biaya</span><strong className="negative">{audit.totalCosts.toFixed(2)} USDT</strong></div>

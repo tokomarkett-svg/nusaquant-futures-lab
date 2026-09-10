@@ -40,8 +40,8 @@ function reportSummary(report: ReturnType<typeof runBacktest>, periodCandles: Ca
     profitFactor: report.profitFactor,
     expectancyR: report.expectancyR,
     netPnl: report.netPnl,
-    grossWins: report.trades.filter((trade) => trade.netPnl > 0).reduce((sum, trade) => sum + trade.netPnl, 0),
-    grossLosses: Math.abs(report.trades.filter((trade) => trade.netPnl < 0).reduce((sum, trade) => sum + trade.netPnl, 0)),
+    grossWins: report.trades.filter((trade) => trade.grossPnl > 0).reduce((sum, trade) => sum + trade.grossPnl, 0),
+    grossLosses: Math.abs(report.trades.filter((trade) => trade.grossPnl < 0).reduce((sum, trade) => sum + trade.grossPnl, 0)),
     maxDrawdown: report.maxDrawdown,
     maxDrawdownPct: report.maxDrawdownPct,
     gate: report.totalTrades < 30

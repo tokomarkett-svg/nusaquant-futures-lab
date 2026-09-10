@@ -49,6 +49,8 @@ test('backtest always returns auditable metrics and cost-aware trade fields', ()
   assert.equal(Number.isFinite(report.executionAudit.costImpactPctOfGross), true);
   assert.equal(Number.isFinite(report.executionAudit.averageGrossPnlPerTrade), true);
   assert.equal(Number.isFinite(report.executionAudit.averageCostPerTrade), true);
+  assert.equal(report.executionAudit.grossProfitFactor === null || Number.isFinite(report.executionAudit.grossProfitFactor), true);
+  assert.equal(Number.isFinite(report.executionAudit.grossExpectancyR), true);
   const diagnosticGroups = Object.values(report.diagnostics);
   assert.equal(diagnosticGroups.flat().reduce((sum, bucket) => sum + bucket.trades, 0) / diagnosticGroups.length, report.totalTrades);
   report.trades.forEach((trade) => {
