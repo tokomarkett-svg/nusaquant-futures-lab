@@ -67,6 +67,7 @@ type ResearchVariant = {
   name: string;
   rule: string;
   baseline: ValidationSummary;
+  baselineValidation: Validation;
   candidate: ValidationSummary;
   candidateValidation: Validation;
 };
@@ -156,10 +157,19 @@ function ValidationCard({ title, summary }: { title: string; summary: Validation
 }
 
 function ResearchVariantPanel({ variant }: { variant: ResearchVariant }) {
+  const baselineOos = variant.baselineValidation.outOfSample;
+  const candidateOos = variant.candidateValidation.outOfSample;
+  const candidateImprovedOos = candidateOos.gate === 'PASS_RESEARCH_GATE'
+    && candidateOos.expectancyR > baselineOos.expectancyR
+    && (candidateOos.profitFactor ?? 0) > (baselineOos.profitFactor ?? 0);
   return (
     <div className="research-variant-wrap">
       <div className="validation-card-title">Research-only candidate · {variant.name}</div>
       <div className="backtest-note">{variant.rule}</div>
+      <div className={`variant-verdict ${candidateImprovedOos ? 'variant-accept' : 'variant-reject'}`}>
+        <strong>{candidateImprovedOos ? 'CANDIDATE MAY PROCEED TO WALK-FORWARD' : 'CANDIDATE REJECTED FOR NOW'}</strong>
+        <span>{candidateImprovedOos ? 'OOS expectancy dan profit factor mengungguli baseline.' : 'Candidate belum menunjukkan edge OOS; tidak dipromosikan ke paper/live.'}</span>
+      </div>
       <div className="validation-grid">
         <ValidationCard title="Baseline full sample" summary={variant.baseline} />
         <ValidationCard title="Candidate full sample" summary={variant.candidate} />

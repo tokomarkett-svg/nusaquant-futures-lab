@@ -175,6 +175,7 @@ export async function POST(request: Request) {
         name: 'TRIAD_TIMING_HYPOTHESIS',
         rule: 'triggerRangeAtr < 1.2 dan entryDistanceToEmaAtr >= 0.25; research-only, bukan rule paper/live.',
         baseline: reportSummary(report, entryTimeframe),
+        baselineValidation: validation,
         candidate: reportSummary(hypothesisReport, entryTimeframe),
         candidateValidation: hypothesisValidation,
       },
