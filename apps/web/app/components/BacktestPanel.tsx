@@ -19,6 +19,8 @@ type Diagnostics = {
   byQualityScore: DiagnosticBucket[];
   byExitReason: DiagnosticBucket[];
   byRegime: DiagnosticBucket[];
+  byTriggerRange: DiagnosticBucket[];
+  byEntryDistance: DiagnosticBucket[];
   byPeriod: DiagnosticBucket[];
 };
 type ValidationSummary = {
@@ -74,7 +76,7 @@ type Report = {
   maxDrawdown: number;
   maxDrawdownPct: number;
   gate: 'NOT_READY_SAMPLE' | 'PASS_RESEARCH_GATE' | 'FAIL_NEGATIVE_EXPECTANCY';
-  trades: Array<{ side: string; entryTime: number; exitTime: number; entry: number; exit: number; netPnl: number; costs: number; rMultiple: number; exitReason: string; qualityScore: number; regime: string }>;
+  trades: Array<{ side: string; entryTime: number; exitTime: number; entry: number; exit: number; netPnl: number; costs: number; rMultiple: number; exitReason: string; qualityScore: number; regime: string; barsHeld: number; triggerRangeAtr: number; entryDistanceToEmaAtr: number; stopDistanceAtr: number }>;
   diagnostics: Diagnostics;
   validation: Validation;
   walkForward: WalkForward;
@@ -239,6 +241,8 @@ export default function BacktestPanel() {
             <DiagnosticTable title="By quality score" rows={report.diagnostics.byQualityScore} />
             <DiagnosticTable title="By exit reason" rows={report.diagnostics.byExitReason} />
             <DiagnosticTable title="By regime" rows={report.diagnostics.byRegime} />
+            <DiagnosticTable title="By trigger range / ATR" rows={report.diagnostics.byTriggerRange} />
+            <DiagnosticTable title="By entry distance / EMA20" rows={report.diagnostics.byEntryDistance} />
             <DiagnosticTable title="By entry period" rows={report.diagnostics.byPeriod} />
           </div>
           <div className="backtest-trades-title">Trade diagnostics</div>

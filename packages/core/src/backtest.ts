@@ -1,5 +1,5 @@
 import { evaluateIntelligentSignal, type IntelligentSignal } from './intelligence';
-import type { Candle, Regime } from './index';
+import { atr, ema, type Candle, type Regime } from './index';
 import type { WindowProfile } from './opportunity';
 
 export interface BacktestConfig {
@@ -29,6 +29,10 @@ export interface BacktestTrade {
   exitReason: 'STOP_LOSS' | 'TAKE_PROFIT' | 'TIME_EXIT';
   qualityScore: number;
   regime: Regime;
+  barsHeld: number;
+  triggerRangeAtr: number;
+  entryDistanceToEmaAtr: number;
+  stopDistanceAtr: number;
 }
 
 export interface BacktestDiagnosticBucket {
@@ -48,6 +52,8 @@ export interface BacktestDiagnostics {
   byQualityScore: BacktestDiagnosticBucket[];
   byExitReason: BacktestDiagnosticBucket[];
   byRegime: BacktestDiagnosticBucket[];
+  byTriggerRange: BacktestDiagnosticBucket[];
+  byEntryDistance: BacktestDiagnosticBucket[];
   byPeriod: BacktestDiagnosticBucket[];
 }
 
@@ -250,12 +256,28 @@ function localPeriod(timestamp: number, timezone: string): string {
   return `${year}-${month}`;
 }
 
+function rangeBucket(value: number): string {
+  if (value < 0.8) return '<0.8 ATR';
+  if (value < 1.2) return '0.8-1.2 ATR';
+  if (value < 1.8) return '1.2-1.8 ATR';
+  return '>=1.8 ATR';
+}
+
+function entryDistanceBucket(value: number): string {
+  if (value < 0.25) return '<0.25 ATR';
+  if (value < 0.5) return '0.25-0.5 ATR';
+  if (value < 0.75) return '0.5-0.75 ATR';
+  return '>=0.75 ATR';
+}
+
 function buildDiagnostics(trades: BacktestTrade[], timezone: string): BacktestDiagnostics {
   return {
     bySide: groupedDiagnostics(trades, (trade) => trade.side, ['LONG', 'SHORT']),
     byQualityScore: groupedDiagnostics(trades, (trade) => qualityBucket(trade.qualityScore), ['<60', '60-71', '72-79', '80-89', '90-100']),
     byExitReason: groupedDiagnostics(trades, (trade) => trade.exitReason, ['STOP_LOSS', 'TAKE_PROFIT', 'TIME_EXIT']),
     byRegime: groupedDiagnostics(trades, (trade) => trade.regime, ['TREND_UP', 'TREND_DOWN', 'RANGE', 'UNCERTAIN']),
+    byTriggerRange: groupedDiagnostics(trades, (trade) => rangeBucket(trade.triggerRangeAtr), ['<0.8 ATR', '0.8-1.2 ATR', '1.2-1.8 ATR', '>=1.8 ATR']),
+    byEntryDistance: groupedDiagnostics(trades, (trade) => entryDistanceBucket(trade.entryDistanceToEmaAtr), ['<0.25 ATR', '0.25-0.5 ATR', '0.5-0.75 ATR', '>=0.75 ATR']),
     byPeriod: groupedDiagnostics(trades, (trade) => localPeriod(trade.entryTime, timezone), []),
   };
 }
@@ -324,6 +346,15 @@ export function runBacktest({
       ? (exitPrice - signal.entry) * quantity
       : (signal.entry - exitPrice) * quantity;
     const barsHeld = Math.max(1, entryTimeframe.slice(index + 1).findIndex((candle) => candle.time === exit.candle.time) + 1);
+    const auditCandles = entryTimeframe.slice(0, index + 1);
+    const currentAtr = atr(auditCandles).at(-1) ?? Number.NaN;
+    const currentEma20 = ema(auditCandles.map((candle) => candle.close), 20).at(-1) ?? Number.NaN;
+    const safeAtr = Number.isFinite(currentAtr) && currentAtr > Number.EPSILON ? currentAtr : Number.EPSILON;
+    const triggerRangeAtr = (entryCandle.high - entryCandle.low) / safeAtr;
+    const entryDistanceToEmaAtr = Number.isFinite(currentEma20)
+      ? Math.abs(signal.entry - currentEma20) / safeAtr
+      : Number.POSITIVE_INFINITY;
+    const stopDistanceAtr = Math.abs(signal.entry - signal.stopLoss) / safeAtr;
     const costs = (entryNotional + exitNotional) * (feeRate + slippageRate) + entryNotional * fundingRatePerBar * barsHeld;
     const netPnl = grossPnl - costs;
     const riskAmount = Math.max(signal.riskAmount, Number.EPSILON);
@@ -345,6 +376,10 @@ export function runBacktest({
       exitReason: exit.reason,
       qualityScore: signal.qualityScore,
       regime: signal.regime,
+      barsHeld,
+      triggerRangeAtr,
+      entryDistanceToEmaAtr,
+      stopDistanceAtr,
     };
     trades.push(trade);
     equity += netPnl;

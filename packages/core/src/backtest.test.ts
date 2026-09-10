@@ -48,6 +48,10 @@ test('backtest always returns auditable metrics and cost-aware trade fields', ()
   report.trades.forEach((trade) => {
     assert.equal(Number.isFinite(trade.costs), true);
     assert.equal(Number.isFinite(trade.rMultiple), true);
+    assert.equal(Number.isFinite(trade.barsHeld), true);
+    assert.equal(Number.isFinite(trade.triggerRangeAtr), true);
+    assert.equal(Number.isFinite(trade.entryDistanceToEmaAtr), true);
+    assert.equal(Number.isFinite(trade.stopDistanceAtr), true);
     assert.ok(['TREND_UP', 'TREND_DOWN', 'RANGE', 'UNCERTAIN'].includes(trade.regime));
   });
 });
