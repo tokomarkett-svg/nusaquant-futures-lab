@@ -8,7 +8,7 @@ NusaQuant Futures Lab adalah platform riset dan paper-trading untuk Binance USD�
 
 **Tanggal status:** 10 September 2026, Asia/Jakarta
 **Branch:** `main`
-**Commit fitur terakhir:** `9b7bf22 feat: add research-only retest entry hypothesis`
+**Commit fitur terakhir:** `f34a7ad fix: surface stale data and backtest failures`
 **Repository:** `tokomarkett-svg/nusaquant-futures-lab`
 
 ### Mulai dari sini
@@ -193,7 +193,7 @@ Research-only `TRIAD_TIMING_HYPOTHESIS` menolak trigger dengan range `>=1.2 ATR`
 
 Urutan kerja yang disepakati:
 
-1. Deployment commit `9b7bf22` selesai di Vercel/Railway.
+1. Deployment commit `f34a7ad` sedang diverifikasi di Vercel/Railway.
 2. Jalankan ulang BTCUSDT dan ETHUSDT agar entry timing diagnostics serta dua research variant terisi.
 3. Bandingkan baseline, `TRIAD_TIMING_HYPOTHESIS`, dan `TRIAD_RETEST_HYPOTHESIS` pada full-sample dan OOS.
 4. Candidate hanya boleh dipromosikan jika OOS membaik tanpa mengorbankan sample dan konsisten di fold.
@@ -291,6 +291,7 @@ git log --oneline -5
 
 ## Ringkasan Historis Commit
 
+- `f34a7ad` — surface stale market data, explicit backtest errors, request timeout, dan latest candle/run timestamp.
 - `9b7bf22` — research-only retest entry hypothesis.
 - `8ee1dd0` — automatic rejection verdict untuk candidate OOS yang tidak membaik.
 - `c9c2cc7` — research-only triad timing hypothesis dan comparison cards.
