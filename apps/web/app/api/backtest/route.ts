@@ -148,6 +148,16 @@ export async function POST(request: Request) {
     trainFraction: 0.7,
     warmupBars: 80,
   });
+  const followThroughConfig = { ...config, entryPolicy: 'TRIAD_FOLLOW_THROUGH_HYPOTHESIS' as const };
+  const followThroughReport = runBacktest({ symbol, higherTimeframe, entryTimeframe, config: followThroughConfig });
+  const followThroughValidation = runTemporalValidation({
+    symbol,
+    higherTimeframe,
+    entryTimeframe,
+    config: followThroughConfig,
+    trainFraction: 0.7,
+    warmupBars: 80,
+  });
 
   return NextResponse.json({
     ok: true,
@@ -206,6 +216,14 @@ export async function POST(request: Request) {
         baselineValidation: validation,
         candidate: reportSummary(retestReport, entryTimeframe),
         candidateValidation: retestValidation,
+      },
+      researchFollowThroughVariant: {
+        name: 'TRIAD_FOLLOW_THROUGH_HYPOTHESIS',
+        rule: 'Setelah trigger close, candle berikutnya harus follow-through searah tanpa menembus low/high trigger; entry direbase pada close candle konfirmasi. Research-only, bukan rule paper/live.',
+        baseline: reportSummary(report, entryTimeframe),
+        baselineValidation: validation,
+        candidate: reportSummary(followThroughReport, entryTimeframe),
+        candidateValidation: followThroughValidation,
       },
       notes: report.notes,
     },

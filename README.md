@@ -60,6 +60,7 @@ Validasi terakhir:
 | Entry timing diagnostics | Implemented | Trigger range/ATR, entry distance/EMA20, stop distance/ATR |
 | Triad timing hypothesis | Research-only | Trigger <1.2 ATR dan entry distance >=0.25 ATR; ditolak setelah OOS |
 | Triad retest hypothesis | Research-only | Trigger → retest level candle sebelumnya ≤3 candle; belum production |
+| Follow-through hypothesis | Research-only | Candle setelah trigger harus follow-through searah; belum production |
 | Historical backfill | Berhasil | 90 hari BTCUSDT/ETHUSDT, interval 15M/1H |
 | Public market polling | Tersedia | REST/polling, belum WebSocket production |
 | Paper state machine | Fondasi dan test berfungsi | Approval lifecycle, stale approval, restore, cooldown, dan daily-loss guard tervalidasi |
@@ -191,7 +192,7 @@ Sekarang model fill menjadi:
 
 Test regresi khusus untuk ketiga jalur exit sudah ditambahkan dan seluruh validasi lokal lulus. Metrik dashboard sebelum commit ini tetap dianggap diagnosis awal; hasil final harus diambil dari rerun setelah deployment terbaru. Backtest sekarang juga menampilkan execution audit gross P/L sebelum biaya, total biaya, net P/L setelah biaya, dan proporsi stop/target/time exit agar masalah signal tidak tertukar dengan masalah fill.
 
-Research-only `TRIAD_TIMING_HYPOTHESIS` menolak trigger dengan range `>=1.2 ATR` atau entry dengan jarak `<0.25 ATR` dari EMA20. Variant ini menghasilkan full-sample lebih kecil tetapi OOS lebih buruk, sehingga ditolak dan tidak mengubah signal paper/live. `TRIAD_RETEST_HYPOTHESIS` menguji entry setelah retest level candle sebelumnya dalam maksimal tiga candle, juga hanya sebagai research comparison.
+Research-only `TRIAD_TIMING_HYPOTHESIS` menolak trigger dengan range `>=1.2 ATR` atau entry dengan jarak `<0.25 ATR` dari EMA20. Variant ini menghasilkan full-sample lebih kecil tetapi OOS lebih buruk, sehingga ditolak dan tidak mengubah signal paper/live. `TRIAD_RETEST_HYPOTHESIS` menguji entry setelah retest level candle sebelumnya dalam maksimal tiga candle, juga hanya sebagai research comparison. `TRIAD_FOLLOW_THROUGH_HYPOTHESIS` sekarang tersedia sebagai eksperimen terpisah: setelah trigger close, candle berikutnya wajib follow-through searah tanpa menembus low/high candle trigger; hasilnya harus dibaca full-sample, OOS, dan walk-forward sebelum dipertimbangkan lebih lanjut. Semua variant tetap research-only.
 
 ## Pekerjaan Berikutnya
 

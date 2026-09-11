@@ -81,8 +81,14 @@ test('triad timing hypothesis is a research-only filter and never increases trad
     entryTimeframe: entry,
     config: { entryPolicy: 'TRIAD_RETEST_HYPOTHESIS' },
   });
+  const followThroughHypothesis = runBacktest({
+    higherTimeframe: higher,
+    entryTimeframe: entry,
+    config: { entryPolicy: 'TRIAD_FOLLOW_THROUGH_HYPOTHESIS' },
+  });
   assert.ok(hypothesis.totalTrades <= baseline.totalTrades);
   assert.ok(retestHypothesis.totalTrades <= baseline.totalTrades);
+  assert.ok(followThroughHypothesis.totalTrades <= baseline.totalTrades);
 });
 
 test('temporal validation keeps OOS trades after the split and reports both slices', () => {

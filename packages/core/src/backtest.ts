@@ -10,7 +10,7 @@ export interface BacktestConfig {
   fundingRatePerBar?: number;
   maxBarsInTrade?: number;
   timezone?: string;
-  entryPolicy?: 'BASELINE' | 'TRIAD_TIMING_HYPOTHESIS' | 'TRIAD_RETEST_HYPOTHESIS';
+  entryPolicy?: 'BASELINE' | 'TRIAD_TIMING_HYPOTHESIS' | 'TRIAD_RETEST_HYPOTHESIS' | 'TRIAD_FOLLOW_THROUGH_HYPOTHESIS';
 }
 
 export interface BacktestTrade {
@@ -353,6 +353,28 @@ function findRetestEntry({
   return null;
 }
 
+function findFollowThroughEntry({
+  signal,
+  triggerCandle,
+  futureCandles,
+}: {
+  signal: IntelligentSignal;
+  triggerCandle: Candle;
+  futureCandles: Array<{ candle: Candle; index: number }>;
+}): { candle: Candle; index: number } | null {
+  const candidate = futureCandles[0];
+  if (!candidate || signal.decision === 'NO_TRADE') return null;
+  const bullishFollowThrough = candidate.candle.low >= triggerCandle.low
+    && candidate.candle.close > triggerCandle.close
+    && candidate.candle.close > candidate.candle.open;
+  const bearishFollowThrough = candidate.candle.high <= triggerCandle.high
+    && candidate.candle.close < triggerCandle.close
+    && candidate.candle.close < candidate.candle.open;
+  return (signal.decision === 'LONG' && bullishFollowThrough) || (signal.decision === 'SHORT' && bearishFollowThrough)
+    ? candidate
+    : null;
+}
+
 function rebaseRetestSignal({
   signal,
   entryCandle,
@@ -468,6 +490,31 @@ export function runBacktest({
         signal: baseSignal,
         entryCandle,
         atrValue: retestAtr,
+        equity,
+        riskFraction,
+        feeRate,
+        slippageRate,
+        fundingRatePerBar,
+        maxBarsInTrade,
+      });
+    }
+    if (entryPolicy === 'TRIAD_FOLLOW_THROUGH_HYPOTHESIS') {
+      const followThrough = findFollowThroughEntry({
+        signal: baseSignal,
+        triggerCandle,
+        futureCandles: entryTimeframe.slice(index + 1).map((candle, offset) => ({ candle, index: index + 1 + offset })),
+      });
+      if (!followThrough) {
+        index += 1;
+        continue;
+      }
+      executionIndex = followThrough.index;
+      entryCandle = followThrough.candle;
+      const followThroughAtr = atr(entryTimeframe.slice(0, executionIndex + 1)).at(-1) ?? Number.NaN;
+      signal = rebaseRetestSignal({
+        signal: baseSignal,
+        entryCandle,
+        atrValue: followThroughAtr,
         equity,
         riskFraction,
         feeRate,

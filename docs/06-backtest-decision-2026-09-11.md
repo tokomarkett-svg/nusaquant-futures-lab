@@ -48,6 +48,8 @@ Both baseline strategies remain `RESEARCH GATE FAIL`.
 
 ## Next allowed research gate
 
+The next research-only experiment is `TRIAD_FOLLOW_THROUGH_HYPOTHESIS`. It is motivated by the high stop-loss share and tests one structural idea: after a trigger close, the immediately following candle must continue in the same direction without breaking the trigger candle's opposite extreme. The entry is rebased to that confirmation candle. This is not a production rule and must be rejected if it does not improve OOS without losing sample quality.
+
 Do not perform random parameter tuning. A future candidate may only be considered after a predeclared test shows all of the following:
 
 1. Positive gross expectancy and gross PF above 1.

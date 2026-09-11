@@ -111,6 +111,7 @@ type Report = {
   walkForward: WalkForward;
   researchVariant: ResearchVariant;
   researchRetestVariant: ResearchVariant;
+  researchFollowThroughVariant: ResearchVariant;
   notes: string[];
 };
 
@@ -350,6 +351,7 @@ export default function BacktestPanel() {
           <div className="backtest-trades-title">Research-only entry hypothesis</div>
           <ResearchVariantPanel variant={report.researchVariant} />
           <ResearchVariantPanel variant={report.researchRetestVariant} />
+          <ResearchVariantPanel variant={report.researchFollowThroughVariant} />
           <div className="backtest-trades-title">Walk-forward validation</div>
           <div className="backtest-note">Tiga test window berurutan dipakai untuk melihat konsistensi performa lintas waktu. Ini bukan parameter tuning dan belum menggantikan paper execution.</div>
           <WalkForwardTable validation={report.walkForward} />
