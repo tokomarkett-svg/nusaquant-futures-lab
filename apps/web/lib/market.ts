@@ -28,8 +28,10 @@ function toCandle(row: MarketCandleRow): Candle {
 }
 
 export async function loadMarketSnapshot(): Promise<MarketSnapshot> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  // Server-only page: prefer the service-role key so RLS cannot make a healthy
+  // database look empty. This module is never imported by a client component.
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return { candles: {}, source: 'EMPTY', error: 'Supabase environment belum tersedia.' };
 
   const supabase = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });

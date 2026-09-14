@@ -75,9 +75,10 @@ export async function POST(request: Request) {
   const symbol = body.symbol?.toUpperCase() ?? 'BTCUSDT';
   if (!SYMBOLS.has(symbol)) return NextResponse.json({ ok: false, error: 'Symbol backtest belum tersedia.' }, { status: 400 });
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return NextResponse.json({ ok: false, error: 'Supabase public environment belum dikonfigurasi.' }, { status: 503 });
+  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  // API route runs server-side; never expose this key to the browser.
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return NextResponse.json({ ok: false, error: 'Supabase server environment belum dikonfigurasi.' }, { status: 503 });
 
   const supabase = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
   let higherTimeframe: Candle[];
