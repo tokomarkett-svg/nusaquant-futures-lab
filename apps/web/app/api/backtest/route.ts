@@ -163,6 +163,16 @@ export async function POST(request: Request) {
     trainFraction: 0.7,
     warmupBars: 80,
   });
+  const profitProtectionConfig = { ...config, exitPolicy: 'MFE_PROFIT_PROTECTION_HYPOTHESIS' as const };
+  const profitProtectionReport = runBacktest({ symbol, higherTimeframe, entryTimeframe, config: profitProtectionConfig });
+  const profitProtectionValidation = runTemporalValidation({
+    symbol,
+    higherTimeframe,
+    entryTimeframe,
+    config: profitProtectionConfig,
+    trainFraction: 0.7,
+    warmupBars: 80,
+  });
 
   return NextResponse.json({
     ok: true,
@@ -232,6 +242,14 @@ export async function POST(request: Request) {
         baselineValidation: validation,
         candidate: reportSummary(followThroughReport, entryTimeframe),
         candidateValidation: followThroughValidation,
+      },
+      researchProfitProtectionVariant: {
+        name: 'MFE_PROFIT_PROTECTION_HYPOTHESIS',
+        rule: 'Entry baseline tetap; setelah candle closed mencapai +0.5R favorable excursion, stop dipindahkan ke entry pada candle berikutnya. Research-only, bukan rule paper/live.',
+        baseline: reportSummary(report, entryTimeframe),
+        baselineValidation: validation,
+        candidate: reportSummary(profitProtectionReport, entryTimeframe),
+        candidateValidation: profitProtectionValidation,
       },
       notes: [
         ...report.notes,

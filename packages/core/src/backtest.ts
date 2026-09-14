@@ -11,6 +11,7 @@ export interface BacktestConfig {
   maxBarsInTrade?: number;
   timezone?: string;
   entryPolicy?: 'BASELINE' | 'TRIAD_TIMING_HYPOTHESIS' | 'TRIAD_RETEST_HYPOTHESIS' | 'TRIAD_FOLLOW_THROUGH_HYPOTHESIS';
+  exitPolicy?: 'BASELINE' | 'MFE_PROFIT_PROTECTION_HYPOTHESIS';
 }
 
 export interface BacktestTrade {
@@ -170,22 +171,38 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function findExit({ signal, futureCandles, maxBars }: {
+function findExit({ signal, futureCandles, maxBars, exitPolicy }: {
   signal: IntelligentSignal;
   futureCandles: Candle[];
   maxBars: number;
-}): { candle: Candle; reason: BacktestTrade['exitReason'] } | null {
+  exitPolicy: BacktestConfig['exitPolicy'];
+}): { candle: Candle; reason: BacktestTrade['exitReason']; stopLoss: number } | null {
   if (signal.entry === null || signal.stopLoss === null || signal.takeProfit === null) return null;
   const candles = futureCandles.slice(0, maxBars);
+  const initialStopLoss = signal.stopLoss;
+  const riskPerUnit = Math.max(Math.abs(signal.entry - initialStopLoss), Number.EPSILON);
+  let activeStopLoss = initialStopLoss;
+  let protectionActive = false;
   for (const candle of candles) {
-    const stopHit = signal.decision === 'LONG' ? candle.low <= signal.stopLoss : candle.high >= signal.stopLoss;
+    const stopHit = signal.decision === 'LONG' ? candle.low <= activeStopLoss : candle.high >= activeStopLoss;
     const targetHit = signal.decision === 'LONG' ? candle.high >= signal.takeProfit : candle.low <= signal.takeProfit;
     // Conservative assumption: if both are touched in the same candle, stop loss occurs first.
-    if (stopHit) return { candle, reason: 'STOP_LOSS' };
-    if (targetHit) return { candle, reason: 'TAKE_PROFIT' };
+    if (stopHit) return { candle, reason: 'STOP_LOSS', stopLoss: activeStopLoss };
+    if (targetHit) return { candle, reason: 'TAKE_PROFIT', stopLoss: activeStopLoss };
+
+    if (exitPolicy === 'MFE_PROFIT_PROTECTION_HYPOTHESIS' && !protectionActive) {
+      const favorableR = signal.decision === 'LONG'
+        ? Math.max(0, candle.high - signal.entry) / riskPerUnit
+        : Math.max(0, signal.entry - candle.low) / riskPerUnit;
+      if (favorableR >= 0.5) {
+        // Activate only after the candle closes; never infer intrabar order.
+        activeStopLoss = signal.entry;
+        protectionActive = true;
+      }
+    }
   }
   const last = candles.at(-1);
-  return last ? { candle: last, reason: 'TIME_EXIT' } : null;
+  return last ? { candle: last, reason: 'TIME_EXIT', stopLoss: activeStopLoss } : null;
 }
 
 export function resolveExitPrice({
@@ -581,7 +598,12 @@ export function runBacktest({
       continue;
     }
 
-    const exit = findExit({ signal, futureCandles: entryTimeframe.slice(executionIndex + 1), maxBars: maxBarsInTrade });
+    const exit = findExit({
+      signal,
+      futureCandles: entryTimeframe.slice(executionIndex + 1),
+      maxBars: maxBarsInTrade,
+      exitPolicy: config.exitPolicy ?? 'BASELINE',
+    });
     if (!exit) {
       index = executionIndex + 1;
       continue;
@@ -591,7 +613,7 @@ export function runBacktest({
     const quantity = signal.quantity;
     const exitPrice = resolveExitPrice({
       reason: exit.reason,
-      stopLoss: signal.stopLoss,
+      stopLoss: exit.stopLoss,
       takeProfit: signal.takeProfit,
       candleClose: exit.candle.close,
     });
@@ -628,7 +650,7 @@ export function runBacktest({
       exitTime: exit.candle.time,
       entry: signal.entry,
       exit: exitPrice,
-      stopLoss: signal.stopLoss,
+      stopLoss: exit.stopLoss,
       takeProfit: signal.takeProfit,
       quantity,
       riskAmount: signal.riskAmount,
