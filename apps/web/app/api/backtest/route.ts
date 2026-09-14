@@ -9,8 +9,8 @@ const SYMBOLS = new Set(['BTCUSDT', 'ETHUSDT']);
 const PAGE_SIZE = 1000;
 // Keep the research request bounded for the serverless runtime. This still
 // preserves the same 15M/1H rule and leaves enough history for 30+ OOS trades.
-const MAX_ENTRY_CANDLES = 10_000;
-const MAX_HIGHER_CANDLES = 3_000;
+const MAX_ENTRY_CANDLES = 4_500;
+const MAX_HIGHER_CANDLES = 1_500;
 
 type CandleRow = {
   open_time: string;
@@ -233,7 +233,10 @@ export async function POST(request: Request) {
         candidate: reportSummary(followThroughReport, entryTimeframe),
         candidateValidation: followThroughValidation,
       },
-      notes: report.notes,
+      notes: [
+        ...report.notes,
+        `Server research sample dibatasi ke ${MAX_ENTRY_CANDLES} candle 15M dan ${MAX_HIGHER_CANDLES} candle 1H agar endpoint tidak timeout; gunakan hasil ini untuk screening, bukan promosi live.`,
+      ],
     },
   });
   } catch (error) {
