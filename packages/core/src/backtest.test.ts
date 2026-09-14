@@ -44,6 +44,10 @@ test('backtest always returns auditable metrics and cost-aware trade fields', ()
   assert.ok(report.notes.length >= 3);
   assert.ok(report.diagnostics);
   assert.ok(report.executionAudit);
+  assert.ok(report.excursionAudit);
+  assert.equal(Number.isFinite(report.excursionAudit.averageMfeR), true);
+  assert.equal(Number.isFinite(report.excursionAudit.averageMaeR), true);
+  assert.equal(Number.isFinite(report.excursionAudit.stopLossPositiveMfeRate), true);
   assert.equal(Number.isFinite(report.executionAudit.grossPnlBeforeCosts), true);
   assert.equal(Number.isFinite(report.executionAudit.totalCosts), true);
   assert.equal(Number.isFinite(report.executionAudit.costImpactPctOfGross), true);
@@ -61,6 +65,8 @@ test('backtest always returns auditable metrics and cost-aware trade fields', ()
     assert.equal(Number.isFinite(trade.triggerRangeAtr), true);
     assert.equal(Number.isFinite(trade.entryDistanceToEmaAtr), true);
     assert.equal(Number.isFinite(trade.stopDistanceAtr), true);
+    assert.equal(Number.isFinite(trade.maxFavorableExcursionR), true);
+    assert.equal(Number.isFinite(trade.maxAdverseExcursionR), true);
     assert.ok(['TREND_UP', 'TREND_DOWN', 'RANGE', 'UNCERTAIN'].includes(trade.regime));
   });
 });

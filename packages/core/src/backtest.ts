@@ -35,6 +35,8 @@ export interface BacktestTrade {
   triggerRangeAtr: number;
   entryDistanceToEmaAtr: number;
   stopDistanceAtr: number;
+  maxFavorableExcursionR: number;
+  maxAdverseExcursionR: number;
 }
 
 export interface BacktestDiagnosticBucket {
@@ -74,6 +76,18 @@ export interface BacktestExecutionAudit {
   stopLossRate: number;
   takeProfitRate: number;
   timeExitRate: number;
+}
+
+export interface BacktestExcursionAudit {
+  averageMfeR: number;
+  averageMaeR: number;
+  stopLossTradesWithMfeAtLeastHalfR: number;
+  stopLossTradesWithMfeAtLeastOneR: number;
+  stopLossPositiveMfeRate: number;
+  averageStopLossMfeR: number;
+  averageStopLossMaeR: number;
+  averageTakeProfitMfeR: number;
+  averageTimeExitMfeR: number;
 }
 
 export interface BacktestSummary {
@@ -135,6 +149,7 @@ export interface BacktestReport {
   trades: BacktestTrade[];
   diagnostics: BacktestDiagnostics;
   executionAudit: BacktestExecutionAudit;
+  excursionAudit: BacktestExcursionAudit;
   windowProfiles: WindowProfile[];
   notes: string[];
 }
@@ -327,6 +342,28 @@ function buildExecutionAudit(trades: BacktestTrade[]): BacktestExecutionAudit {
     stopLossRate: totalTrades === 0 ? 0 : stopLossTrades / totalTrades,
     takeProfitRate: totalTrades === 0 ? 0 : takeProfitTrades / totalTrades,
     timeExitRate: totalTrades === 0 ? 0 : timeExitTrades / totalTrades,
+  };
+}
+
+function buildExcursionAudit(trades: BacktestTrade[]): BacktestExcursionAudit {
+  const average = (items: BacktestTrade[], selector: (trade: BacktestTrade) => number): number => (
+    items.length === 0 ? 0 : items.reduce((sum, trade) => sum + selector(trade), 0) / items.length
+  );
+  const stopLossTrades = trades.filter((trade) => trade.exitReason === 'STOP_LOSS');
+  const takeProfitTrades = trades.filter((trade) => trade.exitReason === 'TAKE_PROFIT');
+  const timeExitTrades = trades.filter((trade) => trade.exitReason === 'TIME_EXIT');
+  const stopLossTradesWithMfeAtLeastHalfR = stopLossTrades.filter((trade) => trade.maxFavorableExcursionR >= 0.5).length;
+  const stopLossTradesWithMfeAtLeastOneR = stopLossTrades.filter((trade) => trade.maxFavorableExcursionR >= 1).length;
+  return {
+    averageMfeR: average(trades, (trade) => trade.maxFavorableExcursionR),
+    averageMaeR: average(trades, (trade) => trade.maxAdverseExcursionR),
+    stopLossTradesWithMfeAtLeastHalfR,
+    stopLossTradesWithMfeAtLeastOneR,
+    stopLossPositiveMfeRate: stopLossTrades.length === 0 ? 0 : stopLossTradesWithMfeAtLeastHalfR / stopLossTrades.length,
+    averageStopLossMfeR: average(stopLossTrades, (trade) => trade.maxFavorableExcursionR),
+    averageStopLossMaeR: average(stopLossTrades, (trade) => trade.maxAdverseExcursionR),
+    averageTakeProfitMfeR: average(takeProfitTrades, (trade) => trade.maxFavorableExcursionR),
+    averageTimeExitMfeR: average(timeExitTrades, (trade) => trade.maxFavorableExcursionR),
   };
 }
 
@@ -550,6 +587,7 @@ export function runBacktest({
       continue;
     }
 
+    const entryPrice = signal.entry as number;
     const quantity = signal.quantity;
     const exitPrice = resolveExitPrice({
       reason: exit.reason,
@@ -562,10 +600,26 @@ export function runBacktest({
     const grossPnl = signal.decision === 'LONG'
       ? (exitPrice - signal.entry) * quantity
       : (signal.entry - exitPrice) * quantity;
-    const barsHeld = Math.max(1, entryTimeframe.slice(executionIndex + 1).findIndex((candle) => candle.time === exit.candle.time) + 1);
+    const exitIndex = entryTimeframe.findIndex((candle) => candle.time === exit.candle.time);
+    const barsHeld = Math.max(1, exitIndex > executionIndex ? exitIndex - executionIndex : 1);
     const costs = (entryNotional + exitNotional) * (feeRate + slippageRate) + entryNotional * fundingRatePerBar * barsHeld;
     const netPnl = grossPnl - costs;
     const riskAmount = Math.max(signal.riskAmount, Number.EPSILON);
+    const riskPerUnit = Math.max(Math.abs(signal.entry - signal.stopLoss), Number.EPSILON);
+    const candlesBeforeExit = entryTimeframe.slice(executionIndex + 1, Math.max(exitIndex, executionIndex + 1));
+    const candlesThroughExit = entryTimeframe.slice(executionIndex + 1, Math.max(exitIndex + 1, executionIndex + 2));
+    const favorableExcursion = (candle: Candle): number => signal.decision === 'LONG'
+      ? Math.max(0, candle.high - entryPrice) / riskPerUnit
+      : Math.max(0, entryPrice - candle.low) / riskPerUnit;
+    const adverseExcursion = (candle: Candle): number => signal.decision === 'LONG'
+      ? Math.max(0, entryPrice - candle.low) / riskPerUnit
+      : Math.max(0, candle.high - entryPrice) / riskPerUnit;
+    const maxFavorableExcursionR = candlesBeforeExit.length === 0
+      ? 0
+      : Math.max(...candlesBeforeExit.map(favorableExcursion));
+    const maxAdverseExcursionR = candlesThroughExit.length === 0
+      ? 0
+      : Math.max(...candlesThroughExit.map(adverseExcursion));
     const rMultiple = netPnl / riskAmount;
     const trade: BacktestTrade = {
       symbol,
@@ -589,12 +643,13 @@ export function runBacktest({
       triggerRangeAtr,
       entryDistanceToEmaAtr,
       stopDistanceAtr,
+      maxFavorableExcursionR,
+      maxAdverseExcursionR,
     };
     trades.push(trade);
     equity += netPnl;
     peakEquity = Math.max(peakEquity, equity);
     maxDrawdown = Math.max(maxDrawdown, peakEquity - equity);
-    const exitIndex = entryTimeframe.findIndex((candle) => candle.time === exit.candle.time);
     index = exitIndex >= executionIndex ? exitIndex + 1 : executionIndex + 1;
   }
 
@@ -619,6 +674,7 @@ export function runBacktest({
     trades,
     diagnostics: buildDiagnostics(trades, timezone),
     executionAudit: buildExecutionAudit(trades),
+    excursionAudit: buildExcursionAudit(trades),
     windowProfiles: buildWindowProfiles(trades, timezone),
     notes: [
       'Backtest menggunakan asumsi konservatif: stop loss diprioritaskan jika stop dan target tersentuh pada candle yang sama.',

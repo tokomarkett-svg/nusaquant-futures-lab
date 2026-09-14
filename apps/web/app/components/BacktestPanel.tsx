@@ -39,6 +39,17 @@ type ExecutionAudit = {
   takeProfitRate: number;
   timeExitRate: number;
 };
+type ExcursionAudit = {
+  averageMfeR: number;
+  averageMaeR: number;
+  stopLossTradesWithMfeAtLeastHalfR: number;
+  stopLossTradesWithMfeAtLeastOneR: number;
+  stopLossPositiveMfeRate: number;
+  averageStopLossMfeR: number;
+  averageStopLossMaeR: number;
+  averageTakeProfitMfeR: number;
+  averageTimeExitMfeR: number;
+};
 type ValidationSummary = {
   periodStart: number | null;
   periodEnd: number | null;
@@ -104,9 +115,10 @@ type Report = {
   maxDrawdown: number;
   maxDrawdownPct: number;
   gate: 'NOT_READY_SAMPLE' | 'PASS_RESEARCH_GATE' | 'FAIL_NEGATIVE_EXPECTANCY';
-  trades: Array<{ side: string; entryTime: number; exitTime: number; entry: number; exit: number; netPnl: number; costs: number; rMultiple: number; exitReason: string; qualityScore: number; regime: string; barsHeld: number; triggerRangeAtr: number; entryDistanceToEmaAtr: number; stopDistanceAtr: number }>;
+  trades: Array<{ side: string; entryTime: number; exitTime: number; entry: number; exit: number; netPnl: number; costs: number; rMultiple: number; exitReason: string; qualityScore: number; regime: string; barsHeld: number; triggerRangeAtr: number; entryDistanceToEmaAtr: number; stopDistanceAtr: number; maxFavorableExcursionR: number; maxAdverseExcursionR: number }>;
   diagnostics: Diagnostics;
   executionAudit: ExecutionAudit;
+  excursionAudit: ExcursionAudit;
   validation: Validation;
   walkForward: WalkForward;
   researchVariant: ResearchVariant;
@@ -179,6 +191,27 @@ function ExecutionAuditCard({ audit }: { audit: ExecutionAudit }) {
         <div><span>Take profit</span><strong className="positive">{audit.takeProfitTrades} · {(audit.takeProfitRate * 100).toFixed(1)}%</strong></div>
         <div><span>Time exit</span><strong>{audit.timeExitTrades} · {(audit.timeExitRate * 100).toFixed(1)}%</strong></div>
       </div>
+    </div>
+  );
+}
+
+function ExcursionAuditCard({ audit }: { audit: ExcursionAudit }) {
+  const evidence = audit.stopLossPositiveMfeRate >= 0.4;
+  return (
+    <div className="execution-audit-wrap">
+      <div className="validation-card-title">Exit pathology audit · MAE/MFE</div>
+      <div className="backtest-note">MAE/MFE dihitung dari trade yang benar-benar dieksekusi. Candle exit tidak dipakai untuk MFE agar tidak mengklaim urutan intrabar yang tidak diketahui; audit ini bukan perubahan rule.</div>
+      <div className="execution-audit-grid">
+        <div><span>Rata-rata MFE</span><strong>{audit.averageMfeR.toFixed(2)}R</strong></div>
+        <div><span>Rata-rata MAE</span><strong className="negative">{audit.averageMaeR.toFixed(2)}R</strong></div>
+        <div><span>SL yang sempat +0.5R</span><strong className={evidence ? 'negative' : ''}>{audit.stopLossTradesWithMfeAtLeastHalfR} · {(audit.stopLossPositiveMfeRate * 100).toFixed(1)}%</strong></div>
+        <div><span>SL yang sempat +1R</span><strong>{audit.stopLossTradesWithMfeAtLeastOneR}</strong></div>
+        <div><span>Rata-rata MFE sebelum SL</span><strong>{audit.averageStopLossMfeR.toFixed(2)}R</strong></div>
+        <div><span>Rata-rata MAE pada SL</span><strong className="negative">{audit.averageStopLossMaeR.toFixed(2)}R</strong></div>
+        <div><span>Rata-rata MFE pada TP</span><strong className="positive">{audit.averageTakeProfitMfeR.toFixed(2)}R</strong></div>
+        <div><span>Rata-rata MFE pada time exit</span><strong>{audit.averageTimeExitMfeR.toFixed(2)}R</strong></div>
+      </div>
+      <div className="backtest-note">{evidence ? 'Ada indikasi stop-loss perlu diaudit lebih lanjut: sebagian besar trade yang stop sudah sempat bergerak positif. Ini belum cukup untuk mengubah stop tanpa validasi OOS.' : 'Belum ada bukti kuat bahwa stop-loss saja adalah akar masalah; jangan ubah stop secara manual.'}</div>
     </div>
   );
 }
@@ -341,6 +374,7 @@ export default function BacktestPanel() {
           </div>
           <div className="backtest-sample">Run terakhir {timestamp(lastRunAt)} · sample {sample?.higherCandles ?? 0} candle 1H · {sample?.entryCandles ?? 0} candle 15M · data terakhir {timestamp(sample?.latestEntryTime)}</div>
           <ExecutionAuditCard audit={report.executionAudit} />
+          <ExcursionAuditCard audit={report.excursionAudit} />
           <div className="backtest-trades-title">Temporal validation · 70/30</div>
           <div className="backtest-note">Periode in-sample dipakai untuk pengembangan, sedangkan out-of-sample hanya untuk menguji generalisasi. Tidak ada parameter yang dituning dari OOS.</div>
           <div className="validation-grid">

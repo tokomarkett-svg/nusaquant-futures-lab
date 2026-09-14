@@ -196,9 +196,12 @@ export async function POST(request: Request) {
         triggerRangeAtr: trade.triggerRangeAtr,
         entryDistanceToEmaAtr: trade.entryDistanceToEmaAtr,
         stopDistanceAtr: trade.stopDistanceAtr,
+        maxFavorableExcursionR: trade.maxFavorableExcursionR,
+        maxAdverseExcursionR: trade.maxAdverseExcursionR,
       })),
       diagnostics: report.diagnostics,
       executionAudit: report.executionAudit,
+      excursionAudit: report.excursionAudit,
       validation,
       walkForward,
       researchVariant: {
