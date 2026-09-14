@@ -3,10 +3,14 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 const SYMBOLS = new Set(['BTCUSDT', 'ETHUSDT']);
 const PAGE_SIZE = 1000;
-const MAX_CANDLES = 20_000;
+// Keep the research request bounded for the serverless runtime. This still
+// preserves the same 15M/1H rule and leaves enough history for 30+ OOS trades.
+const MAX_ENTRY_CANDLES = 10_000;
+const MAX_HIGHER_CANDLES = 3_000;
 
 type CandleRow = {
   open_time: string;
@@ -52,22 +56,22 @@ function reportSummary(report: ReturnType<typeof runBacktest>, periodCandles: Ca
   } as const;
 }
 
-async function readCandles(supabase: SupabaseClient, symbol: string, interval: string): Promise<CandleRow[]> {
+async function readCandles(supabase: SupabaseClient, symbol: string, interval: string, maxCandles: number): Promise<CandleRow[]> {
   const rows: CandleRow[] = [];
-  for (let offset = 0; offset < MAX_CANDLES; offset += PAGE_SIZE) {
+  for (let offset = 0; offset < maxCandles; offset += PAGE_SIZE) {
     const result = await supabase
       .from('market_candles')
       .select('open_time,open,high,low,close,volume')
       .eq('symbol', symbol)
       .eq('interval', interval)
-      .order('open_time', { ascending: true })
+      .order('open_time', { ascending: false })
       .range(offset, offset + PAGE_SIZE - 1);
     if (result.error) throw new Error(result.error.message);
     const page = (result.data ?? []) as CandleRow[];
     rows.push(...page);
     if (page.length < PAGE_SIZE) break;
   }
-  return rows;
+  return rows.reverse();
 }
 
 export async function POST(request: Request) {
@@ -85,8 +89,8 @@ export async function POST(request: Request) {
   let entryTimeframe: Candle[];
   try {
     const [higherRows, entryRows] = await Promise.all([
-      readCandles(supabase, symbol, '1h'),
-      readCandles(supabase, symbol, '15m'),
+      readCandles(supabase, symbol, '1h', MAX_HIGHER_CANDLES),
+      readCandles(supabase, symbol, '15m', MAX_ENTRY_CANDLES),
     ]);
     higherTimeframe = higherRows.map(toCandle);
     entryTimeframe = entryRows.map(toCandle);
