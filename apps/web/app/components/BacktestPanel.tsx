@@ -371,6 +371,22 @@ export default function BacktestPanel() {
   }, []);
 
   useEffect(() => {
+    let active = true;
+    const loadLatestResearchJob = async () => {
+      try {
+        const response = await fetch('/api/backtest/jobs', { cache: 'no-store' });
+        const payload = await response.json().catch(() => ({})) as { ok?: boolean; jobs?: ResearchJob[] };
+        const latest = payload.jobs?.find((job) => job.symbol === symbol);
+        if (active && latest) setResearchJob(latest);
+      } catch {
+        // The dashboard remains usable if the research status endpoint is temporarily unavailable.
+      }
+    };
+    void loadLatestResearchJob();
+    return () => { active = false; };
+  }, [symbol]);
+
+  useEffect(() => {
     if (!researchJob || researchJob.status === 'COMPLETED' || researchJob.status === 'FAILED') return;
     let active = true;
     const poll = async () => {
