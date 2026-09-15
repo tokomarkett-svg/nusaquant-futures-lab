@@ -93,7 +93,6 @@ Add these temporary variables in the same Railway worker service:
 RESEARCH_FUNDING_START=2025-09-01
 RESEARCH_FUNDING_END=2026-08-31
 RESEARCH_FUNDING_SYMBOLS=BTCUSDT,ETHUSDT
-RESEARCH_FUNDING_BASE_URL=https://fapi.binance.com
 ```
 
 Run the one-off command:

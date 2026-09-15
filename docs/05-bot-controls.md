@@ -50,7 +50,7 @@ Funding history untuk research dijalankan terpisah setelah migration `2026091501
 npm run research:funding --workspace @nusaquant/worker
 ```
 
-Atur `RESEARCH_FUNDING_START`, `RESEARCH_FUNDING_END`, dan `RESEARCH_FUNDING_SYMBOLS`. Funding adalah public market data; private Binance API tidak digunakan.
+Atur `RESEARCH_FUNDING_START`, `RESEARCH_FUNDING_END`, dan `RESEARCH_FUNDING_SYMBOLS`. Funding diambil dari bulk archive public Binance agar tidak bergantung pada pembatasan HTTP regional endpoint API; private Binance API tidak digunakan.
 
 ## Batasan versi ini
 
