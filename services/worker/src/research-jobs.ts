@@ -226,7 +226,7 @@ export async function processNextResearchJob(): Promise<boolean> {
   const result = await client
     .from('research_backtest_jobs')
     .select('id,symbol,status')
-    .eq('status', 'QUEUED')
+    .in('status', ['QUEUED', 'RUNNING'])
     .order('requested_at', { ascending: true })
     .limit(1)
     .maybeSingle<ResearchJob>();
@@ -237,7 +237,7 @@ export async function processNextResearchJob(): Promise<boolean> {
     .from('research_backtest_jobs')
     .update({ status: 'RUNNING', progress: 1, started_at: new Date().toISOString() })
     .eq('id', result.data.id)
-    .eq('status', 'QUEUED')
+    .eq('status', result.data.status)
     .select('id,symbol,status')
     .maybeSingle<ResearchJob>();
   if (claimed.error) throw new Error(`Claim research job gagal: ${claimed.error.message}`);
