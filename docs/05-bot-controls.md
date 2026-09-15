@@ -40,7 +40,9 @@ Untuk memperbesar sample sebelum mengambil keputusan, worker menyediakan one-tim
 npm run ingest:backfill --workspace @nusaquant/worker
 ```
 
-Gunakan `BACKFILL_DAYS` (default 90) dan jalankan sebagai job satu kali, bukan loop permanen. Setelah selesai, kembalikan worker ke `ingest:watch`.
+Gunakan `BACKFILL_DAYS` (default 365, maksimum 730) dan jalankan sebagai job satu kali, bukan loop permanen. Setelah selesai, kembalikan worker ke `ingest:watch`. Backfill lebih panjang diperlukan agar full-history research tidak hanya mewakili sekitar 90 hari terakhir.
+
+Untuk historical research yang lebih dapat dipertanggungjawabkan, gunakan `npm run research:backfill` dari workspace worker. Script ini mengambil bulk public USD-M futures klines dari `data.binance.vision`, bukan private API, dan menyimpan dengan `source=BINANCE_BULK_ARCHIVE`. Atur `RESEARCH_ARCHIVE_START`, `RESEARCH_ARCHIVE_END`, `RESEARCH_ARCHIVE_SYMBOLS`, dan `RESEARCH_ARCHIVE_INTERVALS`; jalankan sebagai one-shot job, jangan aktifkan di watch loop.
 
 ## Batasan versi ini
 

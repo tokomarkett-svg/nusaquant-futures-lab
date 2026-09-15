@@ -34,7 +34,7 @@ async function backfillInterval({ symbol, interval, days }: { symbol: string; in
 async function main(): Promise<void> {
   const symbols = (process.env.SYMBOLS ?? 'BTCUSDT,ETHUSDT').split(',').map((symbol) => symbol.trim().toUpperCase()).filter(Boolean);
   const intervals = (process.env.BACKFILL_INTERVALS ?? '15m,1h').split(',').map((interval) => interval.trim()).filter(Boolean);
-  const days = Math.min(Math.max(Number(process.env.BACKFILL_DAYS ?? 90), 1), 365);
+  const days = Math.min(Math.max(Number(process.env.BACKFILL_DAYS ?? 365), 1), 730);
   const result: Record<string, Record<string, number>> = {};
 
   for (const symbol of symbols) {

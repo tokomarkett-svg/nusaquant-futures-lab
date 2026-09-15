@@ -183,6 +183,16 @@ export async function POST(request: Request) {
     trainFraction: 0.7,
     warmupBars: 80,
   });
+  const breakoutConfig = { ...config, entryPolicy: 'VOLATILITY_EXPANSION_BREAKOUT_HYPOTHESIS' as const };
+  const breakoutReport = runBacktest({ symbol, higherTimeframe, entryTimeframe, config: breakoutConfig });
+  const breakoutValidation = runTemporalValidation({
+    symbol,
+    higherTimeframe,
+    entryTimeframe,
+    config: breakoutConfig,
+    trainFraction: 0.7,
+    warmupBars: 80,
+  });
 
   return NextResponse.json({
     ok: true,
@@ -268,6 +278,14 @@ export async function POST(request: Request) {
         baselineValidation: validation,
         candidate: reportSummary(meanReversionReport, entryTimeframe),
         candidateValidation: meanReversionValidation,
+      },
+      researchBreakoutVariant: {
+        name: 'VOLATILITY_EXPANSION_BREAKOUT_HYPOTHESIS',
+        rule: 'Trend higher timeframe, close menembus Donchian 20 candle, range minimal 1.1 ATR, volume minimal 1.2x rata-rata. Research-only, bukan rule paper/live.',
+        baseline: reportSummary(report, entryTimeframe),
+        baselineValidation: validation,
+        candidate: reportSummary(breakoutReport, entryTimeframe),
+        candidateValidation: breakoutValidation,
       },
       notes: [
         ...report.notes,

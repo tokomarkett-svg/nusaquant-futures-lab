@@ -116,6 +116,11 @@ const VARIANTS = [
     rule: 'Range higher timeframe, stretch minimal 1.2 ATR dari EMA20, rejection candle, RSI extreme, target kembali ke EMA20.',
     config: { entryPolicy: 'MEAN_REVERSION_REJECTION_HYPOTHESIS' as const },
   },
+  {
+    name: 'VOLATILITY_EXPANSION_BREAKOUT_HYPOTHESIS',
+    rule: 'Trend higher timeframe, close menembus Donchian 20 candle, range minimal 1.1 ATR, dan volume minimal 1.2x rata-rata.',
+    config: { entryPolicy: 'VOLATILITY_EXPANSION_BREAKOUT_HYPOTHESIS' as const },
+  },
 ] as const;
 
 async function updateJob(id: string, patch: Record<string, unknown>): Promise<void> {
@@ -178,11 +183,20 @@ export async function runResearchJob(job: ResearchJob): Promise<void> {
         trainFraction: 0.7,
         warmupBars: 80,
       });
+      const walkForward = runWalkForwardValidation({
+        symbol: job.symbol,
+        higherTimeframe,
+        entryTimeframe,
+        config: variantConfig,
+        foldCount: 3,
+        warmupBars: 80,
+      });
       candidates[variant.name] = {
         name: variant.name,
         rule: variant.rule,
         ...compactReport(report, entryTimeframe),
         validation: temporal,
+        walkForward,
       };
       await updateJob(job.id, { progress: 60 + Math.floor(((index + 1) / VARIANTS.length) * 35) });
     }

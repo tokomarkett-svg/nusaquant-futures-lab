@@ -122,6 +122,7 @@ type ResearchCandidateResult = {
   rule: string;
   summary: CompactSummary;
   validation: Validation;
+  walkForward: WalkForward;
 };
 type ResearchResult = {
   version: number;
@@ -166,6 +167,7 @@ type Report = {
   researchFollowThroughVariant: ResearchVariant;
   researchProfitProtectionVariant: ResearchVariant;
   researchMeanReversionVariant: ResearchVariant;
+  researchBreakoutVariant: ResearchVariant;
   notes: string[];
 };
 
@@ -263,7 +265,7 @@ function ResearchJobPanel({ job }: { job: ResearchJob }) {
   return (
     <div className="research-variant-wrap">
       <div className="validation-card-title">Full-history research worker · {job.symbol}</div>
-      <div className="backtest-note">Job {job.id} · status {job.status} · progress {job.progress}% · sample {result?.sample.entryCandles ?? '—'} candle 15M / {result?.sample.higherCandles ?? '—'} candle 1H</div>
+      <div className="backtest-note">Job {job.id} · status {job.status} · progress {job.progress}% · sample {result?.sample.entryCandles ?? '—'} candle 15M / {result?.sample.higherCandles ?? '—'} candle 1H · periode {result ? `${timestamp(result.baseline.summary.periodStart)} — ${timestamp(result.baseline.summary.periodEnd)}` : '—'}</div>
       {job.status === 'FAILED' ? <div className="variant-verdict variant-reject"><strong>RESEARCH JOB FAILED</strong><span>{job.error ?? 'Worker mengembalikan error tanpa detail.'}</span></div> : job.status !== 'COMPLETED' ? <div className="variant-verdict"><strong>RESEARCH JOB {job.status}</strong><span>Perhitungan berjalan di worker; tidak memakai request browser yang mudah timeout.</span></div> : result ? (
         <>
           <div className="validation-grid">
@@ -273,7 +275,7 @@ function ResearchJobPanel({ job }: { job: ResearchJob }) {
           <div className="backtest-note">Walk-forward aggregate: {validationGate(result.baseline.walkForward.aggregate.gate)} · {result.baseline.walkForward.aggregate.totalTrades} trades · {result.baseline.walkForward.aggregate.expectancyR.toFixed(3)}R · PF {profitFactor(result.baseline.walkForward.aggregate.profitFactor)}</div>
           {Object.values(result.candidates).map((candidate) => (
             <div className="backtest-note" key={candidate.name}>
-              <strong>{candidate.name}</strong> · full {money(candidate.summary.netPnl)} · {candidate.summary.expectancyR.toFixed(3)}R · PF {profitFactor(candidate.summary.profitFactor)} · OOS {money(candidate.validation.outOfSample.netPnl)} · {candidate.validation.outOfSample.expectancyR.toFixed(3)}R · PF {profitFactor(candidate.validation.outOfSample.profitFactor)}
+              <strong>{candidate.name}</strong> · full {money(candidate.summary.netPnl)} · {candidate.summary.expectancyR.toFixed(3)}R · PF {profitFactor(candidate.summary.profitFactor)} · OOS {money(candidate.validation.outOfSample.netPnl)} · {candidate.validation.outOfSample.expectancyR.toFixed(3)}R · PF {profitFactor(candidate.validation.outOfSample.profitFactor)} · WF {validationGate(candidate.walkForward.aggregate.gate)} · {candidate.walkForward.aggregate.expectancyR.toFixed(3)}R · PF {profitFactor(candidate.walkForward.aggregate.profitFactor)}
             </div>
           ))}
           {result.notes.map((note) => <div className="backtest-note" key={note}>• {note}</div>)}
@@ -496,6 +498,7 @@ export default function BacktestPanel() {
           <ResearchVariantPanel variant={report.researchFollowThroughVariant} />
           <ResearchVariantPanel variant={report.researchProfitProtectionVariant} />
           <ResearchVariantPanel variant={report.researchMeanReversionVariant} />
+          <ResearchVariantPanel variant={report.researchBreakoutVariant} />
           <div className="backtest-trades-title">Walk-forward validation</div>
           <div className="backtest-note">Tiga test window berurutan dipakai untuk melihat konsistensi performa lintas waktu. Ini bukan parameter tuning dan belum menggantikan paper execution.</div>
           <WalkForwardTable validation={report.walkForward} />

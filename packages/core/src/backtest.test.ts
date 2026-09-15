@@ -102,10 +102,16 @@ test('triad timing hypothesis is a research-only filter and never increases trad
     entryTimeframe: entry,
     config: { entryPolicy: 'MEAN_REVERSION_REJECTION_HYPOTHESIS' },
   });
+  const breakoutHypothesis = runBacktest({
+    higherTimeframe: higher,
+    entryTimeframe: entry,
+    config: { entryPolicy: 'VOLATILITY_EXPANSION_BREAKOUT_HYPOTHESIS' },
+  });
   assert.ok(hypothesis.totalTrades <= baseline.totalTrades);
   assert.ok(retestHypothesis.totalTrades <= baseline.totalTrades);
   assert.equal(profitProtectionHypothesis.totalTrades > 0, baseline.totalTrades > 0);
   assert.equal(Number.isFinite(meanReversionHypothesis.netPnl), true);
+  assert.equal(Number.isFinite(breakoutHypothesis.netPnl), true);
   assert.ok(profitProtectionHypothesis.trades.every((trade) => Number.isFinite(trade.stopLoss)));
   assert.ok(followThroughHypothesis.totalTrades <= baseline.totalTrades);
 });

@@ -29,7 +29,7 @@ NusaQuant Futures Lab adalah platform riset dan paper-trading untuk Binance USD�
 - Worker paper/ingestion di Railway.
 - Supabase schema dan health check.
 - Public Binance market-data adapter tanpa private API key.
-- Historical backfill satu kali untuk 90 hari.
+- Historical backfill satu kali sampai 365 hari; bulk archive research tersedia terpisah.
 - Backtest dengan pagination Supabase.
 - Cost-aware position sizing.
 - Research gate dan trade diagnostics.
@@ -43,7 +43,7 @@ Validasi terakhir:
 - Web typecheck: pass
 - Worker typecheck: pass
 - Core tests: 13 pass
-- Worker tests: 14 pass
+- Worker tests: 15 pass
 - Production build: pass
 - `npm audit --omit=dev`: 0 vulnerability
 - `git diff --check`: pass
@@ -61,7 +61,7 @@ Validasi terakhir:
 | Triad timing hypothesis | Research-only | Trigger <1.2 ATR dan entry distance >=0.25 ATR; ditolak setelah OOS |
 | Triad retest hypothesis | Research-only | Trigger → retest level candle sebelumnya ≤3 candle; belum production |
 | Follow-through hypothesis | Research-only | Candle setelah trigger harus follow-through searah; belum production |
-| Historical backfill | Berhasil | 90 hari BTCUSDT/ETHUSDT, interval 15M/1H |
+| Historical backfill | Berhasil | One-time 365 hari via API; bulk archive research tersedia untuk periode lebih panjang |
 | Public market polling | Tersedia | REST/polling, belum WebSocket production |
 | Paper state machine | Fondasi dan test berfungsi | Approval lifecycle, stale approval, restore, cooldown, dan daily-loss guard tervalidasi |
 | Bot control API | Tersedia | Start, pause, approve, emergency; membutuhkan env Supabase server |
@@ -236,8 +236,12 @@ npm run ingest:backfill --workspace @nusaquant/worker
 ### Environment penting
 
 ```text
-BACKFILL_DAYS=90
+BACKFILL_DAYS=365
 BACKFILL_INTERVALS=15m,1h
+RESEARCH_ARCHIVE_START=
+RESEARCH_ARCHIVE_END=
+RESEARCH_ARCHIVE_SYMBOLS=BTCUSDT,ETHUSDT
+RESEARCH_ARCHIVE_INTERVALS=15m,1h
 BOT_SESSION_IDS=00000000-0000-4000-8000-000000000001,00000000-0000-4000-8000-000000000002
 CONTROL_POLL_INTERVAL_MS=10000
 ```
@@ -290,7 +294,8 @@ git log --oneline -5
 - `services/worker/src/session-control.ts` — restore/persist paper state ke Supabase.
 - `services/worker/src/market-data.ts` — public Binance adapter dan polling.
 - `services/worker/src/ingest.ts` — ingestion watch.
-- `services/worker/src/backfill.ts` — one-time historical backfill.
+- `services/worker/src/backfill.ts` — one-time API historical backfill.
+- `services/worker/src/research-backfill.ts` — one-time public Binance bulk-archive research backfill.
 - `services/worker/src/research-jobs.ts` — opt-in full-history research queue worker.
 - `apps/web/app/api/backtest/jobs/route.ts` — create/status API untuk research job async.
 - `supabase/migrations/20260909000000_initial_schema.sql` — schema/RLS.

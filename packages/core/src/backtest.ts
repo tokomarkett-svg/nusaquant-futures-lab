@@ -1,5 +1,5 @@
 import { evaluateIntelligentSignal, type IntelligentSignal } from './intelligence';
-import { adx, atr, ema, rsi, type Candle, type Regime } from './index';
+import { adx, atr, ema, rsi, sma, type Candle, type Regime } from './index';
 import type { WindowProfile } from './opportunity';
 
 export interface BacktestConfig {
@@ -10,7 +10,7 @@ export interface BacktestConfig {
   fundingRatePerBar?: number;
   maxBarsInTrade?: number;
   timezone?: string;
-  entryPolicy?: 'BASELINE' | 'TRIAD_TIMING_HYPOTHESIS' | 'TRIAD_RETEST_HYPOTHESIS' | 'TRIAD_FOLLOW_THROUGH_HYPOTHESIS' | 'MEAN_REVERSION_REJECTION_HYPOTHESIS';
+  entryPolicy?: 'BASELINE' | 'TRIAD_TIMING_HYPOTHESIS' | 'TRIAD_RETEST_HYPOTHESIS' | 'TRIAD_FOLLOW_THROUGH_HYPOTHESIS' | 'MEAN_REVERSION_REJECTION_HYPOTHESIS' | 'VOLATILITY_EXPANSION_BREAKOUT_HYPOTHESIS';
   exitPolicy?: 'BASELINE' | 'MFE_PROFIT_PROTECTION_HYPOTHESIS';
 }
 
@@ -551,6 +551,83 @@ function buildMeanReversionRejectionSignal({
   };
 }
 
+function buildVolatilityExpansionBreakoutSignal({
+  higherTimeframe,
+  entryTimeframe,
+  equity,
+  riskFraction,
+  feeRate,
+  slippageRate,
+  fundingRatePerBar,
+  maxBarsInTrade,
+}: {
+  higherTimeframe: Candle[];
+  entryTimeframe: Candle[];
+  equity: number;
+  riskFraction: number;
+  feeRate: number;
+  slippageRate: number;
+  fundingRatePerBar: number;
+  maxBarsInTrade: number;
+}): IntelligentSignal | null {
+  const entryCandle = entryTimeframe.at(-1);
+  if (!entryCandle || entryTimeframe.length < 30) return null;
+  const higherCloses = higherTimeframe.map((candle) => candle.close);
+  const higherAdx = adx(higherTimeframe).at(-1) ?? Number.NaN;
+  const higherEma50 = ema(higherCloses, 50).at(-1) ?? Number.NaN;
+  const entryAtr = atr(entryTimeframe).at(-1) ?? Number.NaN;
+  const entryAdx = adx(entryTimeframe).at(-1) ?? Number.NaN;
+  const volumeAverage = sma(entryTimeframe.map((candle) => candle.volume), 20).at(-1) ?? Number.NaN;
+  const priorCandles = entryTimeframe.slice(-21, -1);
+  const priorHigh = Math.max(...priorCandles.map((candle) => candle.high));
+  const priorLow = Math.min(...priorCandles.map((candle) => candle.low));
+  const volumeRatio = Number.isFinite(volumeAverage) && volumeAverage > 0 ? entryCandle.volume / volumeAverage : Number.NaN;
+  const candleRange = entryCandle.high - entryCandle.low;
+  if (!Number.isFinite(higherAdx) || !Number.isFinite(higherEma50) || !Number.isFinite(entryAtr) || !Number.isFinite(entryAdx) || !Number.isFinite(volumeRatio) || entryAtr <= Number.EPSILON) return null;
+  const longSignal = higherAdx >= 20 && entryCandle.close > higherEma50 && entryAdx >= 18
+    && entryCandle.close > priorHigh && candleRange >= entryAtr * 1.1 && volumeRatio >= 1.2;
+  const shortSignal = higherAdx >= 20 && entryCandle.close < higherEma50 && entryAdx >= 18
+    && entryCandle.close < priorLow && candleRange >= entryAtr * 1.1 && volumeRatio >= 1.2;
+  if (!longSignal && !shortSignal) return null;
+
+  const decision = longSignal ? 'LONG' : 'SHORT';
+  const entry = entryCandle.close;
+  const stopDistance = entryAtr * 1.5;
+  const stopLoss = longSignal ? entry - stopDistance : entry + stopDistance;
+  const takeProfit = longSignal ? entry + stopDistance * 2 : entry - stopDistance * 2;
+  const riskAmount = equity * riskFraction;
+  const estimatedCostPerUnit = (entry + stopLoss) * (feeRate + slippageRate)
+    + entry * fundingRatePerBar * maxBarsInTrade;
+  const quantity = riskAmount / Math.max(stopDistance + estimatedCostPerUnit, Number.EPSILON);
+  return {
+    decision,
+    candidate: decision,
+    stage: 'TRIGGERED',
+    timing: 'ENTER_NOW',
+    regime: longSignal ? 'TREND_UP' : 'TREND_DOWN',
+    qualityScore: 80,
+    scoreMax: 100,
+    entry,
+    triggerPrice: entry,
+    stopLoss,
+    takeProfit,
+    quantity,
+    riskAmount,
+    riskReward: 2,
+    maxChaseDistance: null,
+    patterns: [],
+    structure: { bias: longSignal ? 'BULLISH' : 'BEARISH', lastSwingHigh: priorHigh, lastSwingLow: priorLow, breakOfStructure: longSignal ? 'BULLISH' : 'BEARISH', reason: 'Volatility expansion breakout setelah range 20 candle.' },
+    evidence: [
+      { label: 'Higher-timeframe trend', points: 25, passed: true, explanation: `ADX 1H ${higherAdx.toFixed(2)} dan posisi harga terhadap EMA50 mendukung arah.` },
+      { label: 'Donchian breakout', points: 25, passed: true, explanation: 'Close menembus high/low 20 candle sebelumnya.' },
+      { label: 'Range expansion', points: 15, passed: true, explanation: `Range candle ${ (candleRange / entryAtr).toFixed(2) } ATR.` },
+      { label: 'Volume confirmation', points: 15, passed: true, explanation: `Volume ratio ${volumeRatio.toFixed(2)}x.` },
+    ],
+    blockers: [],
+    explanation: 'Research-only breakout: trend higher timeframe, Donchian break, volatility expansion, dan volume confirmation.',
+  };
+}
+
 export function runBacktest({
   symbol = 'BTCUSDT',
   higherTimeframe,
@@ -585,6 +662,15 @@ export function runBacktest({
     }
 
     const entryPolicy = config.entryPolicy ?? 'BASELINE';
+    if (entryPolicy === 'VOLATILITY_EXPANSION_BREAKOUT_HYPOTHESIS' && index >= 20) {
+      const priorCandles = entryTimeframe.slice(index - 20, index);
+      const priorHigh = Math.max(...priorCandles.map((candle) => candle.high));
+      const priorLow = Math.min(...priorCandles.map((candle) => candle.low));
+      if (triggerCandle.close <= priorHigh && triggerCandle.close >= priorLow) {
+        index += 1;
+        continue;
+      }
+    }
     const baseSignal = entryPolicy === 'MEAN_REVERSION_REJECTION_HYPOTHESIS'
       ? null
       : evaluateIntelligentSignal({
@@ -610,6 +696,19 @@ export function runBacktest({
         continue;
       }
       signal = meanSignal;
+    } else if (entryPolicy === 'VOLATILITY_EXPANSION_BREAKOUT_HYPOTHESIS') {
+      const breakoutSignal = buildVolatilityExpansionBreakoutSignal({
+        higherTimeframe: higher,
+        entryTimeframe: entryTimeframe.slice(0, index + 1),
+        equity,
+        riskFraction,
+        ...signalConfig,
+      });
+      if (!breakoutSignal) {
+        index += 1;
+        continue;
+      }
+      signal = breakoutSignal;
     } else {
       if (!baseSignal || baseSignal.decision === 'NO_TRADE' || baseSignal.entry === null || baseSignal.stopLoss === null || baseSignal.takeProfit === null) {
         index += 1;
