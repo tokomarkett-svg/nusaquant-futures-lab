@@ -6,6 +6,7 @@ import {
   type BacktestReport,
   type Candle,
 } from '@nusaquant/core';
+import { Worker } from 'node:worker_threads';
 import { createWorkerSupabaseClient } from './supabase.ts';
 
 type CandleRow = {
@@ -17,7 +18,7 @@ type CandleRow = {
   volume: number | string;
 };
 
-type ResearchJob = {
+export type ResearchJob = {
   id: string;
   symbol: 'BTCUSDT' | 'ETHUSDT';
   status: 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED';
@@ -26,6 +27,7 @@ type ResearchJob = {
 const PAGE_SIZE = 1000;
 const MAX_CANDLES = 50_000;
 const POLL_INTERVAL_MS = 15_000;
+let activeResearchWorker: Worker | null = null;
 
 function toCandle(row: CandleRow): Candle {
   return {
@@ -219,6 +221,7 @@ export async function runResearchJob(job: ResearchJob): Promise<void> {
 }
 
 export async function processNextResearchJob(): Promise<boolean> {
+  if (activeResearchWorker) return false;
   const client = createWorkerSupabaseClient();
   const result = await client
     .from('research_backtest_jobs')
@@ -240,7 +243,18 @@ export async function processNextResearchJob(): Promise<boolean> {
   if (claimed.error) throw new Error(`Claim research job gagal: ${claimed.error.message}`);
   if (!claimed.data) return false;
 
-  await runResearchJob(claimed.data);
+  const worker = new Worker(new URL('./research-runner.ts', import.meta.url), {
+    workerData: claimed.data,
+    execArgv: process.execArgv,
+  });
+  activeResearchWorker = worker;
+  worker.on('error', (error) => {
+    console.error('[research-worker]', error);
+  });
+  worker.on('exit', (code) => {
+    if (code !== 0) console.error(`[research-worker] exit code ${code}`);
+    if (activeResearchWorker === worker) activeResearchWorker = null;
+  });
   return true;
 }
 
