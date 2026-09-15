@@ -1,5 +1,5 @@
 import { evaluateIntelligentSignal, type IntelligentSignal } from './intelligence';
-import { atr, ema, type Candle, type Regime } from './index';
+import { adx, atr, ema, rsi, type Candle, type Regime } from './index';
 import type { WindowProfile } from './opportunity';
 
 export interface BacktestConfig {
@@ -10,7 +10,7 @@ export interface BacktestConfig {
   fundingRatePerBar?: number;
   maxBarsInTrade?: number;
   timezone?: string;
-  entryPolicy?: 'BASELINE' | 'TRIAD_TIMING_HYPOTHESIS' | 'TRIAD_RETEST_HYPOTHESIS' | 'TRIAD_FOLLOW_THROUGH_HYPOTHESIS';
+  entryPolicy?: 'BASELINE' | 'TRIAD_TIMING_HYPOTHESIS' | 'TRIAD_RETEST_HYPOTHESIS' | 'TRIAD_FOLLOW_THROUGH_HYPOTHESIS' | 'MEAN_REVERSION_REJECTION_HYPOTHESIS';
   exitPolicy?: 'BASELINE' | 'MFE_PROFIT_PROTECTION_HYPOTHESIS';
 }
 
@@ -473,6 +473,84 @@ function rebaseRetestSignal({
   };
 }
 
+function buildMeanReversionRejectionSignal({
+  higherTimeframe,
+  entryTimeframe,
+  equity,
+  riskFraction,
+  feeRate,
+  slippageRate,
+  fundingRatePerBar,
+  maxBarsInTrade,
+}: {
+  higherTimeframe: Candle[];
+  entryTimeframe: Candle[];
+  equity: number;
+  riskFraction: number;
+  feeRate: number;
+  slippageRate: number;
+  fundingRatePerBar: number;
+  maxBarsInTrade: number;
+}): IntelligentSignal | null {
+  const higherAdx = adx(higherTimeframe).at(-1) ?? Number.NaN;
+  const entryAtr = atr(entryTimeframe).at(-1) ?? Number.NaN;
+  const entryEma20 = ema(entryTimeframe.map((candle) => candle.close), 20).at(-1) ?? Number.NaN;
+  const entryRsi = rsi(entryTimeframe).at(-1) ?? Number.NaN;
+  const entryCandle = entryTimeframe.at(-1);
+  if (!entryCandle || !Number.isFinite(higherAdx) || !Number.isFinite(entryAtr) || !Number.isFinite(entryEma20) || !Number.isFinite(entryRsi) || entryAtr <= Number.EPSILON) return null;
+
+  const range = Math.max(entryCandle.high - entryCandle.low, Number.EPSILON);
+  const bullishRejection = entryCandle.close > entryCandle.open && entryCandle.close >= entryCandle.low + range * 0.65;
+  const bearishRejection = entryCandle.close < entryCandle.open && entryCandle.close <= entryCandle.high - range * 0.65;
+  const stretchedLong = entryCandle.close <= entryEma20 - entryAtr * 1.2;
+  const stretchedShort = entryCandle.close >= entryEma20 + entryAtr * 1.2;
+  const longSignal = higherAdx < 18 && stretchedLong && entryRsi <= 35 && bullishRejection;
+  const shortSignal = higherAdx < 18 && stretchedShort && entryRsi >= 65 && bearishRejection;
+  if (!longSignal && !shortSignal) return null;
+
+  const decision = longSignal ? 'LONG' : 'SHORT';
+  const entry = entryCandle.close;
+  const stopDistance = longSignal
+    ? Math.max(entry - entryCandle.low + entryAtr * 0.5, entryAtr)
+    : Math.max(entryCandle.high - entry + entryAtr * 0.5, entryAtr);
+  const stopLoss = longSignal ? entry - stopDistance : entry + stopDistance;
+  const meanTargetDistance = Math.abs(entryEma20 - entry);
+  if (meanTargetDistance < stopDistance * 1.2) return null;
+  const takeProfit = entryEma20;
+  const riskAmount = equity * riskFraction;
+  const estimatedCostPerUnit = (entry + stopLoss) * (feeRate + slippageRate)
+    + entry * fundingRatePerBar * maxBarsInTrade;
+  const quantity = riskAmount / Math.max(stopDistance + estimatedCostPerUnit, Number.EPSILON);
+  const riskReward = meanTargetDistance / stopDistance;
+  return {
+    decision,
+    candidate: decision,
+    stage: 'TRIGGERED',
+    timing: 'ENTER_NOW',
+    regime: 'RANGE',
+    qualityScore: 80,
+    scoreMax: 100,
+    entry,
+    triggerPrice: entry,
+    stopLoss,
+    takeProfit,
+    quantity,
+    riskAmount,
+    riskReward,
+    maxChaseDistance: null,
+    patterns: [],
+    structure: { bias: 'NEUTRAL', lastSwingHigh: null, lastSwingLow: null, breakOfStructure: 'NONE', reason: 'Mean reversion hanya aktif pada higher-timeframe range.' },
+    evidence: [
+      { label: 'Range context', points: 25, passed: true, explanation: `Higher-timeframe ADX ${higherAdx.toFixed(2)} di bawah 18.` },
+      { label: 'Stretch from mean', points: 25, passed: true, explanation: 'Harga berjarak minimal 1.2 ATR dari EMA20.' },
+      { label: 'Rejection candle', points: 20, passed: true, explanation: 'Candle close kembali ke arah mean.' },
+      { label: 'RSI extreme', points: 10, passed: true, explanation: `RSI ${entryRsi.toFixed(2)} mendukung rejection.` },
+    ],
+    blockers: [],
+    explanation: 'Research-only mean reversion: range, stretch, rejection, dan target mean EMA20.',
+  };
+}
+
 export function runBacktest({
   symbol = 'BTCUSDT',
   higherTimeframe,
@@ -506,22 +584,39 @@ export function runBacktest({
       continue;
     }
 
-    const baseSignal = evaluateIntelligentSignal({
-      higherTimeframe: higher,
-      entryTimeframe: entryTimeframe.slice(0, index + 1),
-      equity,
-      riskFraction,
-      ...signalConfig,
-    });
-    if (baseSignal.decision === 'NO_TRADE' || baseSignal.entry === null || baseSignal.stopLoss === null || baseSignal.takeProfit === null) {
-      index += 1;
-      continue;
-    }
-
     const entryPolicy = config.entryPolicy ?? 'BASELINE';
+    const baseSignal = entryPolicy === 'MEAN_REVERSION_REJECTION_HYPOTHESIS'
+      ? null
+      : evaluateIntelligentSignal({
+        higherTimeframe: higher,
+        entryTimeframe: entryTimeframe.slice(0, index + 1),
+        equity,
+        riskFraction,
+        ...signalConfig,
+      });
     let executionIndex = index;
     let entryCandle = triggerCandle;
-    let signal = baseSignal;
+    let signal: IntelligentSignal;
+    if (entryPolicy === 'MEAN_REVERSION_REJECTION_HYPOTHESIS') {
+      const meanSignal = buildMeanReversionRejectionSignal({
+        higherTimeframe: higher,
+        entryTimeframe: entryTimeframe.slice(0, index + 1),
+        equity,
+        riskFraction,
+        ...signalConfig,
+      });
+      if (!meanSignal) {
+        index += 1;
+        continue;
+      }
+      signal = meanSignal;
+    } else {
+      if (!baseSignal || baseSignal.decision === 'NO_TRADE' || baseSignal.entry === null || baseSignal.stopLoss === null || baseSignal.takeProfit === null) {
+        index += 1;
+        continue;
+      }
+      signal = baseSignal;
+    }
     if (entryPolicy === 'TRIAD_RETEST_HYPOTHESIS') {
       const previousCandle = entryTimeframe[index - 1];
       if (!previousCandle) {
@@ -529,7 +624,7 @@ export function runBacktest({
         continue;
       }
       const retest = findRetestEntry({
-        signal: baseSignal,
+        signal: baseSignal ?? signal,
         previousCandle,
         futureCandles: entryTimeframe.slice(index + 1).map((candle, offset) => ({ candle, index: index + 1 + offset })),
       });
@@ -541,7 +636,7 @@ export function runBacktest({
       entryCandle = retest.candle;
       const retestAtr = atr(entryTimeframe.slice(0, executionIndex + 1)).at(-1) ?? Number.NaN;
       signal = rebaseRetestSignal({
-        signal: baseSignal,
+        signal: baseSignal ?? signal,
         entryCandle,
         atrValue: retestAtr,
         equity,
@@ -554,7 +649,7 @@ export function runBacktest({
     }
     if (entryPolicy === 'TRIAD_FOLLOW_THROUGH_HYPOTHESIS') {
       const followThrough = findFollowThroughEntry({
-        signal: baseSignal,
+        signal: baseSignal ?? signal,
         triggerCandle,
         futureCandles: entryTimeframe.slice(index + 1).map((candle, offset) => ({ candle, index: index + 1 + offset })),
       });
@@ -566,7 +661,7 @@ export function runBacktest({
       entryCandle = followThrough.candle;
       const followThroughAtr = atr(entryTimeframe.slice(0, executionIndex + 1)).at(-1) ?? Number.NaN;
       signal = rebaseRetestSignal({
-        signal: baseSignal,
+        signal: baseSignal ?? signal,
         entryCandle,
         atrValue: followThroughAtr,
         equity,

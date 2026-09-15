@@ -165,6 +165,7 @@ type Report = {
   researchRetestVariant: ResearchVariant;
   researchFollowThroughVariant: ResearchVariant;
   researchProfitProtectionVariant: ResearchVariant;
+  researchMeanReversionVariant: ResearchVariant;
   notes: string[];
 };
 
@@ -494,6 +495,7 @@ export default function BacktestPanel() {
           <ResearchVariantPanel variant={report.researchRetestVariant} />
           <ResearchVariantPanel variant={report.researchFollowThroughVariant} />
           <ResearchVariantPanel variant={report.researchProfitProtectionVariant} />
+          <ResearchVariantPanel variant={report.researchMeanReversionVariant} />
           <div className="backtest-trades-title">Walk-forward validation</div>
           <div className="backtest-note">Tiga test window berurutan dipakai untuk melihat konsistensi performa lintas waktu. Ini bukan parameter tuning dan belum menggantikan paper execution.</div>
           <WalkForwardTable validation={report.walkForward} />

@@ -111,6 +111,11 @@ const VARIANTS = [
     rule: 'Setelah closed candle mencapai +0.5R, stop pindah ke entry pada candle berikutnya.',
     config: { exitPolicy: 'MFE_PROFIT_PROTECTION_HYPOTHESIS' as const },
   },
+  {
+    name: 'MEAN_REVERSION_REJECTION_HYPOTHESIS',
+    rule: 'Range higher timeframe, stretch minimal 1.2 ATR dari EMA20, rejection candle, RSI extreme, target kembali ke EMA20.',
+    config: { entryPolicy: 'MEAN_REVERSION_REJECTION_HYPOTHESIS' as const },
+  },
 ] as const;
 
 async function updateJob(id: string, patch: Record<string, unknown>): Promise<void> {

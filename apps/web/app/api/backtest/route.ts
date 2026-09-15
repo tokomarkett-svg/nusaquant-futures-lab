@@ -173,6 +173,16 @@ export async function POST(request: Request) {
     trainFraction: 0.7,
     warmupBars: 80,
   });
+  const meanReversionConfig = { ...config, entryPolicy: 'MEAN_REVERSION_REJECTION_HYPOTHESIS' as const };
+  const meanReversionReport = runBacktest({ symbol, higherTimeframe, entryTimeframe, config: meanReversionConfig });
+  const meanReversionValidation = runTemporalValidation({
+    symbol,
+    higherTimeframe,
+    entryTimeframe,
+    config: meanReversionConfig,
+    trainFraction: 0.7,
+    warmupBars: 80,
+  });
 
   return NextResponse.json({
     ok: true,
@@ -250,6 +260,14 @@ export async function POST(request: Request) {
         baselineValidation: validation,
         candidate: reportSummary(profitProtectionReport, entryTimeframe),
         candidateValidation: profitProtectionValidation,
+      },
+      researchMeanReversionVariant: {
+        name: 'MEAN_REVERSION_REJECTION_HYPOTHESIS',
+        rule: 'Range higher timeframe, stretch minimal 1.2 ATR dari EMA20, rejection candle, RSI extreme, target kembali ke EMA20. Research-only, bukan rule paper/live.',
+        baseline: reportSummary(report, entryTimeframe),
+        baselineValidation: validation,
+        candidate: reportSummary(meanReversionReport, entryTimeframe),
+        candidateValidation: meanReversionValidation,
       },
       notes: [
         ...report.notes,
