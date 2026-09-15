@@ -5,6 +5,7 @@ import {
   type BacktestConfig,
   type BacktestReport,
   type Candle,
+  type FundingPoint,
 } from '@nusaquant/core';
 import { Worker } from 'node:worker_threads';
 import { createWorkerSupabaseClient } from './supabase.ts';
@@ -16,6 +17,11 @@ type CandleRow = {
   low: number | string;
   close: number | string;
   volume: number | string;
+};
+
+type FundingRow = {
+  event_time: string;
+  funding_rate: number | string;
 };
 
 export type ResearchJob = {
@@ -57,6 +63,28 @@ async function readAllCandles(symbol: string, interval: string): Promise<Candle[
     if (page.length < PAGE_SIZE) break;
   }
   return rows.map(toCandle);
+}
+
+async function readAllFunding(symbol: string): Promise<FundingPoint[]> {
+  const client = createWorkerSupabaseClient();
+  const rows: FundingRow[] = [];
+  for (let offset = 0; offset < MAX_CANDLES; offset += PAGE_SIZE) {
+    const result = await client
+      .from('market_derivatives')
+      .select('event_time,funding_rate')
+      .eq('symbol', symbol)
+      .eq('metric', 'FUNDING_RATE')
+      .order('event_time', { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (result.error) {
+      console.warn(`[research] funding table belum tersedia untuk ${symbol}; funding candidate akan berstatus NOT_READY: ${result.error.message}`);
+      return [];
+    }
+    const page = (result.data ?? []) as FundingRow[];
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) break;
+  }
+  return rows.map((row) => ({ time: Date.parse(row.event_time), fundingRate: Number(row.funding_rate) })).filter((row) => Number.isFinite(row.time) && Number.isFinite(row.fundingRate));
 }
 
 function summary(report: BacktestReport, candles: Candle[]) {
@@ -121,6 +149,11 @@ const VARIANTS = [
     rule: 'Trend higher timeframe, close menembus Donchian 20 candle, range minimal 1.1 ATR, dan volume minimal 1.2x rata-rata.',
     config: { entryPolicy: 'VOLATILITY_EXPANSION_BREAKOUT_HYPOTHESIS' as const },
   },
+  {
+    name: 'FUNDING_CROWDING_REVERSION_HYPOTHESIS',
+    rule: 'Funding ekstrem >= 0.05% atau <= -0.05%, rejection candle berlawanan, target kembali ke EMA20. Funding event harus lebih lama dari candle entry.',
+    config: { entryPolicy: 'FUNDING_CROWDING_REVERSION_HYPOTHESIS' as const },
+  },
 ] as const;
 
 async function updateJob(id: string, patch: Record<string, unknown>): Promise<void> {
@@ -133,9 +166,10 @@ export async function runResearchJob(job: ResearchJob): Promise<void> {
   const startedAt = new Date().toISOString();
   await updateJob(job.id, { status: 'RUNNING', progress: 5, started_at: startedAt, error: null });
   try {
-    const [higherTimeframe, entryTimeframe] = await Promise.all([
+    const [higherTimeframe, entryTimeframe, fundingTimeframe] = await Promise.all([
       readAllCandles(job.symbol, '1h'),
       readAllCandles(job.symbol, '15m'),
+      readAllFunding(job.symbol),
     ]);
     if (higherTimeframe.length < 220 || entryTimeframe.length < 80) {
       throw new Error(`${job.symbol} belum memiliki cukup data: ${higherTimeframe.length} candle 1H dan ${entryTimeframe.length} candle 15M.`);
@@ -150,12 +184,13 @@ export async function runResearchJob(job: ResearchJob): Promise<void> {
       maxBarsInTrade: 96,
       timezone: 'Asia/Jakarta',
     };
-    const baseline = runBacktest({ symbol: job.symbol, higherTimeframe, entryTimeframe, config });
+    const baseline = runBacktest({ symbol: job.symbol, higherTimeframe, entryTimeframe, fundingTimeframe, config });
     await updateJob(job.id, { progress: 25 });
     const validation = runTemporalValidation({
       symbol: job.symbol,
       higherTimeframe,
       entryTimeframe,
+      fundingTimeframe,
       config,
       trainFraction: 0.7,
       warmupBars: 80,
@@ -165,6 +200,7 @@ export async function runResearchJob(job: ResearchJob): Promise<void> {
       symbol: job.symbol,
       higherTimeframe,
       entryTimeframe,
+      fundingTimeframe,
       config,
       foldCount: 3,
       warmupBars: 80,
@@ -174,11 +210,12 @@ export async function runResearchJob(job: ResearchJob): Promise<void> {
     const candidates: Record<string, unknown> = {};
     for (const [index, variant] of VARIANTS.entries()) {
       const variantConfig = { ...config, ...variant.config };
-      const report = runBacktest({ symbol: job.symbol, higherTimeframe, entryTimeframe, config: variantConfig });
+      const report = runBacktest({ symbol: job.symbol, higherTimeframe, entryTimeframe, fundingTimeframe, config: variantConfig });
       const temporal = runTemporalValidation({
         symbol: job.symbol,
         higherTimeframe,
         entryTimeframe,
+        fundingTimeframe,
         config: variantConfig,
         trainFraction: 0.7,
         warmupBars: 80,
@@ -187,6 +224,7 @@ export async function runResearchJob(job: ResearchJob): Promise<void> {
         symbol: job.symbol,
         higherTimeframe,
         entryTimeframe,
+        fundingTimeframe,
         config: variantConfig,
         foldCount: 3,
         warmupBars: 80,
@@ -207,6 +245,7 @@ export async function runResearchJob(job: ResearchJob): Promise<void> {
       sample: {
         higherCandles: higherTimeframe.length,
         entryCandles: entryTimeframe.length,
+        fundingPoints: fundingTimeframe.length,
         latestEntryTime: entryTimeframe.at(-1)?.time ?? null,
       },
       baseline: {

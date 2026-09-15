@@ -127,7 +127,7 @@ type ResearchCandidateResult = {
 type ResearchResult = {
   version: number;
   symbol: Symbol;
-  sample: { higherCandles: number; entryCandles: number; latestEntryTime: number | null };
+  sample: { higherCandles: number; entryCandles: number; fundingPoints?: number; latestEntryTime: number | null };
   baseline: { summary: CompactSummary; validation: Validation; walkForward: WalkForward };
   candidates: Record<string, ResearchCandidateResult>;
   notes: string[];
@@ -265,7 +265,7 @@ function ResearchJobPanel({ job }: { job: ResearchJob }) {
   return (
     <div className="research-variant-wrap">
       <div className="validation-card-title">Full-history research worker · {job.symbol}</div>
-      <div className="backtest-note">Job {job.id} · status {job.status} · progress {job.progress}% · sample {result?.sample.entryCandles ?? '—'} candle 15M / {result?.sample.higherCandles ?? '—'} candle 1H · periode {result ? `${timestamp(result.baseline.summary.periodStart)} — ${timestamp(result.baseline.summary.periodEnd)}` : '—'}</div>
+      <div className="backtest-note">Job {job.id} · status {job.status} · progress {job.progress}% · sample {result?.sample.entryCandles ?? '—'} candle 15M / {result?.sample.higherCandles ?? '—'} candle 1H / {result?.sample.fundingPoints ?? '—'} funding points · periode {result ? `${timestamp(result.baseline.summary.periodStart)} — ${timestamp(result.baseline.summary.periodEnd)}` : '—'}</div>
       {job.status === 'FAILED' ? <div className="variant-verdict variant-reject"><strong>RESEARCH JOB FAILED</strong><span>{job.error ?? 'Worker mengembalikan error tanpa detail.'}</span></div> : job.status !== 'COMPLETED' ? <div className="variant-verdict"><strong>RESEARCH JOB {job.status}</strong><span>Perhitungan berjalan di worker; tidak memakai request browser yang mudah timeout.</span></div> : result ? (
         <>
           <div className="validation-grid">

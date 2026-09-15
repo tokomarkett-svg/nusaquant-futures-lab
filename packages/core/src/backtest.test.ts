@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resolveExitPrice, runBacktest, runTemporalValidation, runWalkForwardValidation, type Candle } from './backtest.ts';
+import { resolveExitPrice, runBacktest, runTemporalValidation, runWalkForwardValidation, type Candle, type FundingPoint } from './backtest.ts';
 
 test('backtest resolves stop and target fills at their levels, not candle close', () => {
   assert.equal(resolveExitPrice({ reason: 'STOP_LOSS', stopLoss: 95, takeProfit: 110, candleClose: 104 }), 95);
@@ -107,11 +107,19 @@ test('triad timing hypothesis is a research-only filter and never increases trad
     entryTimeframe: entry,
     config: { entryPolicy: 'VOLATILITY_EXPANSION_BREAKOUT_HYPOTHESIS' },
   });
+  const funding: FundingPoint[] = entry.filter((_, index) => index % 32 === 0).map((candle, index) => ({ time: candle.time, fundingRate: index % 2 === 0 ? 0.001 : -0.001 }));
+  const fundingHypothesis = runBacktest({
+    higherTimeframe: higher,
+    entryTimeframe: entry,
+    fundingTimeframe: funding,
+    config: { entryPolicy: 'FUNDING_CROWDING_REVERSION_HYPOTHESIS' },
+  });
   assert.ok(hypothesis.totalTrades <= baseline.totalTrades);
   assert.ok(retestHypothesis.totalTrades <= baseline.totalTrades);
   assert.equal(profitProtectionHypothesis.totalTrades > 0, baseline.totalTrades > 0);
   assert.equal(Number.isFinite(meanReversionHypothesis.netPnl), true);
   assert.equal(Number.isFinite(breakoutHypothesis.netPnl), true);
+  assert.equal(Number.isFinite(fundingHypothesis.netPnl), true);
   assert.ok(profitProtectionHypothesis.trades.every((trade) => Number.isFinite(trade.stopLoss)));
   assert.ok(followThroughHypothesis.totalTrades <= baseline.totalTrades);
 });

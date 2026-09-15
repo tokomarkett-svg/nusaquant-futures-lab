@@ -2,6 +2,11 @@ import { evaluateIntelligentSignal, type IntelligentSignal } from './intelligenc
 import { adx, atr, ema, rsi, sma, type Candle, type Regime } from './index';
 import type { WindowProfile } from './opportunity';
 
+export interface FundingPoint {
+  time: number;
+  fundingRate: number;
+}
+
 export interface BacktestConfig {
   initialEquity?: number;
   riskFraction?: number;
@@ -10,7 +15,7 @@ export interface BacktestConfig {
   fundingRatePerBar?: number;
   maxBarsInTrade?: number;
   timezone?: string;
-  entryPolicy?: 'BASELINE' | 'TRIAD_TIMING_HYPOTHESIS' | 'TRIAD_RETEST_HYPOTHESIS' | 'TRIAD_FOLLOW_THROUGH_HYPOTHESIS' | 'MEAN_REVERSION_REJECTION_HYPOTHESIS' | 'VOLATILITY_EXPANSION_BREAKOUT_HYPOTHESIS';
+  entryPolicy?: 'BASELINE' | 'TRIAD_TIMING_HYPOTHESIS' | 'TRIAD_RETEST_HYPOTHESIS' | 'TRIAD_FOLLOW_THROUGH_HYPOTHESIS' | 'MEAN_REVERSION_REJECTION_HYPOTHESIS' | 'VOLATILITY_EXPANSION_BREAKOUT_HYPOTHESIS' | 'FUNDING_CROWDING_REVERSION_HYPOTHESIS';
   exitPolicy?: 'BASELINE' | 'MFE_PROFIT_PROTECTION_HYPOTHESIS';
 }
 
@@ -628,15 +633,92 @@ function buildVolatilityExpansionBreakoutSignal({
   };
 }
 
+function buildFundingCrowdingReversionSignal({
+  higherTimeframe,
+  entryTimeframe,
+  fundingTimeframe,
+  equity,
+  riskFraction,
+  feeRate,
+  slippageRate,
+  fundingRatePerBar,
+  maxBarsInTrade,
+  fundingRateValue,
+}: {
+  higherTimeframe: Candle[];
+  entryTimeframe: Candle[];
+  fundingTimeframe: FundingPoint[];
+  equity: number;
+  riskFraction: number;
+  feeRate: number;
+  slippageRate: number;
+  fundingRatePerBar: number;
+  maxBarsInTrade: number;
+  fundingRateValue?: number;
+}): IntelligentSignal | null {
+  const entryCandle = entryTimeframe.at(-1);
+  if (!entryCandle || fundingTimeframe.length === 0) return null;
+  const fundingRate = fundingRateValue ?? [...fundingTimeframe].reverse().find((point) => point.time < entryCandle.time)?.fundingRate;
+  const safeFundingRate = typeof fundingRate === 'number' && Number.isFinite(fundingRate) ? fundingRate : Number.NaN;
+  const entryAtr = atr(entryTimeframe).at(-1) ?? Number.NaN;
+  const entryEma20 = ema(entryTimeframe.map((candle) => candle.close), 20).at(-1) ?? Number.NaN;
+  if (!Number.isFinite(safeFundingRate) || !Number.isFinite(entryAtr) || !Number.isFinite(entryEma20) || entryAtr <= Number.EPSILON) return null;
+  const range = Math.max(entryCandle.high - entryCandle.low, Number.EPSILON);
+  const bullishRejection = entryCandle.close > entryCandle.open && entryCandle.close >= entryCandle.low + range * 0.65;
+  const bearishRejection = entryCandle.close < entryCandle.open && entryCandle.close <= entryCandle.high - range * 0.65;
+  const longSignal = safeFundingRate <= -0.0005 && bullishRejection;
+  const shortSignal = safeFundingRate >= 0.0005 && bearishRejection;
+  if (!longSignal && !shortSignal) return null;
+  const decision = longSignal ? 'LONG' : 'SHORT';
+  const entry = entryCandle.close;
+  const stopDistance = entryAtr * 1.2;
+  const stopLoss = longSignal ? entry - stopDistance : entry + stopDistance;
+  const meanTargetDistance = Math.abs(entryEma20 - entry);
+  if (meanTargetDistance < stopDistance * 1.2) return null;
+  const takeProfit = entryEma20;
+  const riskAmount = equity * riskFraction;
+  const estimatedCostPerUnit = (entry + stopLoss) * (feeRate + slippageRate)
+    + entry * fundingRatePerBar * maxBarsInTrade;
+  const quantity = riskAmount / Math.max(stopDistance + estimatedCostPerUnit, Number.EPSILON);
+  return {
+    decision,
+    candidate: decision,
+    stage: 'TRIGGERED',
+    timing: 'ENTER_NOW',
+    regime: 'RANGE',
+    qualityScore: 80,
+    scoreMax: 100,
+    entry,
+    triggerPrice: entry,
+    stopLoss,
+    takeProfit,
+    quantity,
+    riskAmount,
+    riskReward: meanTargetDistance / stopDistance,
+    maxChaseDistance: null,
+    patterns: [],
+    structure: { bias: 'NEUTRAL', lastSwingHigh: null, lastSwingLow: null, breakOfStructure: 'NONE', reason: 'Crowding reversion hanya aktif setelah funding ekstrem dan rejection candle.' },
+    evidence: [
+      { label: 'Funding crowding', points: 35, passed: true, explanation: `Funding terakhir ${safeFundingRate.toFixed(5)} melewati ambang ekstrem.` },
+      { label: 'Rejection candle', points: 25, passed: true, explanation: 'Candle closed menolak arah crowding.' },
+      { label: 'Mean target', points: 20, passed: true, explanation: 'EMA20 cukup jauh untuk menutup biaya dan risiko.' },
+    ],
+    blockers: [],
+    explanation: 'Research-only crowding reversal: funding ekstrem, rejection candle, dan target kembali ke EMA20.',
+  };
+}
+
 export function runBacktest({
   symbol = 'BTCUSDT',
   higherTimeframe,
   entryTimeframe,
+  fundingTimeframe = [],
   config = {},
 }: {
   symbol?: string;
   higherTimeframe: Candle[];
   entryTimeframe: Candle[];
+  fundingTimeframe?: FundingPoint[];
   config?: BacktestConfig;
 }): BacktestReport {
   const initialEquity = config.initialEquity ?? 10_000;
@@ -652,6 +734,16 @@ export function runBacktest({
   let peakEquity = initialEquity;
   let maxDrawdown = 0;
   let index = 0;
+  const fundingRateAtEntry = new Array<number>(entryTimeframe.length).fill(Number.NaN);
+  let fundingIndex = 0;
+  let latestFundingRate = Number.NaN;
+  for (let entryIndex = 0; entryIndex < entryTimeframe.length; entryIndex += 1) {
+    while (fundingIndex < fundingTimeframe.length && fundingTimeframe[fundingIndex].time < entryTimeframe[entryIndex].time) {
+      latestFundingRate = fundingTimeframe[fundingIndex].fundingRate;
+      fundingIndex += 1;
+    }
+    fundingRateAtEntry[entryIndex] = latestFundingRate;
+  }
 
   while (index < entryTimeframe.length) {
     const triggerCandle = entryTimeframe[index];
@@ -671,7 +763,11 @@ export function runBacktest({
         continue;
       }
     }
-    const baseSignal = entryPolicy === 'MEAN_REVERSION_REJECTION_HYPOTHESIS'
+    if (entryPolicy === 'FUNDING_CROWDING_REVERSION_HYPOTHESIS' && (!Number.isFinite(fundingRateAtEntry[index]) || Math.abs(fundingRateAtEntry[index]) < 0.0005)) {
+      index += 1;
+      continue;
+    }
+    const baseSignal = entryPolicy === 'MEAN_REVERSION_REJECTION_HYPOTHESIS' || entryPolicy === 'FUNDING_CROWDING_REVERSION_HYPOTHESIS'
       ? null
       : evaluateIntelligentSignal({
         higherTimeframe: higher,
@@ -696,6 +792,21 @@ export function runBacktest({
         continue;
       }
       signal = meanSignal;
+    } else if (entryPolicy === 'FUNDING_CROWDING_REVERSION_HYPOTHESIS') {
+      const fundingSignal = buildFundingCrowdingReversionSignal({
+        higherTimeframe: higher,
+        entryTimeframe: entryTimeframe.slice(0, index + 1),
+        fundingTimeframe,
+        equity,
+        riskFraction,
+        fundingRateValue: fundingRateAtEntry[index],
+        ...signalConfig,
+      });
+      if (!fundingSignal) {
+        index += 1;
+        continue;
+      }
+      signal = fundingSignal;
     } else if (entryPolicy === 'VOLATILITY_EXPANSION_BREAKOUT_HYPOTHESIS') {
       const breakoutSignal = buildVolatilityExpansionBreakoutSignal({
         higherTimeframe: higher,
@@ -932,6 +1043,7 @@ export function runTemporalValidation({
   symbol = 'BTCUSDT',
   higherTimeframe,
   entryTimeframe,
+  fundingTimeframe = [],
   config = {},
   trainFraction = 0.7,
   warmupBars = 80,
@@ -939,6 +1051,7 @@ export function runTemporalValidation({
   symbol?: string;
   higherTimeframe: Candle[];
   entryTimeframe: Candle[];
+  fundingTimeframe?: FundingPoint[];
   config?: BacktestConfig;
   trainFraction?: number;
   warmupBars?: number;
@@ -952,8 +1065,8 @@ export function runTemporalValidation({
   const inSampleCandles = entryTimeframe.slice(0, splitIndex);
   const outOfSampleCandles = entryTimeframe.slice(contextStart);
   const outOfSamplePeriod = entryTimeframe.slice(splitIndex);
-  const inSampleReport = runBacktest({ symbol, higherTimeframe, entryTimeframe: inSampleCandles, config });
-  const outOfSampleReport = runBacktest({ symbol, higherTimeframe, entryTimeframe: outOfSampleCandles, config });
+  const inSampleReport = runBacktest({ symbol, higherTimeframe, entryTimeframe: inSampleCandles, fundingTimeframe, config });
+  const outOfSampleReport = runBacktest({ symbol, higherTimeframe, entryTimeframe: outOfSampleCandles, fundingTimeframe, config });
   const notes = [
     `Temporal split ${(fraction * 100).toFixed(0)}/${((1 - fraction) * 100).toFixed(0)}; OOS memakai ${Math.max(splitIndex - contextStart, 0)} candle warmup sebelum titik split.`,
     'Parameter dan rule tidak dituning dari periode OOS; OOS hanya dipakai untuk menguji generalisasi.',
@@ -1005,6 +1118,7 @@ export function runWalkForwardValidation({
   symbol = 'BTCUSDT',
   higherTimeframe,
   entryTimeframe,
+  fundingTimeframe = [],
   config = {},
   foldCount = 3,
   warmupBars = 80,
@@ -1012,6 +1126,7 @@ export function runWalkForwardValidation({
   symbol?: string;
   higherTimeframe: Candle[];
   entryTimeframe: Candle[];
+  fundingTimeframe?: FundingPoint[];
   config?: BacktestConfig;
   foldCount?: number;
   warmupBars?: number;
@@ -1027,7 +1142,7 @@ export function runWalkForwardValidation({
     const contextStart = Math.max(0, testStartIndex - Math.max(warmupBars, 0));
     const testInput = entryTimeframe.slice(contextStart, testEndIndex);
     const testPeriod = entryTimeframe.slice(testStartIndex, testEndIndex);
-    const report = runBacktest({ symbol, higherTimeframe, entryTimeframe: testInput, config });
+    const report = runBacktest({ symbol, higherTimeframe, entryTimeframe: testInput, fundingTimeframe, config });
     folds.push({
       index: index + 1,
       trainCandles: testStartIndex,

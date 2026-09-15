@@ -44,6 +44,14 @@ Gunakan `BACKFILL_DAYS` (default 365, maksimum 730) dan jalankan sebagai job sat
 
 Untuk historical research yang lebih dapat dipertanggungjawabkan, gunakan `npm run research:backfill` dari workspace worker. Script ini mengambil bulk public USD-M futures klines dari `data.binance.vision`, bukan private API, dan menyimpan dengan `source=BINANCE_BULK_ARCHIVE`. Atur `RESEARCH_ARCHIVE_START`, `RESEARCH_ARCHIVE_END`, `RESEARCH_ARCHIVE_SYMBOLS`, dan `RESEARCH_ARCHIVE_INTERVALS`; jalankan sebagai one-shot job, jangan aktifkan di watch loop.
 
+Funding history untuk research dijalankan terpisah setelah migration `20260915010000_market_derivatives.sql` diterapkan:
+
+```text
+npm run research:funding --workspace @nusaquant/worker
+```
+
+Atur `RESEARCH_FUNDING_START`, `RESEARCH_FUNDING_END`, dan `RESEARCH_FUNDING_SYMBOLS`. Funding adalah public market data; private Binance API tidak digunakan.
+
 ## Batasan versi ini
 
 - Control dan execution hanya untuk paper session.
