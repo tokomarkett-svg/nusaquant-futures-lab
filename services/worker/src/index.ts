@@ -91,8 +91,33 @@ class PaperBroker {
     const stopHit = position.side === 'LONG' ? price <= position.stopLoss : price >= position.stopLoss;
     const targetHit = position.side === 'LONG' ? price >= position.takeProfit : price <= position.takeProfit;
     if (!stopHit && !targetHit) return null;
+    return this.closeAt(
+      stopHit ? position.stopLoss : position.takeProfit,
+      stopHit ? 'STOP_LOSS' : 'TAKE_PROFIT',
+      now,
+      costs,
+    );
+  }
 
-    const exit = stopHit ? position.stopLoss : position.takeProfit;
+  markCandle({ high, low, close, now, costs }: {
+    high: number;
+    low: number;
+    close: number;
+    now: Date;
+    costs: { feeRate: number; slippageRate: number; fundingRatePerBar: number; barMs: number };
+  }): PaperPosition | null {
+    if (!this.position) return null;
+    const position = this.position;
+    const stopHit = position.side === 'LONG' ? low <= position.stopLoss : high >= position.stopLoss;
+    const targetHit = position.side === 'LONG' ? high >= position.takeProfit : low <= position.takeProfit;
+    if (stopHit) return this.closeAt(position.stopLoss, 'STOP_LOSS', now, costs);
+    if (targetHit) return this.closeAt(position.takeProfit, 'TAKE_PROFIT', now, costs);
+    return this.mark(close, now, costs);
+  }
+
+  private closeAt(exit: number, closeReason: 'STOP_LOSS' | 'TAKE_PROFIT', now: Date, costs: { feeRate: number; slippageRate: number; fundingRatePerBar: number; barMs: number }): PaperPosition | null {
+    if (!this.position) return null;
+    const position = this.position;
     const grossPnl = position.side === 'LONG'
       ? (exit - position.entry) * position.quantity
       : (position.entry - exit) * position.quantity;
@@ -112,7 +137,7 @@ class PaperBroker {
       realizedPnl: netPnl,
       totalCosts,
       barsHeld: elapsedBars,
-      closeReason: stopHit ? 'STOP_LOSS' : 'TAKE_PROFIT',
+      closeReason,
     };
     return this.position;
   }
@@ -291,16 +316,36 @@ export class PaperBotEngine {
       fundingRatePerBar: this.fundingRatePerBar,
       barMs: 15 * 60 * 1000,
     });
-    if (closed) {
-      this.realizedPnl += closed.realizedPnl ?? 0;
-      this.dailyRealizedPnl += closed.realizedPnl ?? 0;
-      this.lastClosedPosition = closed;
-      this.status = 'COOLDOWN';
-      this.cooldownUntil = now.getTime() + 3 * 15 * 60 * 1000;
-      this.emit('POSITION', `${closed.closeReason} pada ${closed.exit}. P/L bersih ${closed.realizedPnl?.toFixed(2)} USDT; costs ${closed.totalCosts?.toFixed(2)} USDT.`);
-      this.broker.clearClosedPosition();
-      this.enforceDailyLoss(now);
-    }
+    return this.recordClosedPosition(closed, now);
+  }
+
+  onCandle({ high, low, close, now = new Date() }: { high: number; low: number; close: number; now?: Date }): WorkerSnapshot {
+    this.syncDay(now);
+    const closed = this.broker.markCandle({
+      high,
+      low,
+      close,
+      now,
+      costs: {
+        feeRate: this.feeRate,
+        slippageRate: this.slippageRate,
+        fundingRatePerBar: this.fundingRatePerBar,
+        barMs: 15 * 60 * 1000,
+      },
+    });
+    return this.recordClosedPosition(closed, now);
+  }
+
+  private recordClosedPosition(closed: PaperPosition | null, now: Date): WorkerSnapshot {
+    if (!closed) return this.snapshot();
+    this.realizedPnl += closed.realizedPnl ?? 0;
+    this.dailyRealizedPnl += closed.realizedPnl ?? 0;
+    this.lastClosedPosition = closed;
+    this.status = 'COOLDOWN';
+    this.cooldownUntil = now.getTime() + 3 * 15 * 60 * 1000;
+    this.emit('POSITION', `${closed.closeReason} pada ${closed.exit}. P/L bersih ${closed.realizedPnl?.toFixed(2)} USDT; costs ${closed.totalCosts?.toFixed(2)} USDT.`);
+    this.broker.clearClosedPosition();
+    this.enforceDailyLoss(now);
     return this.snapshot();
   }
 

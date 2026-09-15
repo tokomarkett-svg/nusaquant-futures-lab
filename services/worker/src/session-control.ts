@@ -354,15 +354,20 @@ export class PaperSessionController {
   private async markLatestPrice(session: SessionRecord, current: WorkerSnapshot): Promise<WorkerSnapshot> {
     const latest = await this.client
       .from('market_candles')
-      .select('close,open_time')
+      .select('high,low,close,open_time')
       .eq('symbol', session.symbol)
       .eq('interval', '15m')
       .order('open_time', { ascending: false })
       .limit(1)
-      .maybeSingle<{ close: number | string; open_time: string }>();
+      .maybeSingle<{ high: number | string; low: number | string; close: number | string; open_time: string }>();
     if (latest.error) throw new Error(`Gagal membaca harga paper position: ${latest.error.message}`);
     if (!latest.data) return current;
-    return this.engine?.onPriceTick(Number(latest.data.close), new Date(latest.data.open_time)) ?? current;
+    return this.engine?.onCandle({
+      high: Number(latest.data.high),
+      low: Number(latest.data.low),
+      close: Number(latest.data.close),
+      now: new Date(latest.data.open_time),
+    }) ?? current;
   }
 
   private async persistPaperState(sessionId: string, session: SessionRecord, snapshot: WorkerSnapshot): Promise<void> {

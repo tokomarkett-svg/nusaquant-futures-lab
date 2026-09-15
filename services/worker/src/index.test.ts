@@ -137,6 +137,23 @@ test('paper approval opens, closes with costs, and returns to cooldown', () => {
   assert.ok((closed.lastClosedPosition?.realizedPnl ?? 0) < 0);
 });
 
+test('paper candle mark uses OHLC and conservative stop-first intrabar fill', () => {
+  const bot = new PaperBotEngine({ mode: 'PAPER_APPROVAL', symbol: 'BTCUSDT' });
+  bot.restorePosition({
+    id: 'paper-6',
+    symbol: 'BTCUSDT',
+    side: 'LONG',
+    entry: 100,
+    quantity: 1,
+    stopLoss: 90,
+    takeProfit: 120,
+    openedAt: '2026-09-09T00:00:00.000Z',
+  });
+  const closed = bot.onCandle({ high: 121, low: 89, close: 100, now: new Date('2026-09-09T00:15:00.000Z') });
+  assert.equal(closed.lastClosedPosition?.closeReason, 'STOP_LOSS');
+  assert.equal(closed.lastClosedPosition?.exit, 90);
+});
+
 test('stale paper approval is canceled after the signal candle expires', () => {
   const bot = new PaperBotEngine({ mode: 'PAPER_APPROVAL', symbol: 'BTCUSDT' });
   const signal = {
