@@ -488,7 +488,8 @@ export class PaperSessionController {
   private async persistDerivedStatus(sessionId: string, requestedStatus: BotStatus, actualStatus: BotStatus): Promise<void> {
     const derivedStatus = actualStatus === 'RUNNING' && requestedStatus === 'COOLDOWN' ? 'RUNNING' : actualStatus;
     const riskPause = derivedStatus === 'PAUSED' && requestedStatus !== 'PAUSED';
-    const staleApprovalRecovery = derivedStatus === 'RUNNING' && requestedStatus === 'POSITION_OPEN';
+    // A stale restored approval may be cleared back to observation from either persisted status.
+    const staleApprovalRecovery = derivedStatus === 'RUNNING' && (requestedStatus === 'POSITION_OPEN' || requestedStatus === 'WAITING_APPROVAL');
     if (derivedStatus !== 'WAITING_APPROVAL' && derivedStatus !== 'POSITION_OPEN' && derivedStatus !== 'COOLDOWN' && !riskPause && !(requestedStatus === 'COOLDOWN' && derivedStatus === 'RUNNING') && !staleApprovalRecovery) return;
     if (requestedStatus === derivedStatus) return;
     const { error } = await this.client.from('bot_sessions').update({ status: derivedStatus }).eq('id', sessionId).eq('status', requestedStatus);
