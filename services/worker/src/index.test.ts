@@ -182,7 +182,7 @@ test('stale paper approval is canceled after the signal candle expires', () => {
     ...signal,
     structure: { ...signal.structure, candle_open_time: '2026-09-09T00:00:00.000Z' },
   } as IntelligentSignal);
-  const snapshot = bot.approvePending(new Date(Date.parse('2026-09-09T00:00:00.000Z') + MAX_PENDING_SIGNAL_AGE_MS + 1));
+  const snapshot = bot.expirePendingApproval(new Date(Date.parse('2026-09-09T00:00:00.000Z') + MAX_PENDING_SIGNAL_AGE_MS + 1));
   assert.equal(snapshot.status, 'RUNNING');
   assert.equal(snapshot.position, null);
   assert.match(snapshot.lastEvent ?? '', /kedaluwarsa/);

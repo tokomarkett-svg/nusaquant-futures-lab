@@ -411,16 +411,21 @@ export class PaperBotEngine {
     return this.snapshot();
   }
 
-  approvePending(now = new Date()): WorkerSnapshot {
-    if (this.status !== 'WAITING_APPROVAL' || !this.pendingSignal) {
-      this.emit('ERROR', 'Tidak ada entry valid yang menunggu persetujuan.');
-      return this.snapshot();
-    }
+  expirePendingApproval(now = new Date()): WorkerSnapshot {
+    if (this.status !== 'WAITING_APPROVAL' || !this.pendingSignal) return this.snapshot();
     if (this.pendingSignalCandleTime !== null && now.getTime() - this.pendingSignalCandleTime > MAX_PENDING_SIGNAL_AGE_MS) {
       this.pendingSignal = null;
       this.pendingSignalCandleTime = null;
       this.status = 'RUNNING';
       this.emit('STATUS', 'Pending signal kedaluwarsa setelah candle berikutnya; entry dibatalkan dan bot kembali observasi.');
+    }
+    return this.snapshot();
+  }
+
+  approvePending(now = new Date()): WorkerSnapshot {
+    this.expirePendingApproval(now);
+    if (this.status !== 'WAITING_APPROVAL' || !this.pendingSignal) {
+      this.emit('ERROR', 'Tidak ada entry valid yang menunggu persetujuan.');
       return this.snapshot();
     }
     this.openPending(now);

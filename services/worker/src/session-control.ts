@@ -174,6 +174,9 @@ export class PaperSessionController {
     await this.ensureEngine(sessionId, data);
     if (!this.engine) return null;
 
+    // A worker restart can restore an old WAITING_APPROVAL signal. Expire it
+    // before command handling so the session cannot remain stuck indefinitely.
+    this.engine.expirePendingApproval(new Date());
     const action = desiredStatusAction(data.status);
     const before = this.engine.snapshot().status;
     if (action === 'START' && data.status === 'RUNNING' && before === 'WAITING_APPROVAL') {
