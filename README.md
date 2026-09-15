@@ -231,6 +231,7 @@ npm run ingest:backfill --workspace @nusaquant/worker
 
 - Jangan menjadikan backfill sebagai start command permanen.
 - Worker memerlukan `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, dan konfigurasi session yang sesuai.
+- Full-history research worker bersifat opt-in: terapkan migration `supabase/migrations/20260915000000_research_backtest_jobs.sql`, lalu set `RUN_RESEARCH_JOBS=true` pada Railway. Jangan mengaktifkannya sebelum migration tersedia.
 
 ### Environment penting
 
@@ -290,7 +291,10 @@ git log --oneline -5
 - `services/worker/src/market-data.ts` — public Binance adapter dan polling.
 - `services/worker/src/ingest.ts` — ingestion watch.
 - `services/worker/src/backfill.ts` — one-time historical backfill.
+- `services/worker/src/research-jobs.ts` — opt-in full-history research queue worker.
+- `apps/web/app/api/backtest/jobs/route.ts` — create/status API untuk research job async.
 - `supabase/migrations/20260909000000_initial_schema.sql` — schema/RLS.
+- `supabase/migrations/20260915000000_research_backtest_jobs.sql` — queue/result schema untuk async research.
 - `docs/05-bot-controls.md` — dokumentasi kontrol bot dan backfill.
 
 ## Ringkasan Historis Commit

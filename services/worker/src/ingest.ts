@@ -2,6 +2,7 @@ import type { Candle } from '@nusaquant/core';
 import { BinancePublicMarketDataClient } from './market-data.ts';
 import { PaperSessionController, resolveBotSessionIds } from './session-control.ts';
 import { createWorkerSupabaseClient } from './supabase.ts';
+import { watchResearchJobs } from './research-jobs.ts';
 
 export interface MarketCandleRow {
   symbol: string;
@@ -79,7 +80,9 @@ async function watch(): Promise<void> {
   const sessionIds = resolveBotSessionIds(process.env.BOT_SESSION_IDS);
   console.log(JSON.stringify({ control: true, watch: true, sessionIds, at: new Date().toISOString() }));
   const controllers = sessionIds.map((sessionId) => new PaperSessionController(sessionId));
-  await Promise.all([watchIngestion(), ...controllers.map((controller) => controller.watch())]);
+  const tasks = [watchIngestion(), ...controllers.map((controller) => controller.watch())];
+  if (process.env.RUN_RESEARCH_JOBS === 'true') tasks.push(watchResearchJobs());
+  await Promise.all(tasks);
 }
 
 if (process.env.RUN_MARKET_INGEST === 'true') {

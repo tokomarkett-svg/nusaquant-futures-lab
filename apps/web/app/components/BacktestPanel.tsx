@@ -102,6 +102,46 @@ function broadcastSymbol(symbol: Symbol): void {
   window.dispatchEvent(new CustomEvent('nusaquant-symbol-change', { detail: symbol }));
 }
 
+type CompactSummary = {
+  periodStart: number | null;
+  periodEnd: number | null;
+  sampleCandles: number;
+  totalTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+  winRate: number;
+  profitFactor: number | null;
+  expectancyR: number;
+  netPnl: number;
+  maxDrawdown: number;
+  maxDrawdownPct: number;
+  gate: ValidationSummary['gate'];
+};
+type ResearchCandidateResult = {
+  name: string;
+  rule: string;
+  summary: CompactSummary;
+  validation: Validation;
+};
+type ResearchResult = {
+  version: number;
+  symbol: Symbol;
+  sample: { higherCandles: number; entryCandles: number; latestEntryTime: number | null };
+  baseline: { summary: CompactSummary; validation: Validation; walkForward: WalkForward };
+  candidates: Record<string, ResearchCandidateResult>;
+  notes: string[];
+};
+type ResearchJob = {
+  id: string;
+  symbol: Symbol;
+  status: 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+  progress: number;
+  requested_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  result: ResearchResult | null;
+  error: string | null;
+};
 type Report = {
   initialEquity: number;
   finalEquity: number;
@@ -217,6 +257,31 @@ function ExcursionAuditCard({ audit }: { audit: ExcursionAudit }) {
   );
 }
 
+function ResearchJobPanel({ job }: { job: ResearchJob }) {
+  const result = job.result;
+  return (
+    <div className="research-variant-wrap">
+      <div className="validation-card-title">Full-history research worker · {job.symbol}</div>
+      <div className="backtest-note">Job {job.id} · status {job.status} · progress {job.progress}% · sample {result?.sample.entryCandles ?? '—'} candle 15M / {result?.sample.higherCandles ?? '—'} candle 1H</div>
+      {job.status === 'FAILED' ? <div className="variant-verdict variant-reject"><strong>RESEARCH JOB FAILED</strong><span>{job.error ?? 'Worker mengembalikan error tanpa detail.'}</span></div> : job.status !== 'COMPLETED' ? <div className="variant-verdict"><strong>RESEARCH JOB {job.status}</strong><span>Perhitungan berjalan di worker; tidak memakai request browser yang mudah timeout.</span></div> : result ? (
+        <>
+          <div className="validation-grid">
+            <ValidationCard title="Full-history baseline" summary={result.baseline.summary as ValidationSummary} />
+            <ValidationCard title="Full-history OOS · 30%" summary={result.baseline.validation.outOfSample} />
+          </div>
+          <div className="backtest-note">Walk-forward aggregate: {validationGate(result.baseline.walkForward.aggregate.gate)} · {result.baseline.walkForward.aggregate.totalTrades} trades · {result.baseline.walkForward.aggregate.expectancyR.toFixed(3)}R · PF {profitFactor(result.baseline.walkForward.aggregate.profitFactor)}</div>
+          {Object.values(result.candidates).map((candidate) => (
+            <div className="backtest-note" key={candidate.name}>
+              <strong>{candidate.name}</strong> · full {money(candidate.summary.netPnl)} · {candidate.summary.expectancyR.toFixed(3)}R · PF {profitFactor(candidate.summary.profitFactor)} · OOS {money(candidate.validation.outOfSample.netPnl)} · {candidate.validation.outOfSample.expectancyR.toFixed(3)}R · PF {profitFactor(candidate.validation.outOfSample.profitFactor)}
+            </div>
+          ))}
+          {result.notes.map((note) => <div className="backtest-note" key={note}>• {note}</div>)}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 function validationGate(value: ValidationSummary['gate']): string {
   if (value === 'PASS_RESEARCH_GATE') return 'PASS';
   if (value === 'NOT_READY_SAMPLE') return 'NOT READY';
@@ -285,6 +350,7 @@ export default function BacktestPanel() {
   const [lastRunAt, setLastRunAt] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('Belum ada backtest yang dijalankan.');
+  const [researchJob, setResearchJob] = useState<ResearchJob | null>(null);
 
   useEffect(() => {
     const handleSymbolChange = (event: Event) => {
@@ -300,6 +366,44 @@ export default function BacktestPanel() {
     window.addEventListener('nusaquant-symbol-change', handleSymbolChange);
     return () => window.removeEventListener('nusaquant-symbol-change', handleSymbolChange);
   }, []);
+
+  useEffect(() => {
+    if (!researchJob || researchJob.status === 'COMPLETED' || researchJob.status === 'FAILED') return;
+    let active = true;
+    const poll = async () => {
+      const response = await fetch('/api/backtest/jobs', { cache: 'no-store' });
+      const payload = await response.json().catch(() => ({})) as { ok?: boolean; jobs?: ResearchJob[] };
+      const current = payload.jobs?.find((job) => job.id === researchJob.id);
+      if (active && current) setResearchJob(current);
+    };
+    const timer = window.setInterval(() => void poll(), 10_000);
+    void poll();
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [researchJob]);
+
+  async function startResearchJob() {
+    setResearchJob(null);
+    setMessage(`Meminta full-history research job ${symbol}…`);
+    try {
+      const response = await fetch('/api/backtest/jobs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ symbol }),
+      });
+      const payload = await response.json().catch(() => ({})) as { ok?: boolean; job?: ResearchJob; error?: string };
+      if (!response.ok || !payload.ok || !payload.job) {
+        setMessage(payload.error ?? `Research job ${symbol} gagal dibuat (HTTP ${response.status}).`);
+        return;
+      }
+      setResearchJob(payload.job);
+      setMessage(`Full-history research job ${payload.job.id} masuk queue. Worker akan menghitung di background.`);
+    } catch {
+      setMessage('Research job API tidak dapat dihubungi.');
+    }
+  }
 
   async function run() {
     setBusy(true);
@@ -357,8 +461,10 @@ export default function BacktestPanel() {
             <option value="ETHUSDT">ETHUSDT</option>
           </select>
           <button className="control-btn control-primary" disabled={busy} onClick={() => void run()}>{busy ? 'Running…' : 'Run backtest'}</button>
+          <button className="control-btn" disabled={busy || researchJob?.status === 'QUEUED' || researchJob?.status === 'RUNNING'} onClick={() => void startResearchJob()}>Full-history research</button>
         </div>
       </div>
+      {researchJob && <ResearchJobPanel job={researchJob} />}
       {report ? (
         <>
           <div className={`backtest-verdict ${report.gate === 'PASS_RESEARCH_GATE' ? 'backtest-pass' : 'backtest-review'}`}>
