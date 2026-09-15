@@ -8,6 +8,11 @@ export interface Candle {
   low: number;
   close: number;
   volume: number;
+  /** Binance kline flow fields. Optional keeps synthetic/unit-test candles valid. */
+  quoteVolume?: number;
+  takerBuyVolume?: number;
+  takerBuyQuoteVolume?: number;
+  tradeCount?: number;
 }
 
 export interface SignalEvaluation {

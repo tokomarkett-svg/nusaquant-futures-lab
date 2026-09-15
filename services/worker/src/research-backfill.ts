@@ -1,5 +1,5 @@
 import { unzipSync } from 'fflate';
-import { toMarketCandleRows } from './ingest.ts';
+import { toLegacyMarketCandleRows, toMarketCandleRows } from './ingest.ts';
 import { createWorkerSupabaseClient } from './supabase.ts';
 import type { Candle } from '@nusaquant/core';
 
@@ -8,7 +8,7 @@ const SYMBOLS = (process.env.RESEARCH_ARCHIVE_SYMBOLS ?? 'BTCUSDT,ETHUSDT').spli
 const INTERVALS = (process.env.RESEARCH_ARCHIVE_INTERVALS ?? '15m,1h').split(',').map((value) => value.trim()).filter(Boolean);
 const CHUNK_SIZE = 500;
 
-type CsvRow = [string, string, string, string, string, string];
+type CsvRow = [string, string, string, string, string, string, string, string, string, string, string, string];
 
 function monthKeys(): string[] {
   const start = process.env.RESEARCH_ARCHIVE_START ?? (() => {
@@ -49,8 +49,12 @@ function parseCsv(text: string): Candle[] {
       low: Number(fields[3]),
       close: Number(fields[4]),
       volume: Number(fields[5]),
+      quoteVolume: Number(fields[7]),
+      tradeCount: Number(fields[8]),
+      takerBuyVolume: Number(fields[9]),
+      takerBuyQuoteVolume: Number(fields[10]),
     };
-    if (![candle.time, candle.open, candle.high, candle.low, candle.close, candle.volume].every(Number.isFinite)) {
+    if (![candle.time, candle.open, candle.high, candle.low, candle.close, candle.volume, candle.quoteVolume, candle.tradeCount, candle.takerBuyVolume, candle.takerBuyQuoteVolume].every(Number.isFinite)) {
       throw new Error(`CSV candle tidak valid pada baris ${index + 1}.`);
     }
     candles.push(candle);
@@ -74,11 +78,17 @@ async function upsertChunks(symbol: string, interval: string, candles: Candle[])
   const rows = toMarketCandleRows(symbol, interval, candles).map((row) => ({ ...row, source: 'BINANCE_BULK_ARCHIVE' }));
   for (let index = 0; index < rows.length; index += CHUNK_SIZE) {
     const chunk = rows.slice(index, index + CHUNK_SIZE);
-    const { error } = await client.from('market_candles').upsert(chunk, {
+    let result = await client.from('market_candles').upsert(chunk, {
       onConflict: 'symbol,interval,open_time',
       ignoreDuplicates: false,
     });
-    if (error) throw new Error(`Upsert ${symbol} ${interval} gagal: ${error.message}`);
+    if (result.error && ['42703', 'PGRST204'].includes(result.error.code ?? '')) {
+      result = await client.from('market_candles').upsert(toLegacyMarketCandleRows(chunk), {
+        onConflict: 'symbol,interval,open_time',
+        ignoreDuplicates: false,
+      });
+    }
+    if (result.error) throw new Error(`Upsert ${symbol} ${interval} gagal: ${result.error.message}`);
   }
   return rows.length;
 }

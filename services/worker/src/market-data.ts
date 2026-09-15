@@ -73,7 +73,7 @@ export class BinancePublicMarketDataClient {
       const now = Date.now();
       return payload.map((row): Candle => {
         if (!Array.isArray(row) || row.length < 7) throw new Error('Format kline Binance tidak valid.');
-        return {
+        const candle: Candle = {
           time: assertPositive(Number(row[0]), 'open time'),
           open: assertPositive(Number(row[1]), 'open'),
           high: assertPositive(Number(row[2]), 'high'),
@@ -81,6 +81,13 @@ export class BinancePublicMarketDataClient {
           close: assertPositive(Number(row[4]), 'close'),
           volume: assertNonNegative(Number(row[5]), 'volume'),
         };
+        if (row.length >= 11) {
+          candle.quoteVolume = assertNonNegative(Number(row[7]), 'quote volume');
+          candle.tradeCount = assertNonNegative(Number(row[8]), 'trade count');
+          candle.takerBuyVolume = assertNonNegative(Number(row[9]), 'taker buy volume');
+          candle.takerBuyQuoteVolume = assertNonNegative(Number(row[10]), 'taker buy quote volume');
+        }
+        return candle;
       }).filter((candle) => !closedOnly || candle.time + duration <= now)
         .sort((left, right) => left.time - right.time);
     } finally {

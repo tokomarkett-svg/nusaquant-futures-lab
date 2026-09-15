@@ -36,6 +36,10 @@ type CandleRow = {
   low: number | string;
   close: number | string;
   volume: number | string;
+  quote_volume?: number | string | null;
+  taker_buy_volume?: number | string | null;
+  taker_buy_quote_volume?: number | string | null;
+  trade_count?: number | string | null;
 };
 
 type StoredPosition = {
@@ -87,6 +91,10 @@ function mapCandle(row: CandleRow): Candle {
     low: Number(row.low),
     close: Number(row.close),
     volume: Number(row.volume),
+    ...(row.quote_volume !== null && row.quote_volume !== undefined ? { quoteVolume: Number(row.quote_volume) } : {}),
+    ...(row.taker_buy_volume !== null && row.taker_buy_volume !== undefined ? { takerBuyVolume: Number(row.taker_buy_volume) } : {}),
+    ...(row.taker_buy_quote_volume !== null && row.taker_buy_quote_volume !== undefined ? { takerBuyQuoteVolume: Number(row.taker_buy_quote_volume) } : {}),
+    ...(row.trade_count !== null && row.trade_count !== undefined ? { tradeCount: Number(row.trade_count) } : {}),
   };
 }
 

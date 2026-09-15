@@ -6,6 +6,7 @@ import {
   type BacktestReport,
   type Candle,
   type FundingPoint,
+  type MarketMetricsPoint,
 } from '@nusaquant/core';
 import { Worker } from 'node:worker_threads';
 import { createWorkerSupabaseClient } from './supabase.ts';
@@ -17,11 +18,25 @@ type CandleRow = {
   low: number | string;
   close: number | string;
   volume: number | string;
+  quote_volume?: number | string | null;
+  taker_buy_volume?: number | string | null;
+  taker_buy_quote_volume?: number | string | null;
+  trade_count?: number | string | null;
 };
 
 type FundingRow = {
   event_time: string;
   funding_rate: number | string;
+};
+
+type MetricsRow = {
+  event_time: string;
+  open_interest: number | string;
+  open_interest_value: number | string;
+  top_trader_long_short_ratio: number | string;
+  top_trader_long_short_position_ratio: number | string;
+  long_short_ratio: number | string;
+  taker_long_short_volume_ratio: number | string;
 };
 
 export type ResearchJob = {
@@ -43,6 +58,10 @@ function toCandle(row: CandleRow): Candle {
     low: Number(row.low),
     close: Number(row.close),
     volume: Number(row.volume),
+    ...(row.quote_volume !== null && row.quote_volume !== undefined ? { quoteVolume: Number(row.quote_volume) } : {}),
+    ...(row.taker_buy_volume !== null && row.taker_buy_volume !== undefined ? { takerBuyVolume: Number(row.taker_buy_volume) } : {}),
+    ...(row.taker_buy_quote_volume !== null && row.taker_buy_quote_volume !== undefined ? { takerBuyQuoteVolume: Number(row.taker_buy_quote_volume) } : {}),
+    ...(row.trade_count !== null && row.trade_count !== undefined ? { tradeCount: Number(row.trade_count) } : {}),
   };
 }
 
@@ -50,19 +69,57 @@ async function readAllCandles(symbol: string, interval: string): Promise<Candle[
   const client = createWorkerSupabaseClient();
   const rows: CandleRow[] = [];
   for (let offset = 0; offset < MAX_CANDLES; offset += PAGE_SIZE) {
-    const result = await client
+    let result = await client
       .from('market_candles')
-      .select('open_time,open,high,low,close,volume')
+      .select('open_time,open,high,low,close,volume,quote_volume,taker_buy_volume,taker_buy_quote_volume,trade_count')
       .eq('symbol', symbol)
       .eq('interval', interval)
       .order('open_time', { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1);
+    if (result.error && ['42703', 'PGRST204'].includes(result.error.code ?? '')) {
+      result = await client
+        .from('market_candles')
+        .select('open_time,open,high,low,close,volume')
+        .eq('symbol', symbol)
+        .eq('interval', interval)
+        .order('open_time', { ascending: true })
+        .range(offset, offset + PAGE_SIZE - 1) as unknown as typeof result;
+    }
     if (result.error) throw new Error(`Query ${symbol} ${interval} gagal: ${result.error.message}`);
     const page = (result.data ?? []) as CandleRow[];
     rows.push(...page);
     if (page.length < PAGE_SIZE) break;
   }
   return rows.map(toCandle);
+}
+
+async function readAllMetrics(symbol: string): Promise<MarketMetricsPoint[]> {
+  const client = createWorkerSupabaseClient();
+  const rows: MetricsRow[] = [];
+  for (let offset = 0; offset < MAX_CANDLES * 5; offset += PAGE_SIZE) {
+    const result = await client
+      .from('market_metrics')
+      .select('event_time,open_interest,open_interest_value,top_trader_long_short_ratio,top_trader_long_short_position_ratio,long_short_ratio,taker_long_short_volume_ratio')
+      .eq('symbol', symbol)
+      .order('event_time', { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (result.error) {
+      console.warn(`[research] market_metrics belum tersedia untuk ${symbol}; liquidation candidate akan berstatus NOT_READY: ${result.error.message}`);
+      return [];
+    }
+    const page = (result.data ?? []) as MetricsRow[];
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) break;
+  }
+  return rows.map((row) => ({
+    time: Date.parse(row.event_time),
+    openInterest: Number(row.open_interest),
+    openInterestValue: Number(row.open_interest_value),
+    topTraderLongShortRatio: Number(row.top_trader_long_short_ratio),
+    topTraderLongShortPositionRatio: Number(row.top_trader_long_short_position_ratio),
+    longShortRatio: Number(row.long_short_ratio),
+    takerLongShortVolumeRatio: Number(row.taker_long_short_volume_ratio),
+  })).filter((row) => [row.time, row.openInterest, row.openInterestValue, row.topTraderLongShortRatio, row.topTraderLongShortPositionRatio, row.longShortRatio, row.takerLongShortVolumeRatio].every(Number.isFinite));
 }
 
 async function readAllFunding(symbol: string): Promise<FundingPoint[]> {
@@ -118,6 +175,26 @@ function compactReport(report: BacktestReport, candles: Candle[]) {
   };
 }
 
+type GateMetrics = Pick<BacktestReport, 'totalTrades' | 'profitFactor' | 'expectancyR'>;
+
+function passesPromotionGate(report: GateMetrics, outOfSample: GateMetrics, walkForward: GateMetrics) {
+  const positiveAfterCosts = (candidate: GateMetrics) => candidate.profitFactor !== null
+    && candidate.profitFactor >= 1.1
+    && candidate.expectancyR > 0;
+  const requirements = {
+    fullHistory: positiveAfterCosts(report),
+    outOfSample: positiveAfterCosts(outOfSample) && outOfSample.totalTrades >= 30,
+    walkForward: positiveAfterCosts(walkForward) && walkForward.totalTrades >= 30,
+  };
+  return {
+    pass: Object.values(requirements).every(Boolean),
+    requirements,
+    reason: Object.values(requirements).every(Boolean)
+      ? 'Lolos full-history, OOS minimal 30 trade, dan walk-forward setelah biaya.'
+      : 'Research-only: wajib positif setelah biaya dengan PF minimal 1.10, OOS minimal 30 trade, dan walk-forward minimal 30 trade.',
+  };
+}
+
 const VARIANTS = [
   {
     name: 'TRIAD_TIMING_HYPOTHESIS',
@@ -154,6 +231,16 @@ const VARIANTS = [
     rule: 'Funding berada di cap ekstrem >= 0.01% atau <= -0.01%, rejection candle berlawanan, target kembali ke EMA20. Funding event harus lebih lama dari candle entry.',
     config: { entryPolicy: 'FUNDING_CROWDING_REVERSION_HYPOTHESIS' as const },
   },
+  {
+    name: 'TAKER_FLOW_REJECTION_HYPOTHESIS',
+    rule: 'Taker buy ratio <= 0.38 atau >= 0.62, didahului gerak tiga candle searah flow, rejection close berlawanan, range <= 2.2 ATR, ADX 1H <= 28, target 1.5R.',
+    config: { entryPolicy: 'TAKER_FLOW_REJECTION_HYPOTHESIS' as const },
+  },
+  {
+    name: 'LIQUIDATION_RECLAIM_HYPOTHESIS',
+    rule: 'Crowding long/short ekstrem, open interest value turun minimal 0.3% dalam satu jam, taker ratio dan candle flow searah flush, price move minimal 0.2%, reclaim close, target 1.5R.',
+    config: { entryPolicy: 'LIQUIDATION_RECLAIM_HYPOTHESIS' as const },
+  },
 ] as const;
 
 async function updateJob(id: string, patch: Record<string, unknown>): Promise<void> {
@@ -166,10 +253,11 @@ export async function runResearchJob(job: ResearchJob): Promise<void> {
   const startedAt = new Date().toISOString();
   await updateJob(job.id, { status: 'RUNNING', progress: 5, started_at: startedAt, error: null });
   try {
-    const [higherTimeframe, entryTimeframe, fundingTimeframe] = await Promise.all([
+    const [higherTimeframe, entryTimeframe, fundingTimeframe, metricsTimeframe] = await Promise.all([
       readAllCandles(job.symbol, '1h'),
       readAllCandles(job.symbol, '15m'),
       readAllFunding(job.symbol),
+      readAllMetrics(job.symbol),
     ]);
     if (higherTimeframe.length < 220 || entryTimeframe.length < 80) {
       throw new Error(`${job.symbol} belum memiliki cukup data: ${higherTimeframe.length} candle 1H dan ${entryTimeframe.length} candle 15M.`);
@@ -184,13 +272,14 @@ export async function runResearchJob(job: ResearchJob): Promise<void> {
       maxBarsInTrade: 96,
       timezone: 'Asia/Jakarta',
     };
-    const baseline = runBacktest({ symbol: job.symbol, higherTimeframe, entryTimeframe, fundingTimeframe, config });
+    const baseline = runBacktest({ symbol: job.symbol, higherTimeframe, entryTimeframe, fundingTimeframe, metricsTimeframe, config });
     await updateJob(job.id, { progress: 25 });
     const validation = runTemporalValidation({
       symbol: job.symbol,
       higherTimeframe,
       entryTimeframe,
       fundingTimeframe,
+      metricsTimeframe,
       config,
       trainFraction: 0.7,
       warmupBars: 80,
@@ -201,21 +290,24 @@ export async function runResearchJob(job: ResearchJob): Promise<void> {
       higherTimeframe,
       entryTimeframe,
       fundingTimeframe,
+      metricsTimeframe,
       config,
       foldCount: 3,
       warmupBars: 80,
     });
+    const baselinePromotionGate = passesPromotionGate(baseline, validation.outOfSample, walkForward.aggregate);
     await updateJob(job.id, { progress: 55 });
 
     const candidates: Record<string, unknown> = {};
     for (const [index, variant] of VARIANTS.entries()) {
       const variantConfig = { ...config, ...variant.config };
-      const report = runBacktest({ symbol: job.symbol, higherTimeframe, entryTimeframe, fundingTimeframe, config: variantConfig });
+      const report = runBacktest({ symbol: job.symbol, higherTimeframe, entryTimeframe, fundingTimeframe, metricsTimeframe, config: variantConfig });
       const temporal = runTemporalValidation({
         symbol: job.symbol,
         higherTimeframe,
         entryTimeframe,
         fundingTimeframe,
+        metricsTimeframe,
         config: variantConfig,
         trainFraction: 0.7,
         warmupBars: 80,
@@ -225,16 +317,19 @@ export async function runResearchJob(job: ResearchJob): Promise<void> {
         higherTimeframe,
         entryTimeframe,
         fundingTimeframe,
+        metricsTimeframe,
         config: variantConfig,
         foldCount: 3,
         warmupBars: 80,
       });
+      const promotionGate = passesPromotionGate(report, temporal.outOfSample, walkForward.aggregate);
       candidates[variant.name] = {
         name: variant.name,
         rule: variant.rule,
         ...compactReport(report, entryTimeframe),
         validation: temporal,
         walkForward,
+        promotionGate,
       };
       await updateJob(job.id, { progress: 60 + Math.floor(((index + 1) / VARIANTS.length) * 35) });
     }
@@ -246,12 +341,14 @@ export async function runResearchJob(job: ResearchJob): Promise<void> {
         higherCandles: higherTimeframe.length,
         entryCandles: entryTimeframe.length,
         fundingPoints: fundingTimeframe.length,
+        metricsPoints: metricsTimeframe.length,
         latestEntryTime: entryTimeframe.at(-1)?.time ?? null,
       },
       baseline: {
         ...compactReport(baseline, entryTimeframe),
         validation,
         walkForward,
+        promotionGate: baselinePromotionGate,
       },
       candidates,
       notes: [

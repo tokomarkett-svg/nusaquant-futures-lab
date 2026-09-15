@@ -13,7 +13,15 @@ export interface MarketCandleRow {
   low: number;
   close: number;
   volume: number;
+  quote_volume?: number;
+  taker_buy_volume?: number;
+  taker_buy_quote_volume?: number;
+  trade_count?: number;
   source: string;
+}
+
+export function toLegacyMarketCandleRows(rows: MarketCandleRow[]): Array<Omit<MarketCandleRow, 'quote_volume' | 'taker_buy_volume' | 'taker_buy_quote_volume' | 'trade_count'>> {
+  return rows.map(({ quote_volume: _quoteVolume, taker_buy_volume: _takerBuyVolume, taker_buy_quote_volume: _takerBuyQuoteVolume, trade_count: _tradeCount, ...legacy }) => legacy);
 }
 
 export function toMarketCandleRows(symbol: string, interval: string, candles: Candle[]): MarketCandleRow[] {
@@ -26,6 +34,10 @@ export function toMarketCandleRows(symbol: string, interval: string, candles: Ca
     low: candle.low,
     close: candle.close,
     volume: candle.volume,
+    ...(Number.isFinite(candle.quoteVolume) ? { quote_volume: candle.quoteVolume } : {}),
+    ...(Number.isFinite(candle.takerBuyVolume) ? { taker_buy_volume: candle.takerBuyVolume } : {}),
+    ...(Number.isFinite(candle.takerBuyQuoteVolume) ? { taker_buy_quote_volume: candle.takerBuyQuoteVolume } : {}),
+    ...(Number.isFinite(candle.tradeCount) ? { trade_count: candle.tradeCount } : {}),
     source: 'BINANCE_PUBLIC',
   }));
 }
@@ -46,11 +58,17 @@ export async function ingestSymbol({
   for (const interval of intervals) {
     const candles = await market.getKlines({ symbol, interval, limit, closedOnly: true });
     const rows = toMarketCandleRows(symbol, interval, candles);
-    const { error } = await client.from('market_candles').upsert(rows, {
+    let result = await client.from('market_candles').upsert(rows, {
       onConflict: 'symbol,interval,open_time',
       ignoreDuplicates: false,
     });
-    if (error) throw new Error(`Gagal menyimpan ${symbol} ${interval}: ${error.message}`);
+    if (result.error && ['42703', 'PGRST204'].includes(result.error.code ?? '')) {
+      result = await client.from('market_candles').upsert(toLegacyMarketCandleRows(rows), {
+        onConflict: 'symbol,interval,open_time',
+        ignoreDuplicates: false,
+      });
+    }
+    if (result.error) throw new Error(`Gagal menyimpan ${symbol} ${interval}: ${result.error.message}`);
     counts[interval] = rows.length;
   }
 

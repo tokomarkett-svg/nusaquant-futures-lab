@@ -7,6 +7,16 @@ export interface FundingPoint {
   fundingRate: number;
 }
 
+export interface MarketMetricsPoint {
+  time: number;
+  openInterest: number;
+  openInterestValue: number;
+  topTraderLongShortRatio: number;
+  topTraderLongShortPositionRatio: number;
+  longShortRatio: number;
+  takerLongShortVolumeRatio: number;
+}
+
 export interface BacktestConfig {
   initialEquity?: number;
   riskFraction?: number;
@@ -15,7 +25,7 @@ export interface BacktestConfig {
   fundingRatePerBar?: number;
   maxBarsInTrade?: number;
   timezone?: string;
-  entryPolicy?: 'BASELINE' | 'TRIAD_TIMING_HYPOTHESIS' | 'TRIAD_RETEST_HYPOTHESIS' | 'TRIAD_FOLLOW_THROUGH_HYPOTHESIS' | 'MEAN_REVERSION_REJECTION_HYPOTHESIS' | 'VOLATILITY_EXPANSION_BREAKOUT_HYPOTHESIS' | 'FUNDING_CROWDING_REVERSION_HYPOTHESIS';
+  entryPolicy?: 'BASELINE' | 'TRIAD_TIMING_HYPOTHESIS' | 'TRIAD_RETEST_HYPOTHESIS' | 'TRIAD_FOLLOW_THROUGH_HYPOTHESIS' | 'MEAN_REVERSION_REJECTION_HYPOTHESIS' | 'VOLATILITY_EXPANSION_BREAKOUT_HYPOTHESIS' | 'FUNDING_CROWDING_REVERSION_HYPOTHESIS' | 'TAKER_FLOW_REJECTION_HYPOTHESIS' | 'LIQUIDATION_RECLAIM_HYPOTHESIS';
   exitPolicy?: 'BASELINE' | 'MFE_PROFIT_PROTECTION_HYPOTHESIS';
 }
 
@@ -633,6 +643,194 @@ function buildVolatilityExpansionBreakoutSignal({
   };
 }
 
+function buildLiquidationReclaimSignal({
+  higherTimeframe,
+  entryTimeframe,
+  metricsValue,
+  previousMetricsValue,
+  equity,
+  riskFraction,
+  feeRate,
+  slippageRate,
+  fundingRatePerBar,
+  maxBarsInTrade,
+}: {
+  higherTimeframe: Candle[];
+  entryTimeframe: Candle[];
+  metricsValue?: MarketMetricsPoint;
+  previousMetricsValue?: MarketMetricsPoint;
+  equity: number;
+  riskFraction: number;
+  feeRate: number;
+  slippageRate: number;
+  fundingRatePerBar: number;
+  maxBarsInTrade: number;
+}): IntelligentSignal | null {
+  const entryCandle = entryTimeframe.at(-1);
+  if (!entryCandle || !metricsValue) return null;
+  const previousMetric = previousMetricsValue;
+  if (!previousMetric || previousMetric.openInterestValue <= 0) return null;
+  const entryAtr = atr(entryTimeframe).at(-1) ?? Number.NaN;
+  const higherAdx = adx(higherTimeframe).at(-1) ?? Number.NaN;
+  const candleFlow = entryCandle.volume > 0 && entryCandle.takerBuyVolume !== undefined
+    ? entryCandle.takerBuyVolume / entryCandle.volume
+    : Number.NaN;
+  const openInterestChange = metricsValue.openInterestValue / previousMetric.openInterestValue - 1;
+  const priceMove = entryTimeframe.length >= 5
+    ? entryCandle.close / (entryTimeframe.at(-5)?.close ?? entryCandle.close) - 1
+    : Number.NaN;
+  if (!Number.isFinite(entryAtr) || !Number.isFinite(higherAdx) || !Number.isFinite(candleFlow) || !Number.isFinite(openInterestChange) || !Number.isFinite(priceMove) || entryAtr <= Number.EPSILON) return null;
+
+  const crowdedLong = metricsValue.topTraderLongShortRatio >= 1.5
+    && metricsValue.topTraderLongShortPositionRatio >= 1.5
+    && metricsValue.longShortRatio >= 1.5;
+  const crowdedShort = metricsValue.topTraderLongShortRatio <= 1 / 1.5
+    && metricsValue.topTraderLongShortPositionRatio <= 1 / 1.5
+    && metricsValue.longShortRatio <= 1 / 1.5;
+  const longReclaim = crowdedLong
+    && openInterestChange <= -0.003
+    && metricsValue.takerLongShortVolumeRatio <= 0.75
+    && candleFlow <= 0.45
+    && priceMove <= -0.002
+    && entryCandle.close > entryCandle.open
+    && higherAdx <= 28;
+  const shortReclaim = crowdedShort
+    && openInterestChange <= -0.003
+    && metricsValue.takerLongShortVolumeRatio >= 1 / 0.75
+    && candleFlow >= 0.55
+    && priceMove >= 0.002
+    && entryCandle.close < entryCandle.open
+    && higherAdx <= 28;
+  if (!longReclaim && !shortReclaim) return null;
+
+  const decision = longReclaim ? 'LONG' : 'SHORT';
+  const entry = entryCandle.close;
+  const stopDistance = entryAtr * 1.2;
+  const stopLoss = longReclaim ? entry - stopDistance : entry + stopDistance;
+  const takeProfit = longReclaim ? entry + stopDistance * 1.5 : entry - stopDistance * 1.5;
+  const riskAmount = equity * riskFraction;
+  const estimatedCostPerUnit = (entry + stopLoss) * (feeRate + slippageRate)
+    + entry * fundingRatePerBar * maxBarsInTrade;
+  const quantity = riskAmount / Math.max(stopDistance + estimatedCostPerUnit, Number.EPSILON);
+  return {
+    decision,
+    candidate: decision,
+    stage: 'TRIGGERED',
+    timing: 'ENTER_NOW',
+    regime: 'RANGE',
+    qualityScore: 84,
+    scoreMax: 100,
+    entry,
+    triggerPrice: entry,
+    stopLoss,
+    takeProfit,
+    quantity,
+    riskAmount,
+    riskReward: 1.5,
+    maxChaseDistance: null,
+    patterns: [],
+    structure: { bias: 'NEUTRAL', lastSwingHigh: null, lastSwingLow: null, breakOfStructure: 'NONE', reason: 'Open interest turun saat crowding ekstrem dan candle merebut kembali arah berlawanan.' },
+    evidence: [
+      { label: 'Crowding ratio', points: 25, passed: true, explanation: `Long/short crowding ${longReclaim ? 'long' : 'short'} ekstrem pada top trader dan akun.` },
+      { label: 'Open-interest flush', points: 25, passed: true, explanation: `Open interest value berubah ${(openInterestChange * 100).toFixed(2)}% dalam satu jam.` },
+      { label: 'Taker-flow confirmation', points: 20, passed: true, explanation: `Taker long/short ratio ${metricsValue.takerLongShortVolumeRatio.toFixed(2)} dan candle flow mendukung reclaim.` },
+      { label: 'Price reclaim', points: 14, passed: true, explanation: 'Harga bergerak melawan crowding lalu candle terakhir closed kembali berlawanan.' },
+    ],
+    blockers: [],
+    explanation: 'Research-only liquidation reclaim: crowding ekstrem, open-interest flush, taker-flow, dan reclaim candle.',
+  };
+}
+
+function buildTakerFlowRejectionSignal({
+  higherTimeframe,
+  entryTimeframe,
+  equity,
+  riskFraction,
+  feeRate,
+  slippageRate,
+  fundingRatePerBar,
+  maxBarsInTrade,
+}: {
+  higherTimeframe: Candle[];
+  entryTimeframe: Candle[];
+  equity: number;
+  riskFraction: number;
+  feeRate: number;
+  slippageRate: number;
+  fundingRatePerBar: number;
+  maxBarsInTrade: number;
+}): IntelligentSignal | null {
+  const entryCandle = entryTimeframe.at(-1);
+  const previousCandles = entryTimeframe.slice(-4, -1);
+  if (!entryCandle || previousCandles.length < 3) return null;
+  const takerBuyVolume = entryCandle.takerBuyVolume;
+  if (takerBuyVolume === undefined || !Number.isFinite(takerBuyVolume) || entryCandle.volume <= 0) return null;
+
+  const flowRatio = takerBuyVolume / entryCandle.volume;
+  const entryAtr = atr(entryTimeframe).at(-1) ?? Number.NaN;
+  const higherAdx = adx(higherTimeframe).at(-1) ?? Number.NaN;
+  const higherEma50 = ema(higherTimeframe.map((candle) => candle.close), 50).at(-1) ?? Number.NaN;
+  const averageVolume = sma(entryTimeframe.map((candle) => candle.volume), 20).at(-1) ?? Number.NaN;
+  if (!Number.isFinite(entryAtr) || !Number.isFinite(higherAdx) || !Number.isFinite(higherEma50) || !Number.isFinite(averageVolume) || entryAtr <= Number.EPSILON || averageVolume <= 0) return null;
+
+  const range = Math.max(entryCandle.high - entryCandle.low, Number.EPSILON);
+  const body = Math.abs(entryCandle.close - entryCandle.open);
+  const volumeRatio = entryCandle.volume / averageVolume;
+  const priorMoveDown = previousCandles[0].close > previousCandles[1].close && previousCandles[1].close > previousCandles[2].close;
+  const priorMoveUp = previousCandles[0].close < previousCandles[1].close && previousCandles[1].close < previousCandles[2].close;
+  const bullishRejection = entryCandle.close > entryCandle.open
+    && entryCandle.close >= entryCandle.low + range * 0.65
+    && entryCandle.close - entryCandle.low >= range * 0.45;
+  const bearishRejection = entryCandle.close < entryCandle.open
+    && entryCandle.close <= entryCandle.low + range * 0.35
+    && entryCandle.high - entryCandle.close >= range * 0.45;
+  const orderlyRange = range <= entryAtr * 2.2 && body >= range * 0.12;
+  const usableVolume = volumeRatio >= 0.8;
+  const longSignal = flowRatio <= 0.38 && priorMoveDown && bullishRejection && orderlyRange && usableVolume && higherAdx <= 28;
+  const shortSignal = flowRatio >= 0.62 && priorMoveUp && bearishRejection && orderlyRange && usableVolume && higherAdx <= 28;
+  if (!longSignal && !shortSignal) return null;
+
+  const decision = longSignal ? 'LONG' : 'SHORT';
+  const entry = entryCandle.close;
+  const stopDistance = Math.max(entryAtr * 1.15, longSignal ? entry - entryCandle.low + entryAtr * 0.25 : entryCandle.high - entry + entryAtr * 0.25);
+  const stopLoss = longSignal ? entry - stopDistance : entry + stopDistance;
+  const takeProfit = longSignal ? entry + stopDistance * 1.5 : entry - stopDistance * 1.5;
+  const riskAmount = equity * riskFraction;
+  const estimatedCostPerUnit = (entry + stopLoss) * (feeRate + slippageRate)
+    + entry * fundingRatePerBar * maxBarsInTrade;
+  const quantity = riskAmount / Math.max(stopDistance + estimatedCostPerUnit, Number.EPSILON);
+  const higherClose = higherTimeframe.at(-1)?.close ?? entry;
+  const regime = higherClose >= higherEma50 ? 'TREND_UP' : 'TREND_DOWN';
+
+  return {
+    decision,
+    candidate: decision,
+    stage: 'TRIGGERED',
+    timing: 'ENTER_NOW',
+    regime,
+    qualityScore: 82,
+    scoreMax: 100,
+    entry,
+    triggerPrice: entry,
+    stopLoss,
+    takeProfit,
+    quantity,
+    riskAmount,
+    riskReward: 1.5,
+    maxChaseDistance: null,
+    patterns: [],
+    structure: { bias: 'NEUTRAL', lastSwingHigh: null, lastSwingLow: null, breakOfStructure: 'NONE', reason: 'Taker-flow satu arah gagal mendorong close dan ditolak kembali.' },
+    evidence: [
+      { label: 'Taker-flow imbalance', points: 30, passed: true, explanation: `Taker buy ratio ${flowRatio.toFixed(3)} menunjukkan tekanan ${longSignal ? 'jual' : 'beli'} yang ekstrem.` },
+      { label: 'Price rejection', points: 25, passed: true, explanation: 'Close berlawanan dengan tekanan taker dan berada dekat sisi rejection candle.' },
+      { label: 'Three-candle exhaustion', points: 15, passed: true, explanation: `Harga bergerak ${longSignal ? 'turun' : 'naik'} sebelum rejection.` },
+      { label: 'Range regime filter', points: 12, passed: true, explanation: `ADX 1H ${higherAdx.toFixed(2)} tidak menunjukkan trend terlalu kuat.` },
+    ],
+    blockers: [],
+    explanation: 'Research-only taker-flow rejection: aggressive flow, exhaustion tiga candle, rejection close, dan biaya konservatif.',
+  };
+}
+
 const FUNDING_EXTREME_THRESHOLD = 0.0001;
 
 function buildFundingCrowdingReversionSignal({
@@ -715,12 +913,14 @@ export function runBacktest({
   higherTimeframe,
   entryTimeframe,
   fundingTimeframe = [],
+  metricsTimeframe = [],
   config = {},
 }: {
   symbol?: string;
   higherTimeframe: Candle[];
   entryTimeframe: Candle[];
   fundingTimeframe?: FundingPoint[];
+  metricsTimeframe?: MarketMetricsPoint[];
   config?: BacktestConfig;
 }): BacktestReport {
   const initialEquity = config.initialEquity ?? 10_000;
@@ -737,14 +937,31 @@ export function runBacktest({
   let maxDrawdown = 0;
   let index = 0;
   const fundingRateAtEntry = new Array<number>(entryTimeframe.length).fill(Number.NaN);
+  const metricsAtEntry: Array<MarketMetricsPoint | undefined> = new Array(entryTimeframe.length).fill(undefined);
+  const previousMetricsAtEntry: Array<MarketMetricsPoint | undefined> = new Array(entryTimeframe.length).fill(undefined);
   let fundingIndex = 0;
+  let metricsIndex = 0;
+  let previousMetricsIndex = -1;
   let latestFundingRate = Number.NaN;
+  let latestMetrics: MarketMetricsPoint | undefined;
   for (let entryIndex = 0; entryIndex < entryTimeframe.length; entryIndex += 1) {
     while (fundingIndex < fundingTimeframe.length && fundingTimeframe[fundingIndex].time < entryTimeframe[entryIndex].time) {
       latestFundingRate = fundingTimeframe[fundingIndex].fundingRate;
       fundingIndex += 1;
     }
+    // Entry is evaluated after the 15m candle closes; metrics through that close are allowed.
+    const candleCloseTime = entryTimeframe[entryIndex].time + 15 * 60 * 1000;
+    while (metricsIndex < metricsTimeframe.length && metricsTimeframe[metricsIndex].time <= candleCloseTime) {
+      latestMetrics = metricsTimeframe[metricsIndex];
+      metricsIndex += 1;
+    }
+    const previousMetricsCutoff = candleCloseTime - 60 * 60 * 1000;
+    while (previousMetricsIndex + 1 < metricsTimeframe.length && metricsTimeframe[previousMetricsIndex + 1].time <= previousMetricsCutoff) {
+      previousMetricsIndex += 1;
+    }
     fundingRateAtEntry[entryIndex] = latestFundingRate;
+    metricsAtEntry[entryIndex] = latestMetrics;
+    previousMetricsAtEntry[entryIndex] = previousMetricsIndex >= 0 ? metricsTimeframe[previousMetricsIndex] : undefined;
   }
 
   while (index < entryTimeframe.length) {
@@ -769,7 +986,11 @@ export function runBacktest({
       index += 1;
       continue;
     }
-    const baseSignal = entryPolicy === 'MEAN_REVERSION_REJECTION_HYPOTHESIS' || entryPolicy === 'FUNDING_CROWDING_REVERSION_HYPOTHESIS'
+    if (entryPolicy === 'LIQUIDATION_RECLAIM_HYPOTHESIS' && (!metricsAtEntry[index] || metricsTimeframe.length === 0)) {
+      index += 1;
+      continue;
+    }
+    const baseSignal = entryPolicy === 'MEAN_REVERSION_REJECTION_HYPOTHESIS' || entryPolicy === 'FUNDING_CROWDING_REVERSION_HYPOTHESIS' || entryPolicy === 'TAKER_FLOW_REJECTION_HYPOTHESIS' || entryPolicy === 'LIQUIDATION_RECLAIM_HYPOTHESIS'
       ? null
       : evaluateIntelligentSignal({
         higherTimeframe: higher,
@@ -809,6 +1030,34 @@ export function runBacktest({
         continue;
       }
       signal = fundingSignal;
+    } else if (entryPolicy === 'TAKER_FLOW_REJECTION_HYPOTHESIS') {
+      const flowSignal = buildTakerFlowRejectionSignal({
+        higherTimeframe: higher,
+        entryTimeframe: entryTimeframe.slice(0, index + 1),
+        equity,
+        riskFraction,
+        ...signalConfig,
+      });
+      if (!flowSignal) {
+        index += 1;
+        continue;
+      }
+      signal = flowSignal;
+    } else if (entryPolicy === 'LIQUIDATION_RECLAIM_HYPOTHESIS') {
+      const liquidationSignal = buildLiquidationReclaimSignal({
+        higherTimeframe: higher,
+        entryTimeframe: entryTimeframe.slice(0, index + 1),
+        metricsValue: metricsAtEntry[index],
+        previousMetricsValue: previousMetricsAtEntry[index],
+        equity,
+        riskFraction,
+        ...signalConfig,
+      });
+      if (!liquidationSignal) {
+        index += 1;
+        continue;
+      }
+      signal = liquidationSignal;
     } else if (entryPolicy === 'VOLATILITY_EXPANSION_BREAKOUT_HYPOTHESIS') {
       const breakoutSignal = buildVolatilityExpansionBreakoutSignal({
         higherTimeframe: higher,
@@ -1046,6 +1295,7 @@ export function runTemporalValidation({
   higherTimeframe,
   entryTimeframe,
   fundingTimeframe = [],
+  metricsTimeframe = [],
   config = {},
   trainFraction = 0.7,
   warmupBars = 80,
@@ -1054,6 +1304,7 @@ export function runTemporalValidation({
   higherTimeframe: Candle[];
   entryTimeframe: Candle[];
   fundingTimeframe?: FundingPoint[];
+  metricsTimeframe?: MarketMetricsPoint[];
   config?: BacktestConfig;
   trainFraction?: number;
   warmupBars?: number;
@@ -1067,8 +1318,8 @@ export function runTemporalValidation({
   const inSampleCandles = entryTimeframe.slice(0, splitIndex);
   const outOfSampleCandles = entryTimeframe.slice(contextStart);
   const outOfSamplePeriod = entryTimeframe.slice(splitIndex);
-  const inSampleReport = runBacktest({ symbol, higherTimeframe, entryTimeframe: inSampleCandles, fundingTimeframe, config });
-  const outOfSampleReport = runBacktest({ symbol, higherTimeframe, entryTimeframe: outOfSampleCandles, fundingTimeframe, config });
+  const inSampleReport = runBacktest({ symbol, higherTimeframe, entryTimeframe: inSampleCandles, fundingTimeframe, metricsTimeframe, config });
+  const outOfSampleReport = runBacktest({ symbol, higherTimeframe, entryTimeframe: outOfSampleCandles, fundingTimeframe, metricsTimeframe, config });
   const notes = [
     `Temporal split ${(fraction * 100).toFixed(0)}/${((1 - fraction) * 100).toFixed(0)}; OOS memakai ${Math.max(splitIndex - contextStart, 0)} candle warmup sebelum titik split.`,
     'Parameter dan rule tidak dituning dari periode OOS; OOS hanya dipakai untuk menguji generalisasi.',
@@ -1121,6 +1372,7 @@ export function runWalkForwardValidation({
   higherTimeframe,
   entryTimeframe,
   fundingTimeframe = [],
+  metricsTimeframe = [],
   config = {},
   foldCount = 3,
   warmupBars = 80,
@@ -1129,6 +1381,7 @@ export function runWalkForwardValidation({
   higherTimeframe: Candle[];
   entryTimeframe: Candle[];
   fundingTimeframe?: FundingPoint[];
+  metricsTimeframe?: MarketMetricsPoint[];
   config?: BacktestConfig;
   foldCount?: number;
   warmupBars?: number;
@@ -1144,7 +1397,7 @@ export function runWalkForwardValidation({
     const contextStart = Math.max(0, testStartIndex - Math.max(warmupBars, 0));
     const testInput = entryTimeframe.slice(contextStart, testEndIndex);
     const testPeriod = entryTimeframe.slice(testStartIndex, testEndIndex);
-    const report = runBacktest({ symbol, higherTimeframe, entryTimeframe: testInput, fundingTimeframe, config });
+    const report = runBacktest({ symbol, higherTimeframe, entryTimeframe: testInput, fundingTimeframe, metricsTimeframe, config });
     folds.push({
       index: index + 1,
       trainCandles: testStartIndex,
