@@ -151,7 +151,7 @@ const VARIANTS = [
   },
   {
     name: 'FUNDING_CROWDING_REVERSION_HYPOTHESIS',
-    rule: 'Funding ekstrem >= 0.05% atau <= -0.05%, rejection candle berlawanan, target kembali ke EMA20. Funding event harus lebih lama dari candle entry.',
+    rule: 'Funding berada di cap ekstrem >= 0.01% atau <= -0.01%, rejection candle berlawanan, target kembali ke EMA20. Funding event harus lebih lama dari candle entry.',
     config: { entryPolicy: 'FUNDING_CROWDING_REVERSION_HYPOTHESIS' as const },
   },
 ] as const;

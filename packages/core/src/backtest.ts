@@ -633,6 +633,8 @@ function buildVolatilityExpansionBreakoutSignal({
   };
 }
 
+const FUNDING_EXTREME_THRESHOLD = 0.0001;
+
 function buildFundingCrowdingReversionSignal({
   higherTimeframe,
   entryTimeframe,
@@ -666,8 +668,8 @@ function buildFundingCrowdingReversionSignal({
   const range = Math.max(entryCandle.high - entryCandle.low, Number.EPSILON);
   const bullishRejection = entryCandle.close > entryCandle.open && entryCandle.close >= entryCandle.low + range * 0.65;
   const bearishRejection = entryCandle.close < entryCandle.open && entryCandle.close <= entryCandle.high - range * 0.65;
-  const longSignal = safeFundingRate <= -0.0005 && bullishRejection;
-  const shortSignal = safeFundingRate >= 0.0005 && bearishRejection;
+  const longSignal = safeFundingRate <= -FUNDING_EXTREME_THRESHOLD && bullishRejection;
+  const shortSignal = safeFundingRate >= FUNDING_EXTREME_THRESHOLD && bearishRejection;
   if (!longSignal && !shortSignal) return null;
   const decision = longSignal ? 'LONG' : 'SHORT';
   const entry = entryCandle.close;
@@ -763,7 +765,7 @@ export function runBacktest({
         continue;
       }
     }
-    if (entryPolicy === 'FUNDING_CROWDING_REVERSION_HYPOTHESIS' && (!Number.isFinite(fundingRateAtEntry[index]) || Math.abs(fundingRateAtEntry[index]) < 0.0005)) {
+    if (entryPolicy === 'FUNDING_CROWDING_REVERSION_HYPOTHESIS' && (!Number.isFinite(fundingRateAtEntry[index]) || Math.abs(fundingRateAtEntry[index]) < FUNDING_EXTREME_THRESHOLD)) {
       index += 1;
       continue;
     }

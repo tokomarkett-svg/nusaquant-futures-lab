@@ -42,7 +42,7 @@ Data source: `data.binance.vision`, USD-M futures, BTCUSDT and ETHUSDT, Septembe
 
 The OHLCV-only breakout family is rejected on both assets. It is not allowed into paper approval. This is a useful failure: it survives a longer and more realistic history but does not produce an edge after costs.
 
-The evidence now points away from adding another arbitrary price-only threshold. The next research branch is now implemented as `FUNDING_CROWDING_REVERSION_HYPOTHESIS`: use a funding observation strictly earlier than the entry candle, require an extreme fixed funding value and an opposite rejection candle, then target EMA20. It remains research-only.
+The evidence now points away from adding another arbitrary price-only threshold. The next research branch is now implemented as `FUNDING_CROWDING_REVERSION_HYPOTHESIS`: use a funding observation strictly earlier than the entry candle, require the exchange cap-level funding extreme of ±0.01% and an opposite rejection candle, then target EMA20. The earlier ±0.05% draft was impossible for this archive because Binance funding values did not reach it; that run correctly produced zero trades and is not evidence for or against the hypothesis. It remains research-only.
 
 Funding history has a dedicated public-data backfill and `market_derivatives` table. Binance provides a public funding-rate history endpoint; open-interest history has a much shorter availability window, so it must not be presented as a one-year feature until the local store has enough observations.
 
