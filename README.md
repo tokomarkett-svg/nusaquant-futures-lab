@@ -6,19 +6,21 @@ NusaQuant Futures Lab adalah platform riset dan paper-trading untuk Binance USD�
 
 ## Handoff singkat untuk sesi/agent berikutnya
 
-**Tanggal status:** 11 September 2026, Asia/Jakarta
+**Tanggal status:** 16 September 2026, Asia/Jakarta
 **Branch:** `main`
-**Commit fitur terakhir:** `04e03ab feat: add persisted paper metrics dashboard`
 **Repository:** `tokomarkett-svg/nusaquant-futures-lab`
+**Dokumen keputusan terakhir:** `docs/17-derivatives-research-and-tooling-2026-09-16.md`
 
 ### Mulai dari sini
 
-1. Baca bagian **Status Saat Ini**, **Temuan Backtest**, dan **Pekerjaan Berikutnya**.
-2. Jalankan `git status --short --branch` dan pastikan tidak ada perubahan yang hilang.
-3. Jangan mengubah threshold, stop-loss, atau rule entry untuk mempercantik metrik.
-4. Baca entry timing diagnostics sebelum mengubah rule entry atau stop-loss.
-5. Jalankan seluruh validasi sebelum commit dan push.
-6. Jangan meminta atau memasukkan credential ke source code, `.env` ter-commit, log, README, atau chat.
+1. Baca bagian **Status Saat Ini**, **Temuan Riset**, dan **Pekerjaan Berikutnya**.
+2. Baca `docs/17-derivatives-research-and-tooling-2026-09-16.md` untuk temuan funding-cap dan funnel candidate terbaru.
+3. Jalankan `git status --short --branch` dan pastikan tidak ada perubahan yang hilang.
+4. Jangan mengubah threshold, stop-loss, atau rule entry untuk mempercantik metrik.
+5. Candidate yang menghasilkan nol trade harus dibaca lewat funnel di hasil riset, bukan langsung dianggap ditolak.
+6. Reproduksi riset tanpa Supabase: `npm run research:local --workspace @nusaquant/worker`.
+7. Jalankan seluruh validasi sebelum commit dan push.
+8. Jangan meminta atau memasukkan credential ke source code, `.env` ter-commit, log, README, atau chat.
 
 ## Status Saat Ini
 
@@ -38,16 +40,16 @@ NusaQuant Futures Lab adalah platform riset dan paper-trading untuk Binance USD�
 - State machine paper trading dengan approval, pause, emergency stop, stop-loss, take-profit, cooldown, restore state, dan stale-approval guard.
 - Worker heartbeat, countdown candle 15M, symbol context sync, dan paper metrics yang membaca persistence Supabase.
 
-Validasi terakhir:
+Validasi terakhir (16 September 2026):
 
+- Core typecheck: pass (baru ditambahkan; sebelumnya core tidak pernah di-typecheck)
 - Web typecheck: pass
 - Worker typecheck: pass
-- Core tests: 13 pass
-- Worker tests: 15 pass
+- Core tests: 19 pass
+- Worker tests: 29 pass
 - Production build: pass
 - `npm audit --omit=dev`: 0 vulnerability
-- `git diff --check`: pass
-- Vercel/Railway deployment status: success
+- Riset full-history lokal BTCUSDT dan ETHUSDT: selesai dijalankan end-to-end
 
 ### Batas produk saat ini
 
@@ -107,9 +109,36 @@ supabase/migrations
 - Maximum holding time: `96` entry bars
 - Timezone: `Asia/Jakarta`
 
-## Hasil Backtest Terakhir
+## Hasil Riset Terakhir
 
-### BTCUSDT, sample 90 hari setelah fill-model fix
+### Full-history 1 tahun, 2025-09 → 2026-08 (arsip resmi Binance)
+
+Dijalankan lokal lewat `npm run research:local`, bukan request browser. Sample `35.040` candle 15M dan
+`8.760` candle 1H per symbol, `1.095` funding point, `105.120` metrics point.
+
+| Symbol | Trades | Net P/L | Expectancy | PF | OOS trades | OOS R | OOS PF | WF R | WF PF | Gate |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| BTCUSDT | 376 | -2110.78 | -0.251R | 0.57 | 110 | -0.256R | 0.56 | -0.284R | 0.53 | REJECT |
+| ETHUSDT | 363 | -1814.80 | -0.219R | 0.64 | 110 | -0.229R | 0.62 | -0.193R | 0.67 | REJECT |
+
+Sample OOS sekarang `110` trade, di atas minimum 30 yang membuat run sebelumnya berstatus `NOT READY`.
+Verdict tidak berubah setelah sample membesar: OOS mengikuti full sample pada kedua aset.
+
+Kesembilan candidate negatif pada kedua symbol. Dua candidate derivatif terbaru ditolak **karena cacat
+spesifikasi**, bukan karena sudah teruji negatif:
+
+- `FUNDING_CROWDING_REVERSION_HYPOTHESIS` memakai threshold `|funding| >= 0.0001`, padahal `0.0001`
+  adalah cap atas exchange (max funding setahun = `0.000100` pada kedua symbol). Filter ini memilih
+  sekitar 1 dari 11 observasi, bukan kejadian ekstrem. Hasil: BTC `-1.053R / PF 0.05`, ETH `-1.047R /
+  PF 0.08`. Jangan menaikkan threshold absolut; tidak ada ruang di dalam cap.
+- `LIQUIDATION_RECLAIM_HYPOTHESIS` mensyaratkan tiga ratio crowding `<= 0.667` untuk sisi short, tetapi
+  median all-account count ratio setahun adalah `1.467`. Sisi short tidak pernah terpenuhi (0 candle
+  dari 34.960). Sisi long hanya 11 candle (BTC) dan 4 candle (ETH), menghasilkan 9 dan 4 trade.
+  Statusnya `NOT_READY_SAMPLE`, bukan bukti menolak premis.
+
+Detail, funnel lengkap, dan angka per candidate: `docs/17-derivatives-research-and-tooling-2026-09-16.md`.
+
+### BTCUSDT, sample 90 hari setelah fill-model fix (arsip lama, disimpan untuk perbandingan)
 
 Dashboard terbaru menampilkan `2.169 candle 1H` dan `8.679 candle 15M`.
 
@@ -199,11 +228,18 @@ Research-only `TRIAD_TIMING_HYPOTHESIS` menolak trigger dengan range `>=1.2 ATR`
 Urutan kerja yang disepakati sekarang:
 
 1. Pertahankan observation BTCUSDT/ETHUSDT dan pantau `Worker heartbeat` serta `Market data`.
-2. Kumpulkan paper observation yang lebih panjang; jangan melakukan tuning acak.
-3. Kandidat baru hanya diuji jika gross/net expectancy positif, PF di atas 1, OOS minimal 30 trade, dan walk-forward stabil.
-4. Setelah research edge lulus, jalankan paper execution yang lebih panjang dengan metrics persistence.
-5. Baru setelah paper, recovery, idempotency, dan security review lulus, evaluasi Demo/Testnet adapter.
-6. Testnet dan live order tetap terkunci; tidak ada private Binance API pada fase ini.
+2. Jangan tuning threshold untuk memperbaiki angka full-history di atas; keduanya sudah ditolak.
+3. Family derivatif boleh diusulkan ulang hanya jika extremeness/crowding didefinisikan terhadap
+   distribusi berjalan, dan funnel-nya menunjukkan sample yang bisa dicapai sebelum dievaluasi.
+4. Kandidat baru hanya diuji jika gross/net expectancy positif, PF minimal 1.10, OOS minimal 30 trade,
+   dan walk-forward minimal 30 trade.
+5. Catat jumlah percobaan. Sembilan candidate pada dua symbol berarti delapan belas seleksi; satu slice
+   OOS yang hampir breakeven di antaranya bukan penemuan.
+6. Jalankan `npm run research:local` lebih dulu, baru konfirmasi lewat job dashboard, agar kedua jalur
+   diketahui konsisten.
+7. Setelah research edge lulus, jalankan paper execution yang lebih panjang dengan metrics persistence.
+8. Baru setelah paper, recovery, idempotency, dan security review lulus, evaluasi Demo/Testnet adapter.
+9. Testnet dan live order tetap terkunci; tidak ada private Binance API pada fase ini.
 
 ## Deployment dan Environment
 
@@ -257,12 +293,23 @@ Dari root repository:
 
 ```bash
 npm install
-npm run typecheck
-npm test
+npm run typecheck   # core + web + worker
+npm test            # core + worker
 npm run build
 npm audit --omit=dev
 git diff --check
 ```
+
+Riset full-history tanpa Supabase, Railway, atau dashboard (public Binance bulk data saja):
+
+```bash
+npm run research:local --workspace @nusaquant/worker
+npm run research:local --workspace @nusaquant/worker -- --symbols=BTCUSDT --start=2025-09 --end=2026-08
+npm run research:local --workspace @nusaquant/worker -- --symbols=BTCUSDT --variants=NONE   # baseline saja
+```
+
+Data publik di-cache di `services/worker/.research-cache/` (masuk `.gitignore`). Tambahkan `--refresh=true`
+untuk memaksa download ulang, dan `--out=path.json` untuk menyimpan hasil mentah.
 
 Untuk memeriksa status:
 
@@ -300,7 +347,11 @@ git log --oneline -5
 - `services/worker/src/backfill.ts` — one-time API historical backfill.
 - `services/worker/src/research-backfill.ts` — one-time public Binance bulk-archive research backfill.
 - `services/worker/src/funding-backfill.ts` — one-time public funding-rate history backfill.
-- `services/worker/src/research-jobs.ts` — opt-in full-history research queue worker.
+- `services/worker/src/research-jobs.ts` — opt-in full-history research queue worker (sumber data Supabase).
+- `services/worker/src/research-evaluation.ts` — pipeline riset tunggal: gate promosi, variant list, dan evaluasi full/OOS/walk-forward.
+- `services/worker/src/binance-archive.ts` — parser arsip publik Binance (klines, fundingRate, metrics).
+- `services/worker/src/local-research.ts` — CLI riset lokal, memakai pipeline yang sama dengan worker.
+- `packages/core/src/diagnostics.ts` — funnel kondisi candidate dan distribusi threshold.
 - `apps/web/app/api/backtest/jobs/route.ts` — create/status API untuk research job async.
 - `supabase/migrations/20260909000000_initial_schema.sql` — schema/RLS.
 - `supabase/migrations/20260915000000_research_backtest_jobs.sql` — queue/result schema untuk async research.
