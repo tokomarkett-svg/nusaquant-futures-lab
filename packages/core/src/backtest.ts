@@ -1,6 +1,10 @@
 import { evaluateIntelligentSignal, type IntelligentSignal } from './intelligence';
-import { adx, atr, ema, rsi, sma, type Candle, type Regime } from './index';
+import { adx, atr, ema, rsi, sma, type Regime } from './index';
+import type { Candle } from './index';
 import type { WindowProfile } from './opportunity';
+
+// Re-exported so consumers (and the backtest tests) can import the candle model from this module.
+export type { Candle };
 
 export interface FundingPoint {
   time: number;
@@ -966,9 +970,16 @@ export function runBacktest({
     previousMetricsAtEntry[entryIndex] = previousMetricsIndex >= 0 ? metricsTimeframe[previousMetricsIndex] : undefined;
   }
 
+  let higherCursor = 0;
+
   while (index < entryTimeframe.length) {
     const triggerCandle = entryTimeframe[index];
-    const higher = higherTimeframe.filter((candle) => candle.time <= triggerCandle.time);
+    // Both series are sorted ascending and `index` only moves forward, so a cursor keeps this O(n)
+    // instead of re-filtering the whole 1H array for every 15M candle.
+    while (higherCursor < higherTimeframe.length && higherTimeframe[higherCursor].time <= triggerCandle.time) {
+      higherCursor += 1;
+    }
+    const higher = higherTimeframe.slice(0, higherCursor);
     if (higher.length < 220 || index < 80) {
       index += 1;
       continue;
@@ -1354,7 +1365,12 @@ function combineSummaries(summaries: BacktestSummary[], periodCandles: Candle[])
     winningTrades,
     losingTrades,
     winRate: totalTrades === 0 ? 0 : winningTrades / totalTrades,
-    profitFactor: grossLosses === 0 ? (grossWins > 0 ? Number.POSITIVE_INFINITY : null) : grossWins / grossLosses,
+    // A combined profit factor over too few trades is not "infinite edge"; it is undefined. Emitting
+    // Infinity here made a zero/one-trade walk-forward aggregate render as PF ∞ next to a positive
+    // expectancy, which reads like a passing candidate.
+    profitFactor: totalTrades < 30 || grossLosses === 0
+      ? null
+      : grossWins / grossLosses,
     expectancyR: totalTrades === 0 ? 0 : totalR / totalTrades,
     netPnl: summaries.reduce((sum, summary) => sum + summary.netPnl, 0),
     grossWins,
