@@ -1,3 +1,4 @@
+import { unzipSync } from 'fflate';
 import {
   runBacktest,
   runTemporalValidation,
@@ -93,7 +94,55 @@ async function readAllCandles(symbol: string, interval: string): Promise<Candle[
   return rows.map(toCandle);
 }
 
-async function readAllMetrics(symbol: string): Promise<MarketMetricsPoint[]> {
+const METRICS_ARCHIVE_BASE_URL = process.env.RESEARCH_METRICS_ARCHIVE_BASE_URL ?? 'https://data.binance.vision/data/futures/um/daily/metrics';
+
+function metricPointFromFields(symbol: string, fields: string[]): MarketMetricsPoint | null {
+  if (fields.length < 8) return null;
+  const time = Date.parse(`${fields[0].replace(' ', 'T')}Z`);
+  const values = fields.slice(2, 8).map(Number);
+  if (!Number.isFinite(time) || !values.every(Number.isFinite)) return null;
+  return {
+    time,
+    openInterest: values[0],
+    openInterestValue: values[1],
+    topTraderLongShortRatio: values[2],
+    topTraderLongShortPositionRatio: values[3],
+    longShortRatio: values[4],
+    takerLongShortVolumeRatio: values[5],
+  };
+}
+
+function metricDateKeys(startTime: number, endTime: number): string[] {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+  const result: string[] = [];
+  for (const date = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate())); date <= end; date.setUTCDate(date.getUTCDate() + 1)) {
+    result.push(date.toISOString().slice(0, 10));
+  }
+  return result;
+}
+
+async function readMetricsArchive(symbol: string, startTime: number, endTime: number): Promise<MarketMetricsPoint[]> {
+  const dates = metricDateKeys(startTime, endTime);
+  const result: MarketMetricsPoint[] = [];
+  for (let offset = 0; offset < dates.length; offset += 12) {
+    const batch = await Promise.all(dates.slice(offset, offset + 12).map(async (day) => {
+      const fileName = `${symbol}-metrics-${day}.zip`;
+      const response = await fetch(`${METRICS_ARCHIVE_BASE_URL}/${symbol}/${fileName}`);
+      if (response.status === 404) return [];
+      if (!response.ok) throw new Error(`Metrics archive ${fileName} HTTP ${response.status}`);
+      const archive = unzipSync(new Uint8Array(await response.arrayBuffer()));
+      const file = Object.values(archive)[0];
+      if (!file) return [];
+      return new TextDecoder().decode(file).split(/\r?\n/).slice(1).map((line) => metricPointFromFields(symbol, line.split(','))).filter((point): point is MarketMetricsPoint => point !== null);
+    }));
+    result.push(...batch.flat());
+  }
+  return [...new Map(result.filter((point) => point.time >= startTime && point.time <= endTime).map((point) => [point.time, point])).values()]
+    .sort((left, right) => left.time - right.time);
+}
+
+async function readAllMetrics(symbol: string, startTime?: number, endTime?: number): Promise<MarketMetricsPoint[]> {
   const client = createWorkerSupabaseClient();
   const rows: MetricsRow[] = [];
   for (let offset = 0; offset < MAX_CANDLES * 5; offset += PAGE_SIZE) {
@@ -104,8 +153,9 @@ async function readAllMetrics(symbol: string): Promise<MarketMetricsPoint[]> {
       .order('event_time', { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1);
     if (result.error) {
-      console.warn(`[research] market_metrics belum tersedia untuk ${symbol}; liquidation candidate akan berstatus NOT_READY: ${result.error.message}`);
-      return [];
+      if (startTime === undefined || endTime === undefined) return [];
+      console.warn(`[research] market_metrics belum tersedia untuk ${symbol}; memakai arsip resmi Binance sebagai fallback.`);
+      return readMetricsArchive(symbol, startTime, endTime);
     }
     const page = (result.data ?? []) as MetricsRow[];
     rows.push(...page);
@@ -253,15 +303,15 @@ export async function runResearchJob(job: ResearchJob): Promise<void> {
   const startedAt = new Date().toISOString();
   await updateJob(job.id, { status: 'RUNNING', progress: 5, started_at: startedAt, error: null });
   try {
-    const [higherTimeframe, entryTimeframe, fundingTimeframe, metricsTimeframe] = await Promise.all([
+    const [higherTimeframe, entryTimeframe, fundingTimeframe] = await Promise.all([
       readAllCandles(job.symbol, '1h'),
       readAllCandles(job.symbol, '15m'),
       readAllFunding(job.symbol),
-      readAllMetrics(job.symbol),
     ]);
     if (higherTimeframe.length < 220 || entryTimeframe.length < 80) {
       throw new Error(`${job.symbol} belum memiliki cukup data: ${higherTimeframe.length} candle 1H dan ${entryTimeframe.length} candle 15M.`);
     }
+    const metricsTimeframe = await readAllMetrics(job.symbol, entryTimeframe[0]?.time, entryTimeframe.at(-1)?.time);
 
     const config: BacktestConfig = {
       initialEquity: 10_000,
