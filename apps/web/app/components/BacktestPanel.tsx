@@ -120,6 +120,7 @@ type CompactSummary = {
 type ResearchCandidateResult = {
   name: string;
   rule: string;
+  dataStatus?: 'READY' | 'MISSING_DATA';
   summary: CompactSummary;
   validation: Validation;
   walkForward: WalkForward;
@@ -275,7 +276,7 @@ function ResearchJobPanel({ job }: { job: ResearchJob }) {
           <div className="backtest-note">Walk-forward aggregate: {validationGate(result.baseline.walkForward.aggregate.gate)} · {result.baseline.walkForward.aggregate.totalTrades} trades · {result.baseline.walkForward.aggregate.expectancyR.toFixed(3)}R · PF {profitFactor(result.baseline.walkForward.aggregate.profitFactor)}</div>
           {Object.values(result.candidates).map((candidate) => (
             <div className="backtest-note" key={candidate.name}>
-              <strong>{candidate.name}</strong> · full {money(candidate.summary.netPnl)} · {candidate.summary.expectancyR.toFixed(3)}R · PF {profitFactor(candidate.summary.profitFactor)} · OOS {money(candidate.validation.outOfSample.netPnl)} · {candidate.validation.outOfSample.expectancyR.toFixed(3)}R · PF {profitFactor(candidate.validation.outOfSample.profitFactor)} · WF {validationGate(candidate.walkForward.aggregate.gate)} · {candidate.walkForward.aggregate.expectancyR.toFixed(3)}R · PF {profitFactor(candidate.walkForward.aggregate.profitFactor)}
+              <strong>{candidate.name}</strong>{candidate.dataStatus === 'MISSING_DATA' ? ' · MISSING_DATA (bukan bukti menolak)' : ''} · full {money(candidate.summary.netPnl)} · {candidate.summary.expectancyR.toFixed(3)}R · PF {profitFactor(candidate.summary.profitFactor)} · OOS {money(candidate.validation.outOfSample.netPnl)} · {candidate.validation.outOfSample.expectancyR.toFixed(3)}R · PF {profitFactor(candidate.validation.outOfSample.profitFactor)} · WF {validationGate(candidate.walkForward.aggregate.gate)} · {candidate.walkForward.aggregate.expectancyR.toFixed(3)}R · PF {profitFactor(candidate.walkForward.aggregate.profitFactor)}
             </div>
           ))}
           {result.notes.map((note) => <div className="backtest-note" key={note}>• {note}</div>)}
