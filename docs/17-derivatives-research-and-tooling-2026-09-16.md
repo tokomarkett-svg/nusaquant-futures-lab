@@ -86,6 +86,12 @@ Source for everything below: official Binance USDⓈ-M bulk archives, `35,040` c
 **2025-09-01 → 2026-08-31**. Cost model unchanged and conservative (fee `0.0004`, slippage `0.0002`,
 funding `0.00001`/bar, stop-first intrabar). Raw output kept in `reports/local-research-*.json`.
 
+Two cosmetic defects found while reading that output were fixed after the runs, so the committed JSON
+still shows them: the thin BTC walk-forward aggregate is stored with `profitFactor: null` but rendered
+as `PF ∞` by the old CLI formatter, and the funnel `diagnosis` string says "Aturan long mati pada
+kondisi Crowding short", mixing up the two sides. The counts and every number in the tables below are
+unaffected.
+
 ### The funding "extreme" threshold sits on the exchange cap, not in a tail
 
 `FUNDING_CROWDING_REVERSION_HYPOTHESIS` filters on `|funding| >= 0.0001`. Measured over the full year
