@@ -13,10 +13,14 @@ coverage/
 .idea/
 
 # Runtime data and secrets
+research-cache/
+.research-cache/
 runtime/
 *.sqlite
 *.db
 secrets/
 
 # Test outputs
-reports/
+reports/*
+# Research artifacts are committed on purpose: they are the audit trail for rejected candidates.
+!reports/local-research-*.json
