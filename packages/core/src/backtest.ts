@@ -679,7 +679,9 @@ function buildLiquidationReclaimSignal({
   const priceMove = entryTimeframe.length >= 5
     ? entryCandle.close / (entryTimeframe.at(-5)?.close ?? entryCandle.close) - 1
     : Number.NaN;
-  if (!Number.isFinite(entryAtr) || !Number.isFinite(higherAdx) || !Number.isFinite(candleFlow) || !Number.isFinite(openInterestChange) || !Number.isFinite(priceMove) || entryAtr <= Number.EPSILON) return null;
+  if (!Number.isFinite(entryAtr) || !Number.isFinite(higherAdx) || !Number.isFinite(openInterestChange) || !Number.isFinite(priceMove) || entryAtr <= Number.EPSILON) return null;
+  const candleFlowSupportsLong = !Number.isFinite(candleFlow) || candleFlow <= 0.45;
+  const candleFlowSupportsShort = !Number.isFinite(candleFlow) || candleFlow >= 0.55;
 
   const crowdedLong = metricsValue.topTraderLongShortRatio >= 1.5
     && metricsValue.topTraderLongShortPositionRatio >= 1.5
@@ -690,14 +692,14 @@ function buildLiquidationReclaimSignal({
   const longReclaim = crowdedLong
     && openInterestChange <= -0.003
     && metricsValue.takerLongShortVolumeRatio <= 0.75
-    && candleFlow <= 0.45
+    && candleFlowSupportsLong
     && priceMove <= -0.002
     && entryCandle.close > entryCandle.open
     && higherAdx <= 28;
   const shortReclaim = crowdedShort
     && openInterestChange <= -0.003
     && metricsValue.takerLongShortVolumeRatio >= 1 / 0.75
-    && candleFlow >= 0.55
+    && candleFlowSupportsShort
     && priceMove >= 0.002
     && entryCandle.close < entryCandle.open
     && higherAdx <= 28;
