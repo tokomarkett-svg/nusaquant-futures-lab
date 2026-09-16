@@ -187,3 +187,92 @@ test('a thin walk-forward aggregate reports an undefined profit factor, never in
     'setiap fold juga tidak boleh melaporkan PF Infinity',
   );
 });
+
+test('champion playbook fires on a documented absorption + dominance shift sequence', () => {
+  const hour = 60 * 60 * 1000;
+  const quarterHour = 15 * 60 * 1000;
+  const triggerTime = 150 * quarterHour;
+  const higher: Candle[] = Array.from({ length: 300 }, (_, index) => {
+    const price = 100 + index * 0.2;
+    return { time: triggerTime - (299 - index) * hour, open: price, high: price + 0.4, low: price - 0.1, close: price + 0.2, volume: 10 };
+  });
+
+  const padding: Candle[] = Array.from({ length: 90 }, (_, index) => ({
+    time: index * quarterHour, open: 100, high: 100.4, low: 99.7, close: 100.2, volume: 100, takerBuyVolume: 50,
+  }));
+  const start = 90 * quarterHour;
+  const lookback: Candle[] = [];
+  for (let index = 0; index < 30; index += 1) {
+    const price = 100 + index * (10 / 29);
+    lookback.push({ time: start + index * quarterHour, open: price - 0.2, high: price + 0.3, low: price - 0.4, close: price, volume: 100 });
+  }
+  for (let index = 30; index < 59; index += 1) {
+    const price = 110 - (index - 30) * 0.25;
+    lookback.push({ time: start + index * quarterHour, open: price + 0.2, high: price + 0.4, low: price - 0.3, close: price, volume: 100 });
+  }
+  // Absorption candle: heavy taker selling that is not rewarded, inside the fib discount zone.
+  lookback.push({ time: start + 59 * quarterHour, open: 102.1, high: 102.2, low: 101.0, close: 101.9, volume: 200, takerBuyVolume: 60 });
+  const trigger: Candle = { time: start + 60 * quarterHour, open: 102.0, high: 102.5, low: 101.8, close: 102.4, volume: 150 };
+  const aftermath: Candle[] = Array.from({ length: 10 }, (_, index) => ({
+    time: start + (61 + index) * quarterHour, open: 102.4, high: 103.0, low: 102.1, close: 102.8, volume: 100,
+  }));
+  const entry = [...padding, ...lookback, trigger, ...aftermath];
+
+  const report = runBacktest({
+    higherTimeframe: higher,
+    entryTimeframe: entry,
+    config: { entryPolicy: 'CHAMPION_ABSORPTION_REVERSION_HYPOTHESIS', haltAfterConsecutiveLosses: 2 },
+  });
+  assert.equal(report.totalTrades, 1, 'urutan absorption + flip harus menjadi satu trade riset');
+  const trade = report.trades[0];
+  assert.equal(trade.side, 'LONG');
+  assert.ok(trade.stopLoss < 101.0, 'stop harus di bawah ekstrem absorption yang gagal');
+  assert.ok(trade.takeProfit <= trade.entry + 2 * Math.abs(trade.entry - trade.stopLoss) + 1e-9, 'target dibatasi 2R');
+});
+
+test('champion playbook hard-invalidates when the discount loses the 0.886 line', () => {
+  const hour = 60 * 60 * 1000;
+  const quarterHour = 15 * 60 * 1000;
+  const triggerTime = 150 * quarterHour;
+  const higher: Candle[] = Array.from({ length: 300 }, (_, index) => {
+    const price = 100 + index * 0.2;
+    return { time: triggerTime - (299 - index) * hour, open: price, high: price + 0.4, low: price - 0.1, close: price + 0.2, volume: 10 };
+  });
+  const padding: Candle[] = Array.from({ length: 90 }, (_, index) => ({
+    time: index * quarterHour, open: 100, high: 100.4, low: 99.7, close: 100.2, volume: 100, takerBuyVolume: 50,
+  }));
+  const start = 90 * quarterHour;
+  const lookback: Candle[] = [];
+  for (let index = 0; index < 30; index += 1) {
+    const price = 100 + index * (10 / 29);
+    lookback.push({ time: start + index * quarterHour, open: price - 0.2, high: price + 0.3, low: price - 0.4, close: price, volume: 100 });
+  }
+  for (let index = 30; index < 59; index += 1) {
+    const price = 110 - (index - 30) * 0.25;
+    lookback.push({ time: start + index * quarterHour, open: price + 0.2, high: price + 0.4, low: price - 0.3, close: price, volume: 100 });
+  }
+  // Absorption close BELOW the 0.886 retracement (101.14): the champion rule says the trade dies.
+  lookback.push({ time: start + 59 * quarterHour, open: 101.2, high: 101.3, low: 100.4, close: 100.9, volume: 200, takerBuyVolume: 60 });
+  const entry = [...padding, ...lookback, { time: start + 60 * quarterHour, open: 101.0, high: 101.6, low: 100.8, close: 101.5, volume: 150 }];
+
+  const report = runBacktest({
+    higherTimeframe: higher,
+    entryTimeframe: entry,
+    config: { entryPolicy: 'CHAMPION_ABSORPTION_REVERSION_HYPOTHESIS' },
+  });
+  assert.equal(report.totalTrades, 0, 'tembus 0.886 adalah invalidasi keras');
+});
+
+test('the consecutive-loss governor can only remove entries, never add them', () => {
+  const hour = 60 * 60 * 1000;
+  const quarterHour = 15 * 60 * 1000;
+  const higher = candles(360, 100, hour, 0.1, 0);
+  const entry = candles(500, 140, quarterHour, 0.02, 220 * hour);
+  const withoutGovernor = runBacktest({ higherTimeframe: higher, entryTimeframe: entry, config: { initialEquity: 10_000 } });
+  const withGovernor = runBacktest({
+    higherTimeframe: higher,
+    entryTimeframe: entry,
+    config: { initialEquity: 10_000, haltAfterConsecutiveLosses: 1 },
+  });
+  assert.ok(withGovernor.totalTrades <= withoutGovernor.totalTrades);
+});

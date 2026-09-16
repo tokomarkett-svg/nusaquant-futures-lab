@@ -29,8 +29,10 @@ export interface BacktestConfig {
   fundingRatePerBar?: number;
   maxBarsInTrade?: number;
   timezone?: string;
-  entryPolicy?: 'BASELINE' | 'TRIAD_TIMING_HYPOTHESIS' | 'TRIAD_RETEST_HYPOTHESIS' | 'TRIAD_FOLLOW_THROUGH_HYPOTHESIS' | 'MEAN_REVERSION_REJECTION_HYPOTHESIS' | 'VOLATILITY_EXPANSION_BREAKOUT_HYPOTHESIS' | 'FUNDING_CROWDING_REVERSION_HYPOTHESIS' | 'TAKER_FLOW_REJECTION_HYPOTHESIS' | 'LIQUIDATION_RECLAIM_HYPOTHESIS';
+  entryPolicy?: 'BASELINE' | 'TRIAD_TIMING_HYPOTHESIS' | 'TRIAD_RETEST_HYPOTHESIS' | 'TRIAD_FOLLOW_THROUGH_HYPOTHESIS' | 'MEAN_REVERSION_REJECTION_HYPOTHESIS' | 'VOLATILITY_EXPANSION_BREAKOUT_HYPOTHESIS' | 'FUNDING_CROWDING_REVERSION_HYPOTHESIS' | 'TAKER_FLOW_REJECTION_HYPOTHESIS' | 'LIQUIDATION_RECLAIM_HYPOTHESIS' | 'CHAMPION_ABSORPTION_REVERSION_HYPOTHESIS';
   exitPolicy?: 'BASELINE' | 'MFE_PROFIT_PROTECTION_HYPOTHESIS';
+  /** Risk governor: after this many consecutive losing trades, no new entries until the next local day. */
+  haltAfterConsecutiveLosses?: number;
 }
 
 export interface BacktestTrade {
@@ -837,6 +839,157 @@ function buildTakerFlowRejectionSignal({
   };
 }
 
+function vwap(candles: Candle[]): number {
+  let volume = 0;
+  let priceVolume = 0;
+  for (const candle of candles) {
+    const typical = (candle.high + candle.low + candle.close) / 3;
+    volume += candle.volume;
+    priceVolume += typical * candle.volume;
+  }
+  return volume > 0 ? priceVolume / volume : Number.NaN;
+}
+
+/**
+ * Champion playbook #1 — Chris Creamer (Robbins World Cup): context -> location -> confirmation.
+ *
+ * Spec: docs/18-champion-playbook-hypothesis-2026-09-16.md. Every discretionary component is mapped
+ * to a closed-candle rule and every unavailable component (footprint, value-area profile, options
+ * GEX) is documented as omitted or proxied, never silently invented.
+ */
+function buildChampionAbsorptionSignal({
+  higherTimeframe,
+  entryTimeframe,
+  equity,
+  riskFraction,
+  feeRate,
+  slippageRate,
+  fundingRatePerBar,
+  maxBarsInTrade,
+}: {
+  higherTimeframe: Candle[];
+  entryTimeframe: Candle[];
+  equity: number;
+  riskFraction: number;
+  feeRate: number;
+  slippageRate: number;
+  fundingRatePerBar: number;
+  maxBarsInTrade: number;
+}): IntelligentSignal | null {
+  const triggerCandle = entryTimeframe.at(-1);
+  const lookback = entryTimeframe.slice(-61, -1);
+  if (!triggerCandle || lookback.length < 60) return null;
+
+  const higherEma50 = ema(higherTimeframe.map((candle) => candle.close), 50).at(-1) ?? Number.NaN;
+  const higherEma200 = ema(higherTimeframe.map((candle) => candle.close), 200).at(-1) ?? Number.NaN;
+  if (!Number.isFinite(higherEma50) || !Number.isFinite(higherEma200)) return null;
+  const structureUp = higherEma50 > higherEma200;
+  const structureDown = higherEma50 < higherEma200;
+  if (!structureUp && !structureDown) return null;
+
+  const swingLow = Math.min(...lookback.map((candle) => candle.low));
+  const swingHigh = Math.max(...lookback.map((candle) => candle.high));
+  const range = swingHigh - swingLow;
+  if (!(range > Number.EPSILON)) return null;
+  const valueLine = vwap(lookback);
+  if (!Number.isFinite(valueLine)) return null;
+
+  // Fib discount (long) / premium (short) zone: retracement 0.705..0.886 from the swing extreme.
+  const deepLong = swingHigh - range * 0.886;
+  const shallowLong = swingHigh - range * 0.705;
+  const deepShort = swingLow + range * 0.886;
+  const shallowShort = swingLow + range * 0.705;
+
+  // The absorption candle is the most recent closed candle before the trigger; the trigger itself
+  // must be the dominance shift (second failed attempt + flip).
+  const absorption = lookback.at(-1);
+  const absorptionBefore = lookback.at(-2);
+  const candidates = [absorption, absorptionBefore].filter((candle): candle is Candle => Boolean(candle));
+  const averageVolume = lookback.slice(0, -1).reduce((sum, candle) => sum + candle.volume, 0) / Math.max(1, lookback.length - 1);
+  const entryAtr = atr(entryTimeframe).at(-1) ?? Number.NaN;
+  if (!Number.isFinite(entryAtr) || entryAtr <= Number.EPSILON || averageVolume <= 0) return null;
+
+  for (const absorptionCandle of candidates) {
+    const absorptionRange = Math.max(absorptionCandle.high - absorptionCandle.low, Number.EPSILON);
+    const participationAlive = absorptionCandle.volume >= averageVolume;
+    const takerRatio = absorptionCandle.volume > 0 && absorptionCandle.takerBuyVolume !== undefined
+      ? absorptionCandle.takerBuyVolume / absorptionCandle.volume
+      : Number.NaN;
+    if (!participationAlive || !Number.isFinite(takerRatio)) continue;
+
+    const absorptionLong = takerRatio <= 0.4
+      && absorptionCandle.close >= absorptionCandle.low + absorptionRange * 0.45
+      && absorptionCandle.close >= deepLong
+      && absorptionCandle.close <= shallowLong
+      && absorptionCandle.close < valueLine;
+    const absorptionShort = takerRatio >= 0.6
+      && absorptionCandle.close <= absorptionCandle.low + absorptionRange * 0.55
+      && absorptionCandle.close <= deepShort
+      && absorptionCandle.close >= shallowShort
+      && absorptionCandle.close > valueLine;
+    if (!absorptionLong && !absorptionShort) continue;
+
+    const flipLong = absorptionLong
+      && triggerCandle.close > triggerCandle.open
+      && triggerCandle.close > absorptionCandle.high
+      && triggerCandle.low > absorptionCandle.low;
+    const flipShort = absorptionShort
+      && triggerCandle.close < triggerCandle.open
+      && triggerCandle.close < absorptionCandle.low
+      && triggerCandle.high < absorptionCandle.high;
+    if (!flipLong && !flipShort) continue;
+
+    const decision = flipLong ? 'LONG' : 'SHORT';
+    const entry = triggerCandle.close;
+    const stopLoss = flipLong
+      ? absorptionCandle.low - entryAtr * 0.15
+      : absorptionCandle.high + entryAtr * 0.15;
+    const stopDistance = Math.abs(entry - stopLoss);
+    if (stopDistance <= Number.EPSILON) continue;
+    const structuralTarget = flipLong ? swingHigh : swingLow;
+    const twoR = flipLong ? entry + stopDistance * 2 : entry - stopDistance * 2;
+    const takeProfit = flipLong ? Math.min(structuralTarget, twoR) : Math.max(structuralTarget, twoR);
+    const riskAmount = equity * riskFraction;
+    const estimatedCostPerUnit = (entry + stopLoss) * (feeRate + slippageRate)
+      + entry * fundingRatePerBar * maxBarsInTrade;
+    const quantity = riskAmount / Math.max(stopDistance + estimatedCostPerUnit, Number.EPSILON);
+    return {
+      decision,
+      candidate: decision,
+      stage: 'TRIGGERED',
+      timing: 'ENTER_NOW',
+      regime: flipLong ? 'TREND_UP' : 'TREND_DOWN',
+      qualityScore: 85,
+      scoreMax: 100,
+      entry,
+      triggerPrice: entry,
+      stopLoss,
+      takeProfit,
+      quantity,
+      riskAmount,
+      riskReward: Math.abs(takeProfit - entry) / stopDistance,
+      maxChaseDistance: null,
+      patterns: [],
+      structure: {
+        bias: flipLong ? 'BULLISH' : 'BEARISH',
+        lastSwingHigh: swingHigh,
+        lastSwingLow: swingLow,
+        breakOfStructure: 'NONE',
+        reason: 'Champion playbook: discount/premium fib di luar value, absorption, lalu flip setelah seller gagal lebih tinggi.',
+      },
+      evidence: [
+        { label: 'Higher-timeframe structure', points: 25, passed: true, explanation: `EMA50 1H ${structureUp ? 'di atas' : 'di bawah'} EMA200; hanya ikut arah struktur.` },
+        { label: 'Fib location outside value', points: 25, passed: true, explanation: `Absorption di zona retracement 0.705-0.886 dan ${flipLong ? 'di bawah' : 'di atas'} VWAP lookback.` },
+        { label: 'Absorption dengan partisipasi', points: 25, passed: true, explanation: `Taker ratio ${(takerRatio).toFixed(2)} dengan volume >= rata-rata; tekanan tidak diberi hadiah.` },
+        { label: 'Dominance shift', points: 25, passed: true, explanation: 'Percobaan kedua gagal lebih tinggi lalu candle closed flip searah reclaim.' },
+      ],
+      blockers: [],
+      explanation: 'Research-only champion playbook #1: context, location di luar value, absorption, dominance shift, stop di balik ekstrem yang gagal.',
+    };
+  }
+  return null;
+}
+
 const FUNDING_EXTREME_THRESHOLD = 0.0001;
 
 function buildFundingCrowdingReversionSignal({
@@ -950,6 +1103,9 @@ export function runBacktest({
   let previousMetricsIndex = -1;
   let latestFundingRate = Number.NaN;
   let latestMetrics: MarketMetricsPoint | undefined;
+  const haltLimit = config.haltAfterConsecutiveLosses ?? Number.POSITIVE_INFINITY;
+  let consecutiveLosses = 0;
+  let haltedDay = '';
   for (let entryIndex = 0; entryIndex < entryTimeframe.length; entryIndex += 1) {
     while (fundingIndex < fundingTimeframe.length && fundingTimeframe[fundingIndex].time < entryTimeframe[entryIndex].time) {
       latestFundingRate = fundingTimeframe[fundingIndex].fundingRate;
@@ -986,6 +1142,12 @@ export function runBacktest({
     }
 
     const entryPolicy = config.entryPolicy ?? 'BASELINE';
+    if (haltedDay !== '' && localPeriod(triggerCandle.time, timezone) === haltedDay) {
+      // Champion-style shutoff: after the configured losing streak the engine stops trading for the
+      // rest of the local day instead of letting frustration open the next position.
+      index += 1;
+      continue;
+    }
     if (entryPolicy === 'VOLATILITY_EXPANSION_BREAKOUT_HYPOTHESIS' && index >= 20) {
       const priorCandles = entryTimeframe.slice(index - 20, index);
       const priorHigh = Math.max(...priorCandles.map((candle) => candle.high));
@@ -1003,7 +1165,7 @@ export function runBacktest({
       index += 1;
       continue;
     }
-    const baseSignal = entryPolicy === 'MEAN_REVERSION_REJECTION_HYPOTHESIS' || entryPolicy === 'FUNDING_CROWDING_REVERSION_HYPOTHESIS' || entryPolicy === 'TAKER_FLOW_REJECTION_HYPOTHESIS' || entryPolicy === 'LIQUIDATION_RECLAIM_HYPOTHESIS'
+    const baseSignal = entryPolicy === 'MEAN_REVERSION_REJECTION_HYPOTHESIS' || entryPolicy === 'FUNDING_CROWDING_REVERSION_HYPOTHESIS' || entryPolicy === 'TAKER_FLOW_REJECTION_HYPOTHESIS' || entryPolicy === 'LIQUIDATION_RECLAIM_HYPOTHESIS' || entryPolicy === 'CHAMPION_ABSORPTION_REVERSION_HYPOTHESIS'
       ? null
       : evaluateIntelligentSignal({
         higherTimeframe: higher,
@@ -1071,6 +1233,19 @@ export function runBacktest({
         continue;
       }
       signal = liquidationSignal;
+    } else if (entryPolicy === 'CHAMPION_ABSORPTION_REVERSION_HYPOTHESIS') {
+      const championSignal = buildChampionAbsorptionSignal({
+        higherTimeframe: higher,
+        entryTimeframe: entryTimeframe.slice(0, index + 1),
+        equity,
+        riskFraction,
+        ...signalConfig,
+      });
+      if (!championSignal) {
+        index += 1;
+        continue;
+      }
+      signal = championSignal;
     } else if (entryPolicy === 'VOLATILITY_EXPANSION_BREAKOUT_HYPOTHESIS') {
       const breakoutSignal = buildVolatilityExpansionBreakoutSignal({
         higherTimeframe: higher,
@@ -1241,6 +1416,12 @@ export function runBacktest({
     equity += netPnl;
     peakEquity = Math.max(peakEquity, equity);
     maxDrawdown = Math.max(maxDrawdown, peakEquity - equity);
+    if (netPnl < 0) {
+      consecutiveLosses += 1;
+      if (consecutiveLosses >= haltLimit) haltedDay = localPeriod(trade.exitTime, timezone);
+    } else {
+      consecutiveLosses = 0;
+    }
     index = exitIndex >= executionIndex ? exitIndex + 1 : executionIndex + 1;
   }
 

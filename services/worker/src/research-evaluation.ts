@@ -1,4 +1,5 @@
 import {
+  buildChampionAbsorptionFunnel,
   buildFundingDistribution,
   buildLiquidationReclaimFunnel,
   buildTakerFlowFunnel,
@@ -76,6 +77,12 @@ export const RESEARCH_VARIANTS = [
     name: 'TAKER_FLOW_REJECTION_HYPOTHESIS',
     rule: 'Taker buy ratio <= 0.38 atau >= 0.62, didahului gerak tiga candle searah flow, rejection close berlawanan, range <= 2.2 ATR, ADX 1H <= 28, target 1.5R.',
     config: { entryPolicy: 'TAKER_FLOW_REJECTION_HYPOTHESIS' as const },
+    requiresTakerFlow: true,
+  },
+  {
+    name: 'CHAMPION_ABSORPTION_REVERSION_HYPOTHESIS',
+    rule: 'Playbook juara Robbins Cup #1: struktur 1H, fib 0.705-0.886 di luar value (VWAP), absorption dengan partisipasi, dominance shift, stop di balik ekstrem gagal, target min(swing, 2R), shut off setelah 2 loss beruntun. Spec: docs/18.',
+    config: { entryPolicy: 'CHAMPION_ABSORPTION_REVERSION_HYPOTHESIS' as const, haltAfterConsecutiveLosses: 2 },
     requiresTakerFlow: true,
   },
   {
@@ -290,6 +297,7 @@ export async function evaluateResearchRun(input: ResearchRunInput): Promise<Rese
     FUNDING_CROWDING_REVERSION_HYPOTHESIS: buildFundingDistribution({ entryTimeframe, fundingTimeframe }),
     TAKER_FLOW_REJECTION_HYPOTHESIS: buildTakerFlowFunnel({ entryTimeframe, higherTimeframe }),
     LIQUIDATION_RECLAIM_HYPOTHESIS: buildLiquidationReclaimFunnel({ entryTimeframe, higherTimeframe, metricsTimeframe }),
+    CHAMPION_ABSORPTION_REVERSION_HYPOTHESIS: buildChampionAbsorptionFunnel({ entryTimeframe, higherTimeframe }),
   };
 
   const missing = Object.values(candidates).filter((candidate) => candidate.dataStatus === 'MISSING_DATA').map((candidate) => candidate.name);

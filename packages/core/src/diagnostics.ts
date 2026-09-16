@@ -377,3 +377,98 @@ export function buildFundingDistribution({
     diagnosis: null,
   };
 }
+
+export function buildChampionAbsorptionFunnel({
+  entryTimeframe,
+  higherTimeframe,
+}: {
+  entryTimeframe: Candle[];
+  higherTimeframe: Candle[];
+}): CandidateFunnel {
+  const evaluated = Math.max(0, entryTimeframe.length - 80);
+  const higherEma50 = ema(higherTimeframe.map((candle) => candle.close), 50);
+  const higherEma200 = ema(higherTimeframe.map((candle) => candle.close), 200);
+  const higherTimes = higherTimeframe.map((candle) => candle.time);
+  const takerRatios: number[] = [];
+  const longCounts = [0, 0, 0];
+  const shortCounts = [0, 0, 0];
+
+  for (let index = 80; index < entryTimeframe.length; index += 1) {
+    const higherIndex = lastIndexAtOrBefore(higherTimes, entryTimeframe[index].time);
+    if (higherIndex < 0) continue;
+    const structureUp = higherEma50[higherIndex] > higherEma200[higherIndex];
+    const structureDown = higherEma50[higherIndex] < higherEma200[higherIndex];
+    if (!structureUp && !structureDown) continue;
+
+    const lookback = entryTimeframe.slice(index - 60, index);
+    if (lookback.length < 60) continue;
+    const swingLow = Math.min(...lookback.map((candle) => candle.low));
+    const swingHigh = Math.max(...lookback.map((candle) => candle.high));
+    const range = swingHigh - swingLow;
+    if (!(range > Number.EPSILON)) continue;
+    let volume = 0;
+    let priceVolume = 0;
+    for (const candle of lookback) {
+      const typical = (candle.high + candle.low + candle.close) / 3;
+      volume += candle.volume;
+      priceVolume += typical * candle.volume;
+    }
+    const valueLine = volume > 0 ? priceVolume / volume : Number.NaN;
+    if (!Number.isFinite(valueLine)) continue;
+    const averageVolume = lookback.slice(0, -1).reduce((sum, candle) => sum + candle.volume, 0) / Math.max(1, lookback.length - 1);
+
+    const absorptionAt = (offset: number) => {
+      const candle = lookback.at(offset);
+      if (!candle || candle.volume <= 0 || candle.takerBuyVolume === undefined) return null;
+      const takerRatio = candle.takerBuyVolume / candle.volume;
+      takerRatios.push(takerRatio);
+      const candleRange = Math.max(candle.high - candle.low, Number.EPSILON);
+      const participation = candle.volume >= averageVolume;
+      const inLongZone = candle.close >= swingHigh - range * 0.886 && candle.close <= swingHigh - range * 0.705 && candle.close < valueLine;
+      const inShortZone = candle.close <= swingLow + range * 0.886 && candle.close >= swingLow + range * 0.705 && candle.close > valueLine;
+      return { candle, takerRatio, participation, inLongZone, inShortZone, candleRange };
+    };
+
+    const trigger = entryTimeframe[index];
+    const check = (absorption: ReturnType<typeof absorptionAt>, wantLong: boolean) => {
+      if (!absorption || !absorption.participation) return { absorption: false, flip: false };
+      const absorptionHolds = wantLong
+        ? absorption.takerRatio <= 0.4 && absorption.candle.close >= absorption.candle.low + absorption.candleRange * 0.45 && absorption.inLongZone
+        : absorption.takerRatio >= 0.6 && absorption.candle.close <= absorption.candle.low + absorption.candleRange * 0.55 && absorption.inShortZone;
+      if (!absorptionHolds) return { absorption: false, flip: false };
+      const flip = wantLong
+        ? trigger.close > trigger.open && trigger.close > absorption.candle.high && trigger.low > absorption.candle.low
+        : trigger.close < trigger.open && trigger.close < absorption.candle.low && trigger.high < absorption.candle.high;
+      return { absorption: true, flip };
+    };
+
+    const longResult = [check(absorptionAt(-1), true), check(absorptionAt(-2), true)];
+    const shortResult = [check(absorptionAt(-1), false), check(absorptionAt(-2), false)];
+    if (structureUp) longCounts[0] += 1;
+    if (structureDown) shortCounts[0] += 1;
+    if (structureUp && longResult.some((item) => item.absorption)) longCounts[1] += 1;
+    if (structureDown && shortResult.some((item) => item.absorption)) shortCounts[1] += 1;
+    if (structureUp && longResult.some((item) => item.flip)) longCounts[2] += 1;
+    if (structureDown && shortResult.some((item) => item.flip)) shortCounts[2] += 1;
+  }
+
+  const longStages = [
+    stage('Struktur 1H (EMA50 vs EMA200)', longCounts[0], evaluated),
+    stage('Absorption di zona fib luar value + partisipasi', longCounts[1], evaluated),
+    stage('Dominance shift / flip pada trigger', longCounts[2], evaluated),
+  ];
+  const shortStages = [
+    stage('Struktur 1H (EMA50 vs EMA200)', shortCounts[0], evaluated),
+    stage('Absorption di zona fib luar value + partisipasi', shortCounts[1], evaluated),
+    stage('Dominance shift / flip pada trigger', shortCounts[2], evaluated),
+  ];
+  return {
+    name: 'CHAMPION_ABSORPTION_REVERSION_HYPOTHESIS',
+    evaluated,
+    longStages,
+    shortStages,
+    distributions: { candleTakerBuyRatio: describe(takerRatios) },
+    diagnosis: [bindingConstraint(longStages, 'long', evaluated), bindingConstraint(shortStages, 'short', evaluated)]
+      .filter((item): item is string => item !== null).join(' ') || null,
+  };
+}
