@@ -27,7 +27,12 @@ Paper approval, Demo/Testnet, dan live **tetap terkunci**. Tidak ada private Bin
 - `market_metrics` yang kosong sekarang fallback ke arsip resmi, dan tiap candidate punya
   `dataStatus` READY / MISSING_DATA.
 - Agregat walk-forward tipis tidak lagi tampil `PF ∞`; sekarang `null` di bawah 30 trade.
-- Test: 29 → 48 pass (19 core, 29 worker).
+- Test: 29 → 51 pass (22 core, 29 worker).
+- Playbook juara #1 (Chris Creamer, Robbins Cup) diimplementasikan sebagai hipotesis teruji:
+  `CHAMPION_ABSORPTION_REVERSION_HYPOTHESIS` + governor shut-off setelah 2 loss beruntun.
+  Hasil full-history: BTC 25 trade -0.131R PF 0.71; ETH 24 trade -0.091R PF 0.82 → NOT_READY_SAMPLE.
+  Candidate terbaik sejauh ini, tetapi tidak dipromosikan; butuh interval 5M atau data footprint.
+  Spec: `docs/18-champion-playbook-hypothesis-2026-09-16.md`.
 
 ## Hasil riset full-history (Sep 2025 → Agu 2026, arsip resmi Binance)
 

@@ -77,3 +77,48 @@ playbook lulus di satu symbol saja tidak cukup; harus lintas aset.
 - **#3 Andrea Unger:** portofolio multi-strategi dengan risk-first dan diversifikasi lintas market —
   relevan setelah minimal dua playbook independen lulus, karena diversifikasi tanpa edge individual
   hanya membagi kerugian.
+
+## Hasil full-history (dijalankan setelah spesifikasi, 2026-09-16)
+
+Periode 2025-09-01 → 2026-08-31, sumber arsip resmi Binance, biaya konservatif tidak berubah.
+Mentah: `reports/local-research-champion.json`.
+
+| Symbol | Trades | Net P/L | Expectancy | PF | OOS trades | OOS R | WF trades | WF R | Gate |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| BTCUSDT | 25 | -81.89 | -0.131R | 0.71 | 8 | -0.495R | 16 | -0.286R | NOT_READY_SAMPLE |
+| ETHUSDT | 24 | -54.97 | -0.091R | 0.82 | 14 | +0.060R | 20 | -0.140R | NOT_READY_SAMPLE |
+
+Funnel (dari 34.960 candle dievaluasi per symbol):
+
+```text
+BTC  long : struktur 15.688 (44,9%) -> absorption+zona+partisipasi 74 (0,21%) -> flip 17 (0,05%)
+BTC  short: struktur 18.556 (53,1%) -> absorption+zona+partisipasi 98 (0,28%) -> flip 19 (0,05%)
+ETH  long : struktur 15.048 -> 57 -> 13
+ETH  short: struktur 19.196 -> 68 -> 9
+```
+
+### Cara membaca hasilnya
+
+1. **Ini candidate terbaik yang pernah diuji project ini.** Full-sample expectancy `-0.09..-0.13R`
+   dan PF `0.71-0.82` jauh di atas keluarga Triad (`-0.18..-0.28R`, PF `0.4-0.7`) dan dua orderbook
+   candidate (`-0.4..-1.05R`). OOS ETH bahkan sedikit positif (`+0.06R`).
+2. **Tetapi tidak bisa dipromosikan, dan tidak boleh.** Full sample masih negatif, dan OOS `8`/`14`
+   trade jauh di bawah minimum 30. Statusnya `NOT_READY_SAMPLE` — sistem dengan benar menolak
+   menyimpulkan apa-apa.
+3. **Penyebabnya resolusi data, bukan semata aturan.** Playbook juara ini hidup di footprint: delta
+   per level harga, absorption yang terlihat tick-by-tick. Candle 15M closed hanya aproksimasi kasar,
+   sehingga konfirmasi "sniper" hanya muncul ~0,05% candle. Menaikkan sample dengan melonggarkan
+   aturan (misal taker ratio 0.45, atau mengabaikan zona fib) adalah tuning untuk mempercantik metrik —
+   dilarang oleh konstitusi project ini.
+
+### Keputusan
+
+- `CHAMPION_ABSORPTION_REVERSION_HYPOTHESIS` tetap **research-only**. Paper/Testnet/live terkunci.
+- Jalur yang sah untuk mengujinya lagi (pilih salah satu, masing-masing perubahan terpisah):
+  1. **Interval riset 5M** untuk BTC/ETH dari arsip resmi (sample 3x; biaya compute dan storage naik;
+     funnel harus diperiksa ulang sebelum conclusions apa pun), atau
+  2. **Sumber footprint/orderbook** yang jujur terhadap premis asli (data tick), sebagai fase
+     execution-model terpisah sesuai preseden `docs/14` tentang hftbacktest.
+- Otak #2 (Larry Williams) dan #3 (Andrea Unger) tetap dalam antrean dengan proses yang sama:
+  spesifikasi tertulis dulu, lalu gerbang yang sama. Diversifikasi hanya bernilai jika ada minimal dua
+  playbook yang lulus sendirian.
