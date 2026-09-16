@@ -1,67 +1,24 @@
-import { unzipSync } from 'fflate';
 import { createWorkerSupabaseClient } from './supabase.ts';
+import { defaultMonthRange, fetchMonthlyFunding, monthKeys } from './binance-archive.ts';
 
-const ARCHIVE_BASE_URL = process.env.RESEARCH_FUNDING_ARCHIVE_BASE_URL ?? 'https://data.binance.vision/data/futures/um/monthly/fundingRate';
 const SYMBOLS = (process.env.RESEARCH_FUNDING_SYMBOLS ?? 'BTCUSDT,ETHUSDT').split(',').map((value) => value.trim().toUpperCase()).filter(Boolean);
-const startMonthKey = process.env.RESEARCH_FUNDING_START?.slice(0, 7) ?? (() => {
-  const date = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
-})();
-const endMonthKey = process.env.RESEARCH_FUNDING_END?.slice(0, 7) ?? (() => {
-  const date = new Date();
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
-})();
 
-function monthKeys(): string[] {
-  const [startYear, startMonth] = startMonthKey.split('-').map(Number);
-  const [endYear, endMonth] = endMonthKey.split('-').map(Number);
-  const result: string[] = [];
-  let year = startYear;
-  let month = startMonth;
-  while (year < endYear || (year === endYear && month <= endMonth)) {
-    result.push(`${year}-${String(month).padStart(2, '0')}`);
-    month += 1;
-    if (month === 13) {
-      year += 1;
-      month = 1;
-    }
-  }
-  return result;
-}
-
-async function downloadMonth(symbol: string, month: string): Promise<Array<{ time: number; fundingRate: number }>> {
-  const fileName = `${symbol}-fundingRate-${month}.zip`;
-  const response = await fetch(`${ARCHIVE_BASE_URL}/${symbol}/${fileName}`);
-  if (response.status === 404) return [];
-  if (!response.ok) throw new Error(`Funding archive ${fileName} HTTP ${response.status}`);
-  const archive = unzipSync(new Uint8Array(await response.arrayBuffer()));
-  const file = Object.values(archive)[0];
-  if (!file) throw new Error(`Funding archive ${fileName} kosong.`);
-  const lines = new TextDecoder().decode(file).split(/\r?\n/);
-  const points: Array<{ time: number; fundingRate: number }> = [];
-  for (const [index, line] of lines.entries()) {
-    if (index === 0 || line.trim() === '') continue;
-    const fields = line.split(',');
-    const time = Number(fields[0]);
-    const fundingRate = Number(fields[2]);
-    if (!Number.isFinite(time) || !Number.isFinite(fundingRate)) throw new Error(`Funding CSV ${fileName} baris ${index + 1} tidak valid.`);
-    points.push({ time, fundingRate });
-  }
-  return points;
-}
+const range = defaultMonthRange();
+const MONTHS = monthKeys(
+  (process.env.RESEARCH_FUNDING_START ?? range.startMonth).slice(0, 7),
+  (process.env.RESEARCH_FUNDING_END ?? range.endMonth).slice(0, 7),
+);
 
 async function main(): Promise<void> {
   const client = createWorkerSupabaseClient();
   const result: Record<string, number> = {};
-  const months = monthKeys();
   for (const symbol of SYMBOLS) {
-    const points = new Map<number, { time: number; fundingRate: number }>();
-    for (const month of months) {
-      const page = await downloadMonth(symbol, month);
-      for (const point of page) points.set(point.time, point);
-      console.log(JSON.stringify({ fundingBackfill: true, symbol, month, points: page.length }));
+    const points = await fetchMonthlyFunding({ symbol, months: MONTHS });
+    for (const month of MONTHS) {
+      const inMonth = points.filter((point) => new Date(point.time).toISOString().slice(0, 7) === month).length;
+      console.log(JSON.stringify({ fundingBackfill: true, symbol, month, points: inMonth }));
     }
-    const rows = [...points.values()].sort((left, right) => left.time - right.time).map((point) => ({
+    const rows = points.map((point) => ({
       symbol,
       metric: 'FUNDING_RATE',
       event_time: new Date(point.time).toISOString(),
@@ -79,7 +36,7 @@ async function main(): Promise<void> {
     result[symbol] = rows.length;
     console.log(JSON.stringify({ fundingBackfill: true, symbol, points: rows.length }));
   }
-  console.log(JSON.stringify({ ok: true, source: ARCHIVE_BASE_URL, months, result, at: new Date().toISOString() }));
+  console.log(JSON.stringify({ ok: true, months: MONTHS, result, at: new Date().toISOString() }));
 }
 
 if (process.env.RUN_RESEARCH_FUNDING_BACKFILL === 'true') {

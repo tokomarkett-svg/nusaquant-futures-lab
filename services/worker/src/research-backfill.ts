@@ -1,83 +1,22 @@
-import { unzipSync } from 'fflate';
 import { toLegacyMarketCandleRows, toMarketCandleRows } from './ingest.ts';
 import { createWorkerSupabaseClient } from './supabase.ts';
-import type { Candle } from '@nusaquant/core';
+import { defaultMonthRange, fetchMonthlyKlines, monthKeys } from './binance-archive.ts';
 
-const BASE_URL = process.env.RESEARCH_ARCHIVE_BASE_URL ?? 'https://data.binance.vision/data/futures/um/monthly/klines';
 const SYMBOLS = (process.env.RESEARCH_ARCHIVE_SYMBOLS ?? 'BTCUSDT,ETHUSDT').split(',').map((value) => value.trim().toUpperCase()).filter(Boolean);
 const INTERVALS = (process.env.RESEARCH_ARCHIVE_INTERVALS ?? '15m,1h').split(',').map((value) => value.trim()).filter(Boolean);
 const CHUNK_SIZE = 500;
 
-type CsvRow = [string, string, string, string, string, string, string, string, string, string, string, string];
+const range = defaultMonthRange();
+const MONTHS = monthKeys(
+  process.env.RESEARCH_ARCHIVE_START ?? range.startMonth,
+  process.env.RESEARCH_ARCHIVE_END ?? range.endMonth,
+);
 
-function monthKeys(): string[] {
-  const start = process.env.RESEARCH_ARCHIVE_START ?? (() => {
-    const date = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
-    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
-  })();
-  const end = process.env.RESEARCH_ARCHIVE_END ?? (() => {
-    const date = new Date();
-    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
-  })();
-  const [startYear, startMonth] = start.split('-').map(Number);
-  const [endYear, endMonth] = end.split('-').map(Number);
-  const result: string[] = [];
-  let year = startYear;
-  let month = startMonth;
-  while (year < endYear || (year === endYear && month <= endMonth)) {
-    result.push(`${year}-${String(month).padStart(2, '0')}`);
-    month += 1;
-    if (month === 13) {
-      year += 1;
-      month = 1;
-    }
-  }
-  return result;
-}
-
-function parseCsv(text: string): Candle[] {
-  const candles: Candle[] = [];
-  const lines = text.split(/\r?\n/);
-  for (const [index, line] of lines.entries()) {
-    if (index === 0 || line.trim() === '') continue;
-    const fields = line.split(',') as CsvRow;
-    if (fields.length < 6) continue;
-    const candle: Candle = {
-      time: Number(fields[0]),
-      open: Number(fields[1]),
-      high: Number(fields[2]),
-      low: Number(fields[3]),
-      close: Number(fields[4]),
-      volume: Number(fields[5]),
-      quoteVolume: Number(fields[7]),
-      tradeCount: Number(fields[8]),
-      takerBuyVolume: Number(fields[9]),
-      takerBuyQuoteVolume: Number(fields[10]),
-    };
-    if (![candle.time, candle.open, candle.high, candle.low, candle.close, candle.volume, candle.quoteVolume, candle.tradeCount, candle.takerBuyVolume, candle.takerBuyQuoteVolume].every(Number.isFinite)) {
-      throw new Error(`CSV candle tidak valid pada baris ${index + 1}.`);
-    }
-    candles.push(candle);
-  }
-  return candles;
-}
-
-async function downloadMonth(symbol: string, interval: string, month: string): Promise<Candle[]> {
-  const fileName = `${symbol}-${interval}-${month}.zip`;
-  const response = await fetch(`${BASE_URL}/${symbol}/${interval}/${fileName}`);
-  if (response.status === 404) return [];
-  if (!response.ok) throw new Error(`Download ${fileName} gagal: HTTP ${response.status}`);
-  const archive = unzipSync(new Uint8Array(await response.arrayBuffer()));
-  const file = Object.values(archive)[0];
-  if (!file) throw new Error(`Archive ${fileName} kosong.`);
-  return parseCsv(new TextDecoder().decode(file));
-}
-
-async function upsertChunks(symbol: string, interval: string, candles: Candle[]): Promise<number> {
+async function upsertChunks(symbol: string, interval: string, rows: ReturnType<typeof toMarketCandleRows>): Promise<number> {
   const client = createWorkerSupabaseClient();
-  const rows = toMarketCandleRows(symbol, interval, candles).map((row) => ({ ...row, source: 'BINANCE_BULK_ARCHIVE' }));
-  for (let index = 0; index < rows.length; index += CHUNK_SIZE) {
-    const chunk = rows.slice(index, index + CHUNK_SIZE);
+  const tagged = rows.map((row) => ({ ...row, source: 'BINANCE_BULK_ARCHIVE' }));
+  for (let index = 0; index < tagged.length; index += CHUNK_SIZE) {
+    const chunk = tagged.slice(index, index + CHUNK_SIZE);
     let result = await client.from('market_candles').upsert(chunk, {
       onConflict: 'symbol,interval,open_time',
       ignoreDuplicates: false,
@@ -90,26 +29,24 @@ async function upsertChunks(symbol: string, interval: string, candles: Candle[])
     }
     if (result.error) throw new Error(`Upsert ${symbol} ${interval} gagal: ${result.error.message}`);
   }
-  return rows.length;
+  return tagged.length;
 }
 
 async function main(): Promise<void> {
-  const months = monthKeys();
   const result: Record<string, Record<string, number>> = {};
   for (const symbol of SYMBOLS) {
     result[symbol] = {};
     for (const interval of INTERVALS) {
-      const candles = new Map<number, Candle>();
-      for (const month of months) {
-        const downloaded = await downloadMonth(symbol, interval, month);
-        for (const candle of downloaded) candles.set(candle.time, candle);
-        console.log(JSON.stringify({ researchBackfill: true, symbol, interval, month, downloaded: downloaded.length }));
+      const candles = await fetchMonthlyKlines({ symbol, interval, months: MONTHS });
+      for (const month of MONTHS) {
+        const inMonth = candles.filter((candle) => new Date(candle.time).toISOString().slice(0, 7) === month).length;
+        console.log(JSON.stringify({ researchBackfill: true, symbol, interval, month, downloaded: inMonth }));
       }
-      const ordered = [...candles.values()].sort((left, right) => left.time - right.time);
-      result[symbol][interval] = await upsertChunks(symbol, interval, ordered);
+      const ordered = [...candles].sort((left, right) => left.time - right.time);
+      result[symbol][interval] = await upsertChunks(symbol, interval, toMarketCandleRows(symbol, interval, ordered));
     }
   }
-  console.log(JSON.stringify({ ok: true, source: BASE_URL, months, result, at: new Date().toISOString() }));
+  console.log(JSON.stringify({ ok: true, months: MONTHS, result, at: new Date().toISOString() }));
 }
 
 if (process.env.RUN_RESEARCH_ARCHIVE_BACKFILL === 'true') {
