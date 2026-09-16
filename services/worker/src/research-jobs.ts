@@ -125,16 +125,22 @@ function metricDateKeys(startTime: number, endTime: number): string[] {
 async function readMetricsArchive(symbol: string, startTime: number, endTime: number): Promise<MarketMetricsPoint[]> {
   const dates = metricDateKeys(startTime, endTime);
   const result: MarketMetricsPoint[] = [];
-  for (let offset = 0; offset < dates.length; offset += 12) {
-    const batch = await Promise.all(dates.slice(offset, offset + 12).map(async (day) => {
+  for (let offset = 0; offset < dates.length; offset += 32) {
+    const batch = await Promise.all(dates.slice(offset, offset + 32).map(async (day) => {
       const fileName = `${symbol}-metrics-${day}.zip`;
-      const response = await fetch(`${METRICS_ARCHIVE_BASE_URL}/${symbol}/${fileName}`);
-      if (response.status === 404) return [];
-      if (!response.ok) throw new Error(`Metrics archive ${fileName} HTTP ${response.status}`);
-      const archive = unzipSync(new Uint8Array(await response.arrayBuffer()));
-      const file = Object.values(archive)[0];
-      if (!file) return [];
-      return new TextDecoder().decode(file).split(/\r?\n/).slice(1).map((line) => metricPointFromFields(symbol, line.split(','))).filter((point): point is MarketMetricsPoint => point !== null);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20_000);
+      try {
+        const response = await fetch(`${METRICS_ARCHIVE_BASE_URL}/${symbol}/${fileName}`, { signal: controller.signal });
+        if (response.status === 404) return [];
+        if (!response.ok) throw new Error(`Metrics archive ${fileName} HTTP ${response.status}`);
+        const archive = unzipSync(new Uint8Array(await response.arrayBuffer()));
+        const file = Object.values(archive)[0];
+        if (!file) return [];
+        return new TextDecoder().decode(file).split(/\r?\n/).slice(1).map((line) => metricPointFromFields(symbol, line.split(','))).filter((point): point is MarketMetricsPoint => point !== null);
+      } finally {
+        clearTimeout(timeout);
+      }
     }));
     result.push(...batch.flat());
   }
