@@ -162,3 +162,28 @@ test('walk-forward validation returns ordered forward folds without tuning', () 
   assert.ok(validation.folds.every((fold) => fold.trainCandles > fold.testCandles));
   assert.ok(validation.notes.length >= 3);
 });
+
+test('a thin walk-forward aggregate reports an undefined profit factor, never infinity', () => {
+  const hour = 60 * 60 * 1000;
+  const quarterHour = 15 * 60 * 1000;
+  const higher = candles(360, 100, hour, 0.1, 0);
+  const entry = candles(500, 140, quarterHour, 0.02, 220 * hour);
+  const validation = runWalkForwardValidation({
+    higherTimeframe: higher,
+    entryTimeframe: entry,
+    // A rule that can barely fire: this reproduces the real LIQUIDATION_RECLAIM full-history case
+    // where one fold held a single winning trade and the other two held none.
+    config: { initialEquity: 10_000, entryPolicy: 'MEAN_REVERSION_REJECTION_HYPOTHESIS' },
+    foldCount: 3,
+    warmupBars: 80,
+  });
+
+  const aggregate = validation.aggregate;
+  assert.ok(aggregate.totalTrades < 30, 'test harus memakai sampel tipis agar regresi ini berarti');
+  assert.equal(aggregate.profitFactor, null, 'PF tidak boleh Infinity hanya karena belum ada trade kalah');
+  assert.notEqual(aggregate.gate, 'PASS_RESEARCH_GATE');
+  assert.ok(
+    validation.folds.every((fold) => fold.summary.profitFactor === null || Number.isFinite(fold.summary.profitFactor)),
+    'setiap fold juga tidak boleh melaporkan PF Infinity',
+  );
+});
