@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { MAX_PENDING_SIGNAL_AGE_MS, PaperBotEngine } from './index.ts';
 import type { Candle, IntelligentSignal } from '@nusaquant/core';
-import { desiredStatusAction, isFreshMarketCandle, resolveBotSessionIds } from './session-control.ts';
+import { DEFAULT_MARKET_DATA_MAX_AGE_MS, WILLIAMS_MARKET_DATA_MAX_AGE_MS, desiredStatusAction, isFreshMarketCandle, resolveBotSessionIds } from './session-control.ts';
 
 test('bot starts in observation mode without opening a position', () => {
   const bot = new PaperBotEngine({ mode: 'PAPER_APPROVAL' });
@@ -300,4 +300,13 @@ test('williams strategy stays observing when the gate is not broken', () => {
   assert.equal(snapshot.status, 'RUNNING');
   assert.equal(snapshot.position, null);
   assert.equal(snapshot.pendingSignal, null);
+});
+
+test('williams freshness threshold covers a just-closed 1h candle', () => {
+  const now = Date.parse('2026-09-17T02:50:00.000Z');
+  // Candle 1H 01:00-02:00 UTC baru ditutup 50 menit lalu + open_time 01:00 => umur 110 menit?
+  // Yang relevan: open_time candle 1H terakhir (01:00) vs now (02:50) = 110 menit -> stale bahkan untuk Williams.
+  assert.equal(isFreshMarketCandle('2026-09-17T02:00:00.000Z', now, DEFAULT_MARKET_DATA_MAX_AGE_MS), false);
+  assert.equal(isFreshMarketCandle('2026-09-17T02:00:00.000Z', now, WILLIAMS_MARKET_DATA_MAX_AGE_MS), true);
+  assert.ok(WILLIAMS_MARKET_DATA_MAX_AGE_MS > 60 * 60 * 1000);
 });

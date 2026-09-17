@@ -15,6 +15,9 @@ export const ETH_BOT_SESSION_ID = '00000000-0000-4000-8000-000000000002';
 
 export const DEFAULT_BOT_SESSION_IDS = [DEFAULT_BOT_SESSION_ID, ETH_BOT_SESSION_ID] as const;
 export const DEFAULT_MARKET_DATA_MAX_AGE_MS = 45 * 60 * 1000;
+// Candle 1H yang baru ditutup berumur hingga ~1 jam sebelum poll berikutnya menangkapnya;
+// ambang stale untuk Williams harus mengikuti interval entry, bukan patokan 15M.
+export const WILLIAMS_MARKET_DATA_MAX_AGE_MS = 60 * 60 * 1000 + 15 * 60 * 1000;
 
 export function resolveBotSessionIds(configured?: string): string[] {
   const extra = (configured ?? '').split(',').map((id) => id.trim()).filter(Boolean);
@@ -292,10 +295,13 @@ export class PaperSessionController {
     const entryRows = (entryResult.data ?? []) as CandleRow[];
     const latestRow = entryRows[0];
     if (!latestRow) return current;
-    const configuredMaxAge = Number(process.env.MARKET_DATA_MAX_AGE_MS ?? DEFAULT_MARKET_DATA_MAX_AGE_MS);
-    const maxAgeMs = Number.isFinite(configuredMaxAge) && configuredMaxAge >= 15 * 60 * 1000
-      ? configuredMaxAge
+    const defaultMaxAge = strategy === 'WILLIAMS_VOLATILITY_BREAKOUT'
+      ? WILLIAMS_MARKET_DATA_MAX_AGE_MS
       : DEFAULT_MARKET_DATA_MAX_AGE_MS;
+    const configuredMaxAge = Number(process.env.MARKET_DATA_MAX_AGE_MS ?? defaultMaxAge);
+    const maxAgeMs = Number.isFinite(configuredMaxAge) && configuredMaxAge >= defaultMaxAge
+      ? configuredMaxAge
+      : defaultMaxAge;
     if (!isFreshMarketCandle(latestRow.open_time, Date.now(), maxAgeMs)) {
       if (this.lastStaleMarketCandleTime !== latestRow.open_time) {
         console.error(JSON.stringify({
