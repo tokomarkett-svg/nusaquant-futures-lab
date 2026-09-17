@@ -6,6 +6,7 @@ export const dynamic = 'force-dynamic';
 const SESSIONS = {
   BTCUSDT: '00000000-0000-4000-8000-000000000001',
   ETHUSDT: '00000000-0000-4000-8000-000000000002',
+  ADAUSDT: '00000000-0000-4000-8000-000000000003',
 } as const;
 type SupportedSymbol = keyof typeof SESSIONS;
 type Action = 'start' | 'pause' | 'approve' | 'emergency';

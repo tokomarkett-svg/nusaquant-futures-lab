@@ -55,6 +55,11 @@ Paper approval, Demo/Testnet, dan live **tetap terkunci**. Tidak ada private Bin
     pending expiry mengikuti candle entry, session-control baca entry 1H (limit 1200) saat
     strategy Williams, ingest punya `INGEST_INTERVALS`/`INGEST_KLINE_LIMIT`. Nyalakan via
     `BOT_STRATEGY` + backfill 1H 60 hari (panduan lengkap di `docs/20`). Test 54 → 57 pass.
+  - Riset multi-aset pra-registrasi (`docs/22`): 10 perpetual tambahan, 2021-01 → 2026-08.
+    **ADAUSDT PASS** (465 trade +0.052R PF 1.12; OOS +0.077R; WF +0.074R; dua sisi untung,
+    6/6 tahun positif) — review lintas aset + persetujuan paper di `docs/23`. Sembilan aset
+    lain REJECT dan dilaporkan apa adanya. Dashboard & worker sekarang mengenali sesi ADA
+    (`...003`); test 57 → 58 pass.
 
 ## Hasil riset full-history (Sep 2025 → Agu 2026, arsip resmi Binance)
 

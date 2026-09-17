@@ -12,8 +12,9 @@ export const WILLIAMS_ENTRY_CANDLE_LIMIT = 1200;
 
 export const DEFAULT_BOT_SESSION_ID = '00000000-0000-4000-8000-000000000001';
 export const ETH_BOT_SESSION_ID = '00000000-0000-4000-8000-000000000002';
+export const ADA_BOT_SESSION_ID = '00000000-0000-4000-8000-000000000003';
 
-export const DEFAULT_BOT_SESSION_IDS = [DEFAULT_BOT_SESSION_ID, ETH_BOT_SESSION_ID] as const;
+export const DEFAULT_BOT_SESSION_IDS = [DEFAULT_BOT_SESSION_ID, ETH_BOT_SESSION_ID, ADA_BOT_SESSION_ID] as const;
 export const DEFAULT_MARKET_DATA_MAX_AGE_MS = 45 * 60 * 1000;
 // Candle 1H yang baru ditutup berumur hingga ~1 jam sebelum poll berikutnya menangkapnya;
 // ambang stale untuk Williams harus mengikuti interval entry, bukan patokan 15M.

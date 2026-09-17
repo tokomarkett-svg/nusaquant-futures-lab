@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 type BotStatus = 'IDLE' | 'STARTING' | 'RUNNING' | 'WAITING_APPROVAL' | 'POSITION_OPEN' | 'PAUSED' | 'COOLDOWN' | 'EMERGENCY';
-type SupportedSymbol = 'BTCUSDT' | 'ETHUSDT';
+type SupportedSymbol = 'BTCUSDT' | 'ETHUSDT' | 'ADAUSDT';
 type Session = { status: BotStatus; mode: string; symbol: string; risk_fraction: number; daily_loss_limit: number; updated_at?: string };
 type LatestSignal = { decision: string; stage: string; timing: string; quality_score: number; evaluated_at: string; blockers: string[]; structure?: { candle_open_time?: string } | null };
 type LatestPosition = { side: string; symbol: string; quantity: number | string; entry_price: number | string; stop_loss: number | string; take_profit: number | string; opened_at: string };
@@ -110,7 +110,7 @@ export default function BotControls() {
   useEffect(() => {
     const handleSymbolChange = (event: Event) => {
       const next = (event as CustomEvent<SupportedSymbol>).detail;
-      if (next === 'BTCUSDT' || next === 'ETHUSDT') setSymbol(next);
+      if (next === 'BTCUSDT' || next === 'ETHUSDT' || next === 'ADAUSDT') setSymbol(next);
     };
     window.addEventListener('nusaquant-symbol-change', handleSymbolChange);
     return () => window.removeEventListener('nusaquant-symbol-change', handleSymbolChange);
@@ -155,6 +155,7 @@ export default function BotControls() {
         }}>
           <option value="BTCUSDT">BTCUSDT</option>
           <option value="ETHUSDT">ETHUSDT</option>
+          <option value="ADAUSDT">ADAUSDT</option>
         </select>
       </label>
       <div className="control-status"><span className={`status-dot status-${status?.toLowerCase() ?? 'idle'}`} />{readableStatus(status)}</div>
