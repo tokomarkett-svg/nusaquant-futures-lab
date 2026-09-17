@@ -309,5 +309,7 @@ test('williams freshness threshold covers a just-closed 1h candle', () => {
   // Yang relevan: open_time candle 1H terakhir (01:00) vs now (02:50) = 110 menit -> stale bahkan untuk Williams.
   assert.equal(isFreshMarketCandle('2026-09-17T02:00:00.000Z', now, DEFAULT_MARKET_DATA_MAX_AGE_MS), false);
   assert.equal(isFreshMarketCandle('2026-09-17T02:00:00.000Z', now, WILLIAMS_MARKET_DATA_MAX_AGE_MS), true);
-  assert.ok(WILLIAMS_MARKET_DATA_MAX_AGE_MS > 60 * 60 * 1000);
+  // open_time candle 1H terburuk: ~120 menit lalu (+slack poll) harus masih fresh.
+  assert.equal(isFreshMarketCandle('2026-09-17T00:50:00.000Z', now, WILLIAMS_MARKET_DATA_MAX_AGE_MS), true);
+  assert.ok(WILLIAMS_MARKET_DATA_MAX_AGE_MS > 2 * 60 * 60 * 1000);
 });

@@ -16,9 +16,9 @@ export const ADA_BOT_SESSION_ID = '00000000-0000-4000-8000-000000000003';
 
 export const DEFAULT_BOT_SESSION_IDS = [DEFAULT_BOT_SESSION_ID, ETH_BOT_SESSION_ID, ADA_BOT_SESSION_ID] as const;
 export const DEFAULT_MARKET_DATA_MAX_AGE_MS = 45 * 60 * 1000;
-// Candle 1H yang baru ditutup berumur hingga ~1 jam sebelum poll berikutnya menangkapnya;
-// ambang stale untuk Williams harus mengikuti interval entry, bukan patokan 15M.
-export const WILLIAMS_MARKET_DATA_MAX_AGE_MS = 60 * 60 * 1000 + 15 * 60 * 1000;
+// Yang diperiksa adalah OPEN_TIME candle entry. Candle 1H yang baru ditutup punya
+// open_time 60-120 menit lalu, jadi ambang stale Williams harus > 2 jam, bukan patokan 15M.
+export const WILLIAMS_MARKET_DATA_MAX_AGE_MS = 2 * 60 * 60 * 1000 + 15 * 60 * 1000;
 
 export function resolveBotSessionIds(configured?: string): string[] {
   const extra = (configured ?? '').split(',').map((id) => id.trim()).filter(Boolean);
