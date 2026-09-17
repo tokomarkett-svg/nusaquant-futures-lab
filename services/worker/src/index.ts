@@ -1,4 +1,5 @@
 import {
+  buildWilliamsVolatilityBreakoutSignal,
   createDailyMarketPlan,
   evaluateIntelligentSignal,
   type Candle,
@@ -9,6 +10,8 @@ import {
 
 export type BotStatus = 'IDLE' | 'STARTING' | 'RUNNING' | 'WAITING_APPROVAL' | 'POSITION_OPEN' | 'PAUSED' | 'COOLDOWN' | 'EMERGENCY';
 export type ExecutionMode = 'PAPER_APPROVAL' | 'PAPER_AUTO';
+export type PaperStrategy = 'BASELINE_INTELLIGENCE' | 'WILLIAMS_VOLATILITY_BREAKOUT';
+export const WILLIAMS_MAX_BARS_IN_TRADE = 72;
 export type PositionSide = 'LONG' | 'SHORT';
 export const MAX_PENDING_SIGNAL_AGE_MS = 15 * 60 * 1000;
 
@@ -34,6 +37,7 @@ export interface PaperPosition {
 export interface WorkerSnapshot {
   status: BotStatus;
   mode: ExecutionMode;
+  strategy: PaperStrategy;
   plan: DailyMarketPlan | null;
   latestSignal: IntelligentSignal | null;
   pendingSignal: IntelligentSignal | null;
@@ -99,12 +103,13 @@ class PaperBroker {
     );
   }
 
-  markCandle({ high, low, close, now, costs }: {
+  markCandle({ high, low, close, now, costs, maxBarsInTrade = null }: {
     high: number;
     low: number;
     close: number;
     now: Date;
     costs: { feeRate: number; slippageRate: number; fundingRatePerBar: number; barMs: number };
+    maxBarsInTrade?: number | null;
   }): PaperPosition | null {
     if (!this.position) return null;
     const position = this.position;
@@ -112,10 +117,15 @@ class PaperBroker {
     const targetHit = position.side === 'LONG' ? high >= position.takeProfit : low <= position.takeProfit;
     if (stopHit) return this.closeAt(position.stopLoss, 'STOP_LOSS', now, costs);
     if (targetHit) return this.closeAt(position.takeProfit, 'TAKE_PROFIT', now, costs);
+    if (maxBarsInTrade !== null) {
+      const openedAt = Date.parse(position.openedAt);
+      const elapsedBars = Number.isFinite(openedAt) ? Math.ceil((now.getTime() - openedAt) / costs.barMs) : 0;
+      if (elapsedBars >= maxBarsInTrade) return this.closeAt(close, 'TIME_EXIT', now, costs);
+    }
     return this.mark(close, now, costs);
   }
 
-  private closeAt(exit: number, closeReason: 'STOP_LOSS' | 'TAKE_PROFIT', now: Date, costs: { feeRate: number; slippageRate: number; fundingRatePerBar: number; barMs: number }): PaperPosition | null {
+  private closeAt(exit: number, closeReason: 'STOP_LOSS' | 'TAKE_PROFIT' | 'TIME_EXIT', now: Date, costs: { feeRate: number; slippageRate: number; fundingRatePerBar: number; barMs: number }): PaperPosition | null {
     if (!this.position) return null;
     const position = this.position;
     const grossPnl = position.side === 'LONG'
@@ -163,6 +173,9 @@ export class PaperBotEngine {
   private readonly slippageRate: number;
   private readonly fundingRatePerBar: number;
   private readonly dailyLossLimit: number;
+  private readonly strategy: PaperStrategy;
+  private readonly entryIntervalMs: number;
+  private readonly maxBarsInTrade: number | null;
   private status: BotStatus = 'IDLE';
   private readonly mode: ExecutionMode;
   private plan: DailyMarketPlan | null = null;
@@ -188,6 +201,9 @@ export class PaperBotEngine {
     fundingRatePerBar = 0.00001,
     dailyLossFraction = 0.01,
     mode = 'PAPER_APPROVAL',
+    strategy = 'BASELINE_INTELLIGENCE',
+    entryIntervalMs = 15 * 60 * 1000,
+    maxBarsInTrade = strategy === 'WILLIAMS_VOLATILITY_BREAKOUT' ? WILLIAMS_MAX_BARS_IN_TRADE : null,
     profiles = [],
   }: {
     equity?: number;
@@ -198,6 +214,9 @@ export class PaperBotEngine {
     fundingRatePerBar?: number;
     dailyLossFraction?: number;
     mode?: ExecutionMode;
+    strategy?: PaperStrategy;
+    entryIntervalMs?: number;
+    maxBarsInTrade?: number | null;
     profiles?: WindowProfile[];
   } = {}) {
     this.equityStart = equity;
@@ -208,6 +227,9 @@ export class PaperBotEngine {
     this.fundingRatePerBar = fundingRatePerBar;
     this.dailyLossLimit = Math.max(equity * dailyLossFraction, Number.EPSILON);
     this.mode = mode;
+    this.strategy = strategy;
+    this.entryIntervalMs = entryIntervalMs;
+    this.maxBarsInTrade = maxBarsInTrade;
     this.profiles = profiles;
   }
 
@@ -220,6 +242,7 @@ export class PaperBotEngine {
     return {
       status: this.status,
       mode: this.mode,
+      strategy: this.strategy,
       plan: this.plan,
       latestSignal: this.latestSignal,
       pendingSignal: this.pendingSignal,
@@ -314,7 +337,7 @@ export class PaperBotEngine {
       feeRate: this.feeRate,
       slippageRate: this.slippageRate,
       fundingRatePerBar: this.fundingRatePerBar,
-      barMs: 15 * 60 * 1000,
+      barMs: this.entryIntervalMs,
     });
     return this.recordClosedPosition(closed, now);
   }
@@ -326,11 +349,12 @@ export class PaperBotEngine {
       low,
       close,
       now,
+      maxBarsInTrade: this.maxBarsInTrade,
       costs: {
         feeRate: this.feeRate,
         slippageRate: this.slippageRate,
         fundingRatePerBar: this.fundingRatePerBar,
-        barMs: 15 * 60 * 1000,
+        barMs: this.entryIntervalMs,
       },
     });
     return this.recordClosedPosition(closed, now);
@@ -364,12 +388,29 @@ export class PaperBotEngine {
     if (this.status === 'COOLDOWN') this.status = 'RUNNING';
     if (this.broker.getPosition()) return this.snapshot();
 
-    const signal = evaluateIntelligentSignal({
-      higherTimeframe,
-      entryTimeframe,
-      equity: this.equityStart + this.realizedPnl,
-      riskFraction: this.riskFraction,
-    });
+    const signal = this.strategy === 'WILLIAMS_VOLATILITY_BREAKOUT'
+      ? buildWilliamsVolatilityBreakoutSignal({
+        entryTimeframe,
+        equity: this.equityStart + this.realizedPnl,
+        riskFraction: this.riskFraction,
+        feeRate: this.feeRate,
+        slippageRate: this.slippageRate,
+        fundingRatePerBar: this.fundingRatePerBar,
+        maxBarsInTrade: this.maxBarsInTrade ?? WILLIAMS_MAX_BARS_IN_TRADE,
+      })
+      : evaluateIntelligentSignal({
+        higherTimeframe,
+        entryTimeframe,
+        equity: this.equityStart + this.realizedPnl,
+        riskFraction: this.riskFraction,
+      });
+    if (!signal) {
+      // Williams hanya bicara saat gate + regime terpenuhi; selain itu tetap observasi.
+      this.pendingSignal = null;
+      this.pendingSignalCandleTime = null;
+      this.status = 'RUNNING';
+      return this.snapshot();
+    }
     this.latestSignal = signal;
     this.pendingSignalCandleTime = entryTimeframe.at(-1)?.time ?? null;
     this.emit('SIGNAL', `${signal.decision} · ${signal.stage} · score ${signal.qualityScore}/100.`);
@@ -413,7 +454,9 @@ export class PaperBotEngine {
 
   expirePendingApproval(now = new Date()): WorkerSnapshot {
     if (this.status !== 'WAITING_APPROVAL' || !this.pendingSignal) return this.snapshot();
-    if (this.pendingSignalCandleTime !== null && now.getTime() - this.pendingSignalCandleTime > MAX_PENDING_SIGNAL_AGE_MS) {
+    // Umur pending mengikuti satu candle entry: 15 menit untuk baseline, 1 jam untuk Williams.
+    const maxPendingAgeMs = this.strategy === 'WILLIAMS_VOLATILITY_BREAKOUT' ? this.entryIntervalMs : MAX_PENDING_SIGNAL_AGE_MS;
+    if (this.pendingSignalCandleTime !== null && now.getTime() - this.pendingSignalCandleTime > maxPendingAgeMs) {
       this.pendingSignal = null;
       this.pendingSignalCandleTime = null;
       this.status = 'RUNNING';

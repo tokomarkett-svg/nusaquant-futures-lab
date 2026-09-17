@@ -50,3 +50,23 @@ aturan persis `docs/19` (tanpa satu perubahan pun), dari run yang sama dengan
   Portofolio multi-playbook (otak #3, Andrea Unger) tetap agenda berikutnya.
 - Semua angka memakai asumsi biaya repo (fee 0.0004, slippage 0.0002, funding/bar 0.00001).
   Edge +0.084R/trade cukup tipis sehingga paper trading adalah uji asumsi biaya yang sesungguhnya.
+
+## Cara menyalakan paper trading Williams (ETH-only) — 2026-09-17
+
+Wiring sudah diimplementasikan (engine `strategy`, TIME_EXIT 72 bar, pending expiry mengikuti
+candle entry, ingest/backfill via env). Langkah di sisi deploy (Railway + Supabase):
+
+1. **Backfill satu kali** (butuh ≥ 46 hari close harian untuk SMA45; 60 hari = 1.440 candle 1H):
+   jalankan worker dengan `RUN_MARKET_BACKFILL=true BACKFILL_INTERVALS=1h BACKFILL_DAYS=60
+   SYMBOLS=ETHUSDT BINANCE_BASE_URL=https://fapi.binance.com`.
+   (`BINANCE_BASE_URL` wajib diset eksplisit: default backfill mengarah ke testnet.)
+2. **Sesi bot**: set session ETH (`00000000-0000-4000-8000-000000000002`) ke `symbol=ETHUSDT`,
+   `risk_fraction=0.0025`, `mode=PAPER_APPROVAL` (disarankan; PAPER_AUTO hanya setelah terbiasa).
+3. **Env worker**: `BOT_STRATEGY=WILLIAMS_VOLATILITY_BREAKOUT`, `RUN_MARKET_INGEST=true`,
+   `RUN_MARKET_WATCH=true`. Tanpa env ini engine tetap baseline — perubahan ini backward
+   compatible, tidak ada migrasi SQL baru.
+4. **Operasional**: sinyal dievaluasi tiap close candle 1H; pada PAPER_APPROVAL entry harus
+   disetujui dalam 1 jam (kadaluarsa = batal, bot kembali observasi). Posisi keluar lewat SL,
+   TP 3R, atau TIME_EXIT setelah 72 candle 1H (≈ 3 hari). Daily loss limit 1% tetap aktif.
+5. **Yang TIDAK boleh disentuh selama paper**: k=0.5, SMA5/45, target 3R, risk 0.25%, dua sisi.
+   Intervensi parameter membatalkan validitas statistik 541 trade yang meloloskan playbook ini.

@@ -77,8 +77,11 @@ export async function ingestSymbol({
 
 async function main(): Promise<void> {
   const symbols = (process.env.SYMBOLS ?? 'BTCUSDT,ETHUSDT').split(',').map((symbol) => symbol.trim()).filter(Boolean);
+  const intervals = (process.env.INGEST_INTERVALS ?? '15m,1h').split(',').map((interval) => interval.trim()).filter(Boolean);
+  const configuredLimit = Number(process.env.INGEST_KLINE_LIMIT ?? 500);
+  const limit = Number.isFinite(configuredLimit) && configuredLimit >= 1 && configuredLimit <= 1500 ? configuredLimit : 500;
   const result: Record<string, Record<string, number>> = {};
-  for (const symbol of symbols) result[symbol] = await ingestSymbol({ symbol });
+  for (const symbol of symbols) result[symbol] = await ingestSymbol({ symbol, intervals, limit });
   console.log(JSON.stringify({ ok: true, result, at: new Date().toISOString() }));
 }
 

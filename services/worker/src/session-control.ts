@@ -1,6 +1,14 @@
 import type { Candle, IntelligentSignal } from '@nusaquant/core';
-import { PaperBotEngine, type BotStatus, type ExecutionMode, type PaperPosition, type WorkerSnapshot } from './index.ts';
+import { PaperBotEngine, type BotStatus, type ExecutionMode, type PaperPosition, type PaperStrategy, type WorkerSnapshot } from './index.ts';
 import { createWorkerSupabaseClient } from './supabase.ts';
+
+export function resolvePaperStrategy(raw: string | undefined): PaperStrategy {
+  return raw === 'WILLIAMS_VOLATILITY_BREAKOUT' ? 'WILLIAMS_VOLATILITY_BREAKOUT' : 'BASELINE_INTELLIGENCE';
+}
+
+// Williams butuh >= 46 hari close harian untuk SMA45; 1.200 candle 1H menutup itu dengan margin.
+export const WILLIAMS_ENTRY_INTERVAL = '1h';
+export const WILLIAMS_ENTRY_CANDLE_LIMIT = 1200;
 
 export const DEFAULT_BOT_SESSION_ID = '00000000-0000-4000-8000-000000000001';
 export const ETH_BOT_SESSION_ID = '00000000-0000-4000-8000-000000000002';
@@ -230,11 +238,14 @@ export class PaperSessionController {
     const mode = session.mode === 'PAPER_AUTO' ? 'PAPER_AUTO' : 'PAPER_APPROVAL';
     if (this.engine && this.engine.snapshot().mode === mode) return;
 
+    const strategy = resolvePaperStrategy(process.env.BOT_STRATEGY);
     this.engine = new PaperBotEngine({
       symbol: session.symbol,
       riskFraction: Number(session.risk_fraction),
       dailyLossFraction: Number(session.daily_loss_limit),
       mode,
+      strategy,
+      entryIntervalMs: strategy === 'WILLIAMS_VOLATILITY_BREAKOUT' ? 60 * 60 * 1000 : 15 * 60 * 1000,
     });
 
     const openPosition = await this.client
@@ -267,9 +278,12 @@ export class PaperSessionController {
   }
 
   private async evaluateLatestCandles(sessionId: string, session: SessionRecord, current: WorkerSnapshot): Promise<WorkerSnapshot> {
+    const strategy = resolvePaperStrategy(process.env.BOT_STRATEGY);
+    const entryInterval = strategy === 'WILLIAMS_VOLATILITY_BREAKOUT' ? WILLIAMS_ENTRY_INTERVAL : '15m';
+    const entryLimit = strategy === 'WILLIAMS_VOLATILITY_BREAKOUT' ? WILLIAMS_ENTRY_CANDLE_LIMIT : 500;
     const [higherResult, entryResult] = await Promise.all([
       this.client.from('market_candles').select('open_time,open,high,low,close,volume').eq('symbol', session.symbol).eq('interval', '1h').order('open_time', { ascending: false }).limit(500),
-      this.client.from('market_candles').select('open_time,open,high,low,close,volume').eq('symbol', session.symbol).eq('interval', '15m').order('open_time', { ascending: false }).limit(500),
+      this.client.from('market_candles').select('open_time,open,high,low,close,volume').eq('symbol', session.symbol).eq('interval', entryInterval).order('open_time', { ascending: false }).limit(entryLimit),
     ]);
     if (higherResult.error) throw new Error(`Gagal membaca candle 1h: ${higherResult.error.message}`);
     if (entryResult.error) throw new Error(`Gagal membaca candle 15m: ${entryResult.error.message}`);
@@ -305,7 +319,7 @@ export class PaperSessionController {
       .select('structure')
       .eq('bot_session_id', sessionId)
       .eq('symbol', session.symbol)
-      .eq('timeframe', '15m')
+      .eq('timeframe', entryInterval)
       .order('evaluated_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -325,7 +339,7 @@ export class PaperSessionController {
     const inserted = await this.client.from('signal_evaluations').insert({
       bot_session_id: sessionId,
       symbol: session.symbol,
-      timeframe: '15m',
+      timeframe: entryInterval,
       evaluated_at: new Date().toISOString(),
       decision: signal.decision,
       candidate: signal.candidate,

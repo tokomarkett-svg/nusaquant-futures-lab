@@ -50,6 +50,11 @@ Paper approval, Demo/Testnet, dan live **tetap terkunci**. Tidak ada private Bin
     yang lulus; BTC research-locked; long-only hanya boleh sebagai hipotesis pra-registrasi baru.
   - `local-research.ts` sekarang punya `--entry=`, `--higher=`, `--skip-baseline`, `--no-metrics`;
     engine dan metrik sadar interval entry (`entryIntervalMs`). Test 51 → 54 pass.
+  - Paper wiring untuk playbook yang lulus: `PaperBotEngine` punya `strategy`
+    (`BASELINE_INTELLIGENCE` default / `WILLIAMS_VOLATILITY_BREAKOUT`), TIME_EXIT 72 bar,
+    pending expiry mengikuti candle entry, session-control baca entry 1H (limit 1200) saat
+    strategy Williams, ingest punya `INGEST_INTERVALS`/`INGEST_KLINE_LIMIT`. Nyalakan via
+    `BOT_STRATEGY` + backfill 1H 60 hari (panduan lengkap di `docs/20`). Test 54 → 57 pass.
 
 ## Hasil riset full-history (Sep 2025 → Agu 2026, arsip resmi Binance)
 
@@ -87,7 +92,7 @@ Kesembilan candidate negatif di kedua symbol. Detail lengkap + tabel per candida
 ```bash
 npm install
 npm run typecheck   # core + web + worker
-npm test            # 54 pass
+npm test            # 57 pass
 npm run build
 
 # baseline saja, ~35 detik dengan cache

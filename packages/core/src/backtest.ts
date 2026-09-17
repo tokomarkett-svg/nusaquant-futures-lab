@@ -1004,7 +1004,7 @@ function buildChampionAbsorptionSignal({
  * 5/45 daily regime decides which side is allowed. Stop sits at the mirrored gate, the exact point
  * where the breakout thesis is wrong.
  */
-function buildWilliamsVolatilityBreakoutSignal({
+export function buildWilliamsVolatilityBreakoutSignal({
   entryTimeframe,
   equity,
   riskFraction,

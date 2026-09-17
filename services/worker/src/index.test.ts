@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { MAX_PENDING_SIGNAL_AGE_MS, PaperBotEngine } from './index.ts';
-import type { IntelligentSignal } from '@nusaquant/core';
+import type { Candle, IntelligentSignal } from '@nusaquant/core';
 import { desiredStatusAction, isFreshMarketCandle, resolveBotSessionIds } from './session-control.ts';
 
 test('bot starts in observation mode without opening a position', () => {
@@ -208,4 +208,96 @@ test('paper exit records costs and daily loss governor blocks new entries', () =
   assert.ok((snapshot.lastClosedPosition?.realizedPnl ?? 0) < -10);
   assert.ok(snapshot.dailyRealizedPnl <= -snapshot.dailyLossLimit);
   assert.equal(bot.start(new Date('2026-09-09T00:30:00.000Z')).status, 'PAUSED');
+});
+
+function williamsEntryCandles(): Candle[] {
+  const hour = 60 * 60 * 1000;
+  const day0 = Date.parse('2026-01-01T00:00:00Z');
+  const entry: Candle[] = [];
+  for (let day = 0; day < 50; day += 1) {
+    const dayClose = 100 + day * 0.1;
+    for (let h = 0; h < 24; h += 1) {
+      entry.push({
+        time: day0 + day * 86_400_000 + h * hour,
+        open: dayClose - 0.1,
+        high: day === 49 ? dayClose + 1 : dayClose + 0.2,
+        low: day === 49 ? dayClose - 1 : dayClose - 0.2,
+        close: dayClose,
+        volume: 50,
+      });
+    }
+  }
+  const triggerDayStart = day0 + 50 * 86_400_000;
+  entry.push({ time: triggerDayStart, open: 104.9, high: 105.0, low: 104.7, close: 104.9, volume: 50 });
+  entry.push({ time: triggerDayStart + hour, open: 105.0, high: 106.2, low: 104.9, close: 106.0, volume: 60 });
+  return entry;
+}
+
+test('williams strategy opens a paper position after approval', () => {
+  const bot = new PaperBotEngine({
+    symbol: 'ETHUSDT',
+    mode: 'PAPER_APPROVAL',
+    strategy: 'WILLIAMS_VOLATILITY_BREAKOUT',
+    entryIntervalMs: 60 * 60 * 1000,
+  });
+  const entry = williamsEntryCandles();
+  const triggerTime = entry.at(-1)!.time;
+  bot.start(new Date(triggerTime));
+
+  const waiting = bot.onClosedCandle({ higherTimeframe: [], entryTimeframe: entry });
+  assert.equal(waiting.status, 'WAITING_APPROVAL');
+  assert.equal(waiting.strategy, 'WILLIAMS_VOLATILITY_BREAKOUT');
+  assert.equal(waiting.pendingSignal?.decision, 'LONG');
+  assert.ok(waiting.pendingSignal?.stopLoss && waiting.pendingSignal.stopLoss < 104.9);
+
+  const approved = bot.approvePending(new Date(triggerTime));
+  assert.equal(approved.status, 'POSITION_OPEN');
+  assert.equal(approved.position?.side, 'LONG');
+  assert.equal(approved.position?.entry, 106.0);
+});
+
+test('williams strategy time-exits after 72 entry bars', () => {
+  const bot = new PaperBotEngine({
+    symbol: 'ETHUSDT',
+    mode: 'PAPER_AUTO',
+    strategy: 'WILLIAMS_VOLATILITY_BREAKOUT',
+    entryIntervalMs: 60 * 60 * 1000,
+  });
+  const entry = williamsEntryCandles();
+  const triggerTime = entry.at(-1)!.time;
+  bot.start(new Date(triggerTime));
+  const opened = bot.onClosedCandle({ higherTimeframe: [], entryTimeframe: entry, now: new Date(triggerTime) });
+  assert.equal(opened.status, 'POSITION_OPEN');
+
+  const hour = 60 * 60 * 1000;
+  let snapshot = opened;
+  for (let bar = 1; bar <= 72; bar += 1) {
+    snapshot = bot.onCandle({
+      high: 107,
+      low: 105,
+      close: 106,
+      now: new Date(triggerTime + bar * hour),
+    });
+    if (snapshot.status !== 'POSITION_OPEN') break;
+  }
+  assert.equal(snapshot.lastClosedPosition?.closeReason, 'TIME_EXIT');
+  assert.equal(snapshot.lastClosedPosition?.barsHeld, 72);
+  assert.equal(snapshot.status, 'COOLDOWN');
+});
+
+test('williams strategy stays observing when the gate is not broken', () => {
+  const bot = new PaperBotEngine({
+    symbol: 'ETHUSDT',
+    mode: 'PAPER_AUTO',
+    strategy: 'WILLIAMS_VOLATILITY_BREAKOUT',
+    entryIntervalMs: 60 * 60 * 1000,
+  });
+  // Trigger di bawah gate: close 105.4 < open 104.9 + 1.0
+  const entry = williamsEntryCandles();
+  entry[entry.length - 1] = { ...entry.at(-1)!, close: 105.4, high: 105.6 };
+  bot.start(new Date(entry.at(-1)!.time));
+  const snapshot = bot.onClosedCandle({ higherTimeframe: [], entryTimeframe: entry });
+  assert.equal(snapshot.status, 'RUNNING');
+  assert.equal(snapshot.position, null);
+  assert.equal(snapshot.pendingSignal, null);
 });
