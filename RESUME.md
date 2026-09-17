@@ -44,6 +44,10 @@ Paper approval, Demo/Testnet, dan live **tetap terkunci**. Tidak ada private Bin
     trade +0.133R, WF 312 trade +0.050R → PASS gerbang promosi — pertama di repo ini.** BTC
     REJECT. Cross-asset review wajib sebelum paper. Artifact
     `reports/local-research-williams-longhistory.json`.
+  - Cross-asset review selesai (`docs/20-cross-asset-review-williams-2026-09-17.md`): kegagalan
+    BTC bersumber dari sisi short (−19.4R) yang juga negatif di ETH; ETH long +48.1R dan positif
+    6/7 tahun. Keputusan: **ETHUSDT/WILLIAMS masuk antrean paper trading** dengan aturan persis
+    yang lulus; BTC research-locked; long-only hanya boleh sebagai hipotesis pra-registrasi baru.
   - `local-research.ts` sekarang punya `--entry=`, `--higher=`, `--skip-baseline`, `--no-metrics`;
     engine dan metrik sadar interval entry (`entryIntervalMs`). Test 51 → 54 pass.
 
