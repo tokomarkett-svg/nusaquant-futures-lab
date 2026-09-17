@@ -114,3 +114,6 @@ npm run research:local --workspace @nusaquant/worker -- --symbols=BTCUSDT --star
 - `runBacktest` masih O(n²) di `evaluateIntelligentSignal` karena indikator dihitung ulang dari prefix
   yang membesar tiap candle. Ini item performa terbesar yang tersisa, dan harus dikerjakan sebagai
   perubahan terpisah dengan pengecekan hasil identik.
+  - Sweep universe batch 1+2 (22 aset tambahan, 2021-01 → 2026-08): **ZEC, UNI, RUNE PASS**
+    (RUNE terkuat: PF 1.27, WF +0.140R, 6/6 tahun); review + persetujuan paper di `docs/25`.
+    Portofolio paper kini 5 playbook (ETH, ADA, ZEC sesi ...004, UNI ...005, RUNE ...006).
