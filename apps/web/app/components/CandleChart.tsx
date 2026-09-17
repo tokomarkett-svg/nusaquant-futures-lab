@@ -44,8 +44,8 @@ export default function CandleChart() {
   const view = candles.slice(-80);
   const highs = view.map((candle) => candle.high);
   const lows = view.map((candle) => candle.low);
-  const max = Math.max(...highs, 1);
-  const min = Math.min(...lows, 0);
+  const max = Math.max(...highs);
+  const min = Math.min(...lows);
   const span = Math.max(max - min, Number.EPSILON);
   const y = (price: number) => M + (H - 2 * M) * (1 - (price - min) / span);
   const step = (W - 2 * M) / Math.max(view.length, 1);

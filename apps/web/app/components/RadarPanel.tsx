@@ -72,6 +72,10 @@ export default function RadarPanel() {
       </div>
       {error ? (
         <p style={{ color: '#f2b8b5', fontSize: 13, padding: '12px 0' }}>{error}</p>
+      ) : rows.length === 0 ? (
+        <p style={{ color: '#9fb3ab', fontSize: 13, padding: '12px 0' }}>
+          Tabel radar masih kosong — worker sedang scan pertama, atau env <code>RUN_RADAR=true</code> belum diset di Railway.
+        </p>
       ) : (
         <div style={{ maxHeight: 320, overflowY: 'auto', marginTop: 10 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
