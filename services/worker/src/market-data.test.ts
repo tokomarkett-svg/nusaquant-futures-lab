@@ -26,3 +26,16 @@ test('public market adapter rejects exchange errors', async () => {
   });
   await assert.rejects(() => client.getKlines({ symbol: 'BTCUSDT', interval: '15m' }), /HTTP 429/);
 });
+
+test('getKlines mendukung interval 1d untuk radar', async () => {
+  let seenUrl = '';
+  const client = new BinancePublicMarketDataClient({
+    fetchImpl: (async (url: URL | string) => {
+      seenUrl = String(url);
+      return { ok: true, json: async () => [[1_700_000_000_000, '1', '2', '0.5', '1.5', '10', 0, '0', '0', '0', '0', 0] ] } as unknown as Response;
+    }) as typeof fetch,
+  });
+  const candles = await client.getKlines({ symbol: 'BTCUSDT', interval: '1d', limit: 1 });
+  assert.equal(candles.length, 1);
+  assert.ok(seenUrl.includes('interval=1d'), `URL harus memuat interval=1d, dapat ${seenUrl}`);
+});
