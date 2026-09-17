@@ -313,3 +313,49 @@ test('williams freshness threshold covers a just-closed 1h candle', () => {
   assert.equal(isFreshMarketCandle('2026-09-17T00:50:00.000Z', now, WILLIAMS_MARKET_DATA_MAX_AGE_MS), true);
   assert.ok(WILLIAMS_MARKET_DATA_MAX_AGE_MS > 2 * 60 * 60 * 1000);
 });
+
+test('daily profit lock menghentikan entry baru sampai besok', () => {
+  const bot = new PaperBotEngine({
+    symbol: 'ETHUSDT',
+    mode: 'PAPER_AUTO',
+    equity: 10_000,
+    dailyProfitLockUsdt: 10,
+  });
+  bot.start(new Date('2026-09-17T00:00:00.000Z'));
+  const signal = {
+    decision: 'LONG',
+    candidate: 'LONG',
+    stage: 'TRIGGERED',
+    timing: 'ENTER_NOW',
+    regime: 'TREND_UP',
+    qualityScore: 80,
+    scoreMax: 100,
+    entry: 100,
+    triggerPrice: 100,
+    stopLoss: 95,
+    takeProfit: 110,
+    quantity: 2,
+    riskAmount: 10,
+    riskReward: 2,
+    maxChaseDistance: 1,
+    patterns: [],
+    structure: { bias: 'BULLISH', lastSwingHigh: 100, lastSwingLow: 95, breakOfStructure: 'BULLISH', reason: 'test' },
+    evidence: [],
+    blockers: [],
+    explanation: 'test',
+  } satisfies IntelligentSignal;
+
+  bot.restorePendingSignal(signal);
+  bot.approvePending(new Date('2026-09-17T01:00:00.000Z'));
+  assert.equal(bot.snapshot().status, 'POSITION_OPEN');
+
+  const closed = bot.onCandle({ high: 110, low: 101, close: 110, now: new Date('2026-09-17T02:00:00.000Z') });
+  assert.equal(closed.lastClosedPosition?.closeReason, 'TAKE_PROFIT');
+  assert.ok((closed.dailyRealizedPnl ?? 0) >= 10, 'profit harian melewati lock');
+  assert.equal(closed.dailyProfitLocked, true);
+
+  bot.restorePendingSignal(signal);
+  const blocked = bot.approvePending(new Date('2026-09-17T03:00:00.000Z'));
+  assert.equal(blocked.position, null, 'entry baru diblokir setelah lock');
+  assert.equal(blocked.dailyProfitLocked, true);
+});

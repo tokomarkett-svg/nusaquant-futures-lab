@@ -243,10 +243,12 @@ export class PaperSessionController {
     if (this.engine && this.engine.snapshot().mode === mode) return;
 
     const strategy = resolvePaperStrategy(process.env.BOT_STRATEGY);
+    const configuredLock = Number(process.env.DAILY_PROFIT_LOCK_USDT);
     this.engine = new PaperBotEngine({
       symbol: session.symbol,
       riskFraction: Number(session.risk_fraction),
       dailyLossFraction: Number(session.daily_loss_limit),
+      dailyProfitLockUsdt: Number.isFinite(configuredLock) && configuredLock > 0 ? configuredLock : null,
       mode,
       strategy,
       entryIntervalMs: strategy === 'WILLIAMS_VOLATILITY_BREAKOUT' ? 60 * 60 * 1000 : 15 * 60 * 1000,

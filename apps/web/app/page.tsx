@@ -2,6 +2,8 @@ import { evaluateIntelligentSignal } from '@nusaquant/core';
 import { loadMarketSnapshot } from '../lib/market';
 import SupabaseStatus from './components/SupabaseStatus';
 import BotControls from './components/BotControls';
+import RadarPanel from './components/RadarPanel';
+import CandleChart from './components/CandleChart';
 import BacktestPanel from './components/BacktestPanel';
 import MarketIntelligence from './components/MarketIntelligence';
 import PaperMetrics from './components/PaperMetrics';
@@ -41,6 +43,10 @@ export default async function HomePage() {
           </div>
 
           <BotControls />
+
+          <CandleChart />
+
+          <RadarPanel />
 
           <BacktestPanel />
 

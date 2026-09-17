@@ -3,6 +3,7 @@ import { BinancePublicMarketDataClient } from './market-data.ts';
 import { PaperSessionController, resolveBotSessionIds } from './session-control.ts';
 import { createWorkerSupabaseClient } from './supabase.ts';
 import { watchResearchJobs } from './research-jobs.ts';
+import { watchRadar } from './radar.ts';
 
 export interface MarketCandleRow {
   symbol: string;
@@ -103,6 +104,7 @@ async function watch(): Promise<void> {
   const controllers = sessionIds.map((sessionId) => new PaperSessionController(sessionId));
   const tasks = [watchIngestion(), ...controllers.map((controller) => controller.watch())];
   if (process.env.RUN_RESEARCH_JOBS === 'true') tasks.push(watchResearchJobs());
+  if (process.env.RUN_RADAR === 'true') tasks.push(watchRadar());
   await Promise.all(tasks);
 }
 

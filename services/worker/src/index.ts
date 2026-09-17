@@ -47,6 +47,7 @@ export interface WorkerSnapshot {
   realizedPnl: number;
   dailyRealizedPnl: number;
   dailyLossLimit: number;
+  dailyProfitLocked: boolean;
   riskBlocked: boolean;
   lastEvent: string | null;
 }
@@ -173,6 +174,7 @@ export class PaperBotEngine {
   private readonly slippageRate: number;
   private readonly fundingRatePerBar: number;
   private readonly dailyLossLimit: number;
+  private readonly dailyProfitLockUsdt: number | null;
   private readonly strategy: PaperStrategy;
   private readonly entryIntervalMs: number;
   private readonly maxBarsInTrade: number | null;
@@ -200,6 +202,7 @@ export class PaperBotEngine {
     slippageRate = 0.0002,
     fundingRatePerBar = 0.00001,
     dailyLossFraction = 0.01,
+    dailyProfitLockUsdt = null,
     mode = 'PAPER_APPROVAL',
     strategy = 'BASELINE_INTELLIGENCE',
     entryIntervalMs = 15 * 60 * 1000,
@@ -213,6 +216,7 @@ export class PaperBotEngine {
     slippageRate?: number;
     fundingRatePerBar?: number;
     dailyLossFraction?: number;
+    dailyProfitLockUsdt?: number | null;
     mode?: ExecutionMode;
     strategy?: PaperStrategy;
     entryIntervalMs?: number;
@@ -226,6 +230,7 @@ export class PaperBotEngine {
     this.slippageRate = slippageRate;
     this.fundingRatePerBar = fundingRatePerBar;
     this.dailyLossLimit = Math.max(equity * dailyLossFraction, Number.EPSILON);
+    this.dailyProfitLockUsdt = dailyProfitLockUsdt;
     this.mode = mode;
     this.strategy = strategy;
     this.entryIntervalMs = entryIntervalMs;
@@ -252,6 +257,7 @@ export class PaperBotEngine {
       realizedPnl: this.realizedPnl,
       dailyRealizedPnl: this.dailyRealizedPnl,
       dailyLossLimit: this.dailyLossLimit,
+      dailyProfitLocked: this.isProfitLocked(),
       riskBlocked: this.riskBlocked,
       lastEvent: this.lastEvent,
     };
@@ -272,6 +278,11 @@ export class PaperBotEngine {
     this.currentDayKey = day;
     this.dailyRealizedPnl = 0;
     this.riskBlocked = false;
+  }
+
+  // "Target harian tercapai -> stop sampai besok": mengunci entry baru, posisi terbuka tetap dipantau.
+  isProfitLocked(): boolean {
+    return this.dailyProfitLockUsdt !== null && this.dailyRealizedPnl >= this.dailyProfitLockUsdt;
   }
 
   private enforceDailyLoss(now: Date): void {
@@ -362,8 +373,12 @@ export class PaperBotEngine {
 
   private recordClosedPosition(closed: PaperPosition | null, now: Date): WorkerSnapshot {
     if (!closed) return this.snapshot();
+    const before = this.dailyRealizedPnl;
     this.realizedPnl += closed.realizedPnl ?? 0;
     this.dailyRealizedPnl += closed.realizedPnl ?? 0;
+    if (this.dailyProfitLockUsdt !== null && before < this.dailyProfitLockUsdt && this.dailyRealizedPnl >= this.dailyProfitLockUsdt) {
+      this.emit('STATUS', `Daily profit lock tercapai (${this.dailyRealizedPnl.toFixed(2)} USDT); tidak ada entry baru sampai besok.`);
+    }
     this.lastClosedPosition = closed;
     this.status = 'COOLDOWN';
     this.cooldownUntil = now.getTime() + 3 * 15 * 60 * 1000;
@@ -379,6 +394,10 @@ export class PaperBotEngine {
     now?: Date;
   }): WorkerSnapshot {
     this.syncDay(now);
+    if (this.isProfitLocked()) {
+      if (this.status === 'RUNNING' || this.status === 'COOLDOWN') this.status = 'RUNNING';
+      return this.snapshot();
+    }
     if (this.riskBlocked) {
       this.status = 'PAUSED';
       return this.snapshot();
@@ -477,7 +496,7 @@ export class PaperBotEngine {
 
   private openPending(now: Date): void {
     this.syncDay(now);
-    if (this.riskBlocked || !this.pendingSignal) return;
+    if (this.riskBlocked || this.isProfitLocked() || !this.pendingSignal) return;
     const position = this.broker.open(this.symbol, this.pendingSignal, now, {
       feeRate: this.feeRate,
       slippageRate: this.slippageRate,

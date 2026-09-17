@@ -20,6 +20,7 @@ const intervalMs: Record<string, number> = {
   '30m': 1_800_000,
   '1h': 3_600_000,
   '4h': 14_400_000,
+  '1d': 86_400_000,
 };
 
 function getIntervalMs(interval: string): number {
@@ -102,6 +103,24 @@ export class BinancePublicMarketDataClient {
     if (!response.ok) throw new Error(`Binance mark price error: HTTP ${response.status}`);
     const payload = await response.json() as { markPrice?: string };
     return assertPositive(Number(payload.markPrice), 'mark price');
+  }
+
+  async get24hTickers(): Promise<Array<{ symbol: string; quoteVolume: number }>> {
+    const url = new URL('/fapi/v1/ticker/24hr', this.baseUrl);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await this.fetchImpl(url, { signal: controller.signal });
+      if (!response.ok) throw new Error(`Binance ticker error: HTTP ${response.status}`);
+      const payload = await response.json() as Array<{ symbol?: string; quoteVolume?: string }>;
+      if (!Array.isArray(payload)) throw new Error('Binance ticker payload bukan array.');
+      return payload
+        .filter((row) => typeof row.symbol === 'string' && row.symbol.endsWith('USDT'))
+        .map((row) => ({ symbol: row.symbol as string, quoteVolume: Number(row.quoteVolume ?? 0) }))
+        .filter((row) => Number.isFinite(row.quoteVolume) && row.quoteVolume > 0);
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 }
 
