@@ -1,0 +1,504 @@
+{
+  "generatedAt": "2026-09-16T17:22:27.318Z",
+  "months": [
+    "2025-09",
+    "2026-08"
+  ],
+  "intervals": {
+    "entry": "1h",
+    "higher": "4h"
+  },
+  "runs": [],
+  "singles": [
+    {
+      "symbol": "BTCUSDT",
+      "result": {
+        "name": "WILLIAMS_VOLATILITY_BREAKOUT_HYPOTHESIS",
+        "rule": "Playbook juara #2 (Larry Williams): close menembus gate 0.5x range hari sebelumnya dari open harian, hanya searah regime SMA5/45 harian, stop di gate cermin, target 3R. Spec: docs/19.",
+        "summary": {
+          "periodStart": 1756684800000,
+          "periodEnd": 1788217200000,
+          "sampleCandles": 8760,
+          "totalTrades": 79,
+          "winningTrades": 26,
+          "losingTrades": 53,
+          "winRate": 0.3291139240506329,
+          "profitFactor": 0.7717767887621538,
+          "expectancyR": -0.11534184722531707,
+          "netPnl": -228.20049189775273,
+          "maxDrawdown": 371.9526480884251,
+          "maxDrawdownPct": 0.03719526480884251,
+          "gate": "FAIL_NEGATIVE_EXPECTANCY"
+        },
+        "executionAudit": {
+          "grossPnlBeforeCosts": -96.02615251502385,
+          "totalCosts": 132.17433938273376,
+          "netPnlAfterCosts": -228.20049189775762,
+          "costImpactPctOfGross": 1.3764410623663623,
+          "averageGrossPnlPerTrade": -1.2155209179116944,
+          "averageCostPerTrade": 1.6730929035789084,
+          "grossProfitFactor": 0.8942755205611884,
+          "grossExpectancyR": -0.048399137855927095,
+          "stopLossTrades": 35,
+          "takeProfitTrades": 7,
+          "timeExitTrades": 37,
+          "stopLossRate": 0.4430379746835443,
+          "takeProfitRate": 0.08860759493670886,
+          "timeExitRate": 0.46835443037974683
+        },
+        "excursionAudit": {
+          "averageMfeR": 1.0263721760694813,
+          "averageMaeR": 0.8139013224984152,
+          "stopLossTradesWithMfeAtLeastHalfR": 15,
+          "stopLossTradesWithMfeAtLeastOneR": 6,
+          "stopLossPositiveMfeRate": 0.42857142857142855,
+          "averageStopLossMfeR": 0.6107784864636165,
+          "averageStopLossMaeR": 1.2831008853001706,
+          "averageTakeProfitMfeR": 2.793853941693297,
+          "averageTimeExitMfeR": 1.08511289976782
+        },
+        "validation": {
+          "trainFraction": 0.7,
+          "warmupBars": 80,
+          "splitTime": 1778760000000,
+          "inSample": {
+            "periodStart": 1756684800000,
+            "periodEnd": 1778756400000,
+            "sampleCandles": 6132,
+            "totalTrades": 49,
+            "winningTrades": 19,
+            "losingTrades": 30,
+            "winRate": 0.3877551020408163,
+            "profitFactor": 1.0797844352603325,
+            "expectancyR": 0.034657141008098115,
+            "netPnl": 40.61094547285575,
+            "grossWins": 549.6193170974384,
+            "grossLosses": 509.00837162458913,
+            "maxDrawdown": 188.9765299528226,
+            "maxDrawdownPct": 0.01889765299528226,
+            "gate": "PASS_RESEARCH_GATE"
+          },
+          "outOfSample": {
+            "periodStart": 1778760000000,
+            "periodEnd": 1788217200000,
+            "sampleCandles": 2628,
+            "totalTrades": 19,
+            "winningTrades": 2,
+            "losingTrades": 17,
+            "winRate": 0.10526315789473684,
+            "profitFactor": 0.05884978603508419,
+            "expectancyR": -0.6796938574630487,
+            "netPnl": -318.0979000650259,
+            "grossWins": 19.89054784163746,
+            "grossLosses": 337.98844790666544,
+            "maxDrawdown": 318.0979000650259,
+            "maxDrawdownPct": 0.03180979000650259,
+            "gate": "NOT_READY_SAMPLE"
+          },
+          "notes": [
+            "Temporal split 70/30; OOS memakai 80 candle warmup sebelum titik split.",
+            "Parameter dan rule tidak dituning dari periode OOS; OOS hanya dipakai untuk menguji generalisasi.",
+            "Higher-timeframe candle tetap dipotong berdasarkan waktu entry sehingga data setelah titik evaluasi tidak dipakai untuk signal.",
+            "OOS memiliki kurang dari 30 trade; hasilnya belum cukup untuk research gate."
+          ]
+        },
+        "walkForward": {
+          "foldCount": 3,
+          "warmupBars": 80,
+          "aggregate": {
+            "periodStart": 1769299200000,
+            "periodEnd": 1788217200000,
+            "sampleCandles": 5256,
+            "totalTrades": 24,
+            "winningTrades": 7,
+            "losingTrades": 17,
+            "winRate": 0.2916666666666667,
+            "profitFactor": null,
+            "expectancyR": -0.07814617207902229,
+            "netPnl": -46.8748854007772,
+            "grossWins": 270.6073020153938,
+            "grossLosses": 317.48218741616597,
+            "maxDrawdown": 126.94780013982381,
+            "maxDrawdownPct": 0.01269478001398238,
+            "gate": "NOT_READY_SAMPLE"
+          },
+          "folds": [
+            {
+              "index": 1,
+              "trainCandles": 3504,
+              "testCandles": 1752,
+              "testStart": 1769299200000,
+              "testEnd": 1775602800000,
+              "summary": {
+                "periodStart": 1769299200000,
+                "periodEnd": 1775602800000,
+                "sampleCandles": 1752,
+                "totalTrades": 5,
+                "winningTrades": 1,
+                "losingTrades": 4,
+                "winRate": 0.2,
+                "profitFactor": 1.0572644805077145,
+                "expectancyR": 0.029893151689265096,
+                "netPnl": 3.4694038143279613,
+                "grossWins": 64.05501960211511,
+                "grossLosses": 60.585615787787475,
+                "maxDrawdown": 36.090549359350916,
+                "maxDrawdownPct": 0.0036090549359350916,
+                "gate": "NOT_READY_SAMPLE"
+              }
+            },
+            {
+              "index": 2,
+              "trainCandles": 5256,
+              "testCandles": 1752,
+              "testStart": 1775606400000,
+              "testEnd": 1781910000000,
+              "summary": {
+                "periodStart": 1775606400000,
+                "periodEnd": 1781910000000,
+                "sampleCandles": 1752,
+                "totalTrades": 9,
+                "winningTrades": 4,
+                "losingTrades": 5,
+                "winRate": 0.4444444444444444,
+                "profitFactor": 1.6985195363052785,
+                "expectancyR": 0.34199518379683086,
+                "netPnl": 76.60351092471865,
+                "grossWins": 186.2690348553818,
+                "grossLosses": 109.66552393066102,
+                "maxDrawdown": 60.86442072233149,
+                "maxDrawdownPct": 0.006086442072233149,
+                "gate": "NOT_READY_SAMPLE"
+              }
+            },
+            {
+              "index": 3,
+              "trainCandles": 7008,
+              "testCandles": 1752,
+              "testStart": 1781913600000,
+              "testEnd": 1788217200000,
+              "summary": {
+                "periodStart": 1781913600000,
+                "periodEnd": 1788217200000,
+                "sampleCandles": 1752,
+                "totalTrades": 10,
+                "winningTrades": 2,
+                "losingTrades": 8,
+                "winRate": 0.2,
+                "profitFactor": 0.13776474374848413,
+                "expectancyR": -0.5102930542514338,
+                "netPnl": -126.94780013982381,
+                "grossWins": 20.28324755789689,
+                "grossLosses": 147.23104769771746,
+                "maxDrawdown": 126.94780013982381,
+                "maxDrawdownPct": 0.01269478001398238,
+                "gate": "NOT_READY_SAMPLE"
+              }
+            }
+          ],
+          "notes": [
+            "3 forward fold; setiap test window berjalan setelah periode train sebelumnya dan memakai 80 candle warmup.",
+            "Rule dan parameter tetap sama di semua fold; tidak ada fitting atau tuning menggunakan data test.",
+            "Aggregate fold tidak dipakai sebagai equity curve gabungan; gunakan untuk melihat konsistensi generalisasi antarperiode.",
+            "Sebagian fold memiliki kurang dari 30 trade; baca hasil per fold dengan hati-hati."
+          ]
+        },
+        "promotionGate": {
+          "pass": false,
+          "requirements": {
+            "fullHistory": false,
+            "outOfSample": false,
+            "walkForward": false
+          },
+          "reason": "Research-only: wajib positif setelah biaya dengan PF minimal 1.10, OOS minimal 30 trade, dan walk-forward minimal 30 trade."
+        },
+        "funnel": {
+          "name": "WILLIAMS_VOLATILITY_BREAKOUT_HYPOTHESIS",
+          "evaluated": 8680,
+          "longStages": [
+            {
+              "label": "Regime SMA5 > SMA45 harian",
+              "passed": 2904,
+              "share": 0.3345622119815668
+            },
+            {
+              "label": "Close >= open + 0.5 x range hari sebelumnya",
+              "passed": 396,
+              "share": 0.0456221198156682
+            }
+          ],
+          "shortStages": [
+            {
+              "label": "Regime SMA5 < SMA45 harian",
+              "passed": 4704,
+              "share": 0.5419354838709678
+            },
+            {
+              "label": "Close <= open - 0.5 x range hari sebelumnya",
+              "passed": 594,
+              "share": 0.06843317972350231
+            }
+          ],
+          "distributions": {
+            "previousDayRangeGate": {
+              "count": 8680,
+              "min": 139.90000000000146,
+              "p01": 320.1999999999971,
+              "p10": 555,
+              "median": 1215.8500000000022,
+              "p90": 2435.3499999999985,
+              "p99": 4369.75,
+              "max": 10490.25
+            }
+          },
+          "diagnosis": null
+        }
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "result": {
+        "name": "WILLIAMS_VOLATILITY_BREAKOUT_HYPOTHESIS",
+        "rule": "Playbook juara #2 (Larry Williams): close menembus gate 0.5x range hari sebelumnya dari open harian, hanya searah regime SMA5/45 harian, stop di gate cermin, target 3R. Spec: docs/19.",
+        "summary": {
+          "periodStart": 1756684800000,
+          "periodEnd": 1788217200000,
+          "sampleCandles": 8760,
+          "totalTrades": 75,
+          "winningTrades": 35,
+          "losingTrades": 40,
+          "winRate": 0.4666666666666667,
+          "profitFactor": 1.4986003598698345,
+          "expectancyR": 0.20080351389605475,
+          "netPnl": 379.9627124062772,
+          "maxDrawdown": 218.97313224655045,
+          "maxDrawdownPct": 0.021897313224655046,
+          "gate": "PASS_RESEARCH_GATE"
+        },
+        "executionAudit": {
+          "grossPnlBeforeCosts": 480.4429933660316,
+          "totalCosts": 100.48028095975084,
+          "netPnlAfterCosts": 379.96271240628073,
+          "costImpactPctOfGross": 0.2091409019325601,
+          "averageGrossPnlPerTrade": 6.405906578213755,
+          "averageCostPerTrade": 1.3397370794633445,
+          "grossProfitFactor": 1.6791696955350282,
+          "grossExpectancyR": 0.25294588483564207,
+          "stopLossTrades": 23,
+          "takeProfitTrades": 10,
+          "timeExitTrades": 42,
+          "stopLossRate": 0.30666666666666664,
+          "takeProfitRate": 0.13333333333333333,
+          "timeExitRate": 0.56
+        },
+        "excursionAudit": {
+          "averageMfeR": 1.1518872976858152,
+          "averageMaeR": 0.6951285642220387,
+          "stopLossTradesWithMfeAtLeastHalfR": 6,
+          "stopLossTradesWithMfeAtLeastOneR": 3,
+          "stopLossPositiveMfeRate": 0.2608695652173913,
+          "averageStopLossMfeR": 0.5057223167554286,
+          "averageStopLossMaeR": 1.2868556909900124,
+          "averageTakeProfitMfeR": 2.4799161862895227,
+          "averageTimeExitMfeR": 1.1895421947182394
+        },
+        "validation": {
+          "trainFraction": 0.7,
+          "warmupBars": 80,
+          "splitTime": 1778760000000,
+          "inSample": {
+            "periodStart": 1756684800000,
+            "periodEnd": 1778756400000,
+            "sampleCandles": 6132,
+            "totalTrades": 47,
+            "winningTrades": 25,
+            "losingTrades": 22,
+            "winRate": 0.5319148936170213,
+            "profitFactor": 1.8536979318288345,
+            "expectancyR": 0.30547790720009893,
+            "netPnl": 362.99732544690414,
+            "grossWins": 788.2031411260776,
+            "grossLosses": 425.2058156791741,
+            "maxDrawdown": 62.21347853289808,
+            "maxDrawdownPct": 0.006221347853289808,
+            "gate": "PASS_RESEARCH_GATE"
+          },
+          "outOfSample": {
+            "periodStart": 1778760000000,
+            "periodEnd": 1788217200000,
+            "sampleCandles": 2628,
+            "totalTrades": 18,
+            "winningTrades": 4,
+            "losingTrades": 14,
+            "winRate": 0.2222222222222222,
+            "profitFactor": 0.5661019353934272,
+            "expectancyR": -0.2296456849568682,
+            "netPnl": -103.3726690389285,
+            "grossWins": 134.86916117679664,
+            "grossLosses": 238.2418302157293,
+            "maxDrawdown": 173.10687518376108,
+            "maxDrawdownPct": 0.017310687518376108,
+            "gate": "NOT_READY_SAMPLE"
+          },
+          "notes": [
+            "Temporal split 70/30; OOS memakai 80 candle warmup sebelum titik split.",
+            "Parameter dan rule tidak dituning dari periode OOS; OOS hanya dipakai untuk menguji generalisasi.",
+            "Higher-timeframe candle tetap dipotong berdasarkan waktu entry sehingga data setelah titik evaluasi tidak dipakai untuk signal.",
+            "OOS memiliki kurang dari 30 trade; hasilnya belum cukup untuk research gate."
+          ]
+        },
+        "walkForward": {
+          "foldCount": 3,
+          "warmupBars": 80,
+          "aggregate": {
+            "periodStart": 1769299200000,
+            "periodEnd": 1788217200000,
+            "sampleCandles": 5256,
+            "totalTrades": 23,
+            "winningTrades": 9,
+            "losingTrades": 14,
+            "winRate": 0.391304347826087,
+            "profitFactor": null,
+            "expectancyR": 0.31996161777329396,
+            "netPnl": 183.4022753270001,
+            "grossWins": 417.82687022080336,
+            "grossLosses": 234.4245948938008,
+            "maxDrawdown": 85.20053409658067,
+            "maxDrawdownPct": 0.008520053409658068,
+            "gate": "NOT_READY_SAMPLE"
+          },
+          "folds": [
+            {
+              "index": 1,
+              "trainCandles": 3504,
+              "testCandles": 1752,
+              "testStart": 1769299200000,
+              "testEnd": 1775602800000,
+              "summary": {
+                "periodStart": 1769299200000,
+                "periodEnd": 1775602800000,
+                "sampleCandles": 1752,
+                "totalTrades": 5,
+                "winningTrades": 2,
+                "losingTrades": 3,
+                "winRate": 0.4,
+                "profitFactor": 2.5712138177413957,
+                "expectancyR": 0.6551012155267024,
+                "netPnl": 81.72514707225855,
+                "grossWins": 133.7391671562587,
+                "grossLosses": 52.01402008399978,
+                "maxDrawdown": 27.425786108691682,
+                "maxDrawdownPct": 0.002742578610869168,
+                "gate": "NOT_READY_SAMPLE"
+              }
+            },
+            {
+              "index": 2,
+              "trainCandles": 5256,
+              "testCandles": 1752,
+              "testStart": 1775606400000,
+              "testEnd": 1781910000000,
+              "summary": {
+                "periodStart": 1775606400000,
+                "periodEnd": 1781910000000,
+                "sampleCandles": 1752,
+                "totalTrades": 8,
+                "winningTrades": 4,
+                "losingTrades": 4,
+                "winRate": 0.5,
+                "profitFactor": 2.7657498527413087,
+                "expectancyR": 0.532092008560167,
+                "netPnl": 106.42911223685405,
+                "grossWins": 166.7032853150095,
+                "grossLosses": 60.274173078154334,
+                "maxDrawdown": 48.28843746395614,
+                "maxDrawdownPct": 0.004828843746395614,
+                "gate": "NOT_READY_SAMPLE"
+              }
+            },
+            {
+              "index": 3,
+              "trainCandles": 7008,
+              "testCandles": 1752,
+              "testStart": 1781913600000,
+              "testEnd": 1788217200000,
+              "summary": {
+                "periodStart": 1781913600000,
+                "periodEnd": 1788217200000,
+                "sampleCandles": 1752,
+                "totalTrades": 10,
+                "winningTrades": 3,
+                "losingTrades": 7,
+                "winRate": 0.3,
+                "profitFactor": 0.9610928116864585,
+                "expectancyR": -0.017312493732908683,
+                "netPnl": -4.751983982112506,
+                "grossWins": 117.38441774953515,
+                "grossLosses": 122.13640173164667,
+                "maxDrawdown": 85.20053409658067,
+                "maxDrawdownPct": 0.008520053409658068,
+                "gate": "NOT_READY_SAMPLE"
+              }
+            }
+          ],
+          "notes": [
+            "3 forward fold; setiap test window berjalan setelah periode train sebelumnya dan memakai 80 candle warmup.",
+            "Rule dan parameter tetap sama di semua fold; tidak ada fitting atau tuning menggunakan data test.",
+            "Aggregate fold tidak dipakai sebagai equity curve gabungan; gunakan untuk melihat konsistensi generalisasi antarperiode.",
+            "Sebagian fold memiliki kurang dari 30 trade; baca hasil per fold dengan hati-hati."
+          ]
+        },
+        "promotionGate": {
+          "pass": false,
+          "requirements": {
+            "fullHistory": true,
+            "outOfSample": false,
+            "walkForward": false
+          },
+          "reason": "Research-only: wajib positif setelah biaya dengan PF minimal 1.10, OOS minimal 30 trade, dan walk-forward minimal 30 trade."
+        },
+        "funnel": {
+          "name": "WILLIAMS_VOLATILITY_BREAKOUT_HYPOTHESIS",
+          "evaluated": 8680,
+          "longStages": [
+            {
+              "label": "Regime SMA5 > SMA45 harian",
+              "passed": 3240,
+              "share": 0.37327188940092165
+            },
+            {
+              "label": "Close >= open + 0.5 x range hari sebelumnya",
+              "passed": 381,
+              "share": 0.04389400921658986
+            }
+          ],
+          "shortStages": [
+            {
+              "label": "Regime SMA5 < SMA45 harian",
+              "passed": 4368,
+              "share": 0.5032258064516129
+            },
+            {
+              "label": "Close <= open - 0.5 x range hari sebelumnya",
+              "passed": 497,
+              "share": 0.05725806451612903
+            }
+          ],
+          "distributions": {
+            "previousDayRangeGate": {
+              "count": 8680,
+              "min": 5.69500000000005,
+              "p01": 11.960000000000036,
+              "p10": 22.835000000000036,
+              "median": 52.35000000000002,
+              "p90": 128.03499999999985,
+              "p99": 253.51999999999998,
+              "max": 496
+            }
+          },
+          "diagnosis": null
+        }
+      }
+    }
+  ]
+}

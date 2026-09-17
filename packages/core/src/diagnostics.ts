@@ -65,12 +65,13 @@ function describe(values: number[]): DistributionStats {
 export function alignSeriesToEntryCandles<T extends { time: number }>(
   entryTimeframe: Candle[],
   series: T[],
+  entryIntervalMs = 15 * 60 * 1000,
 ): Array<T | undefined> {
   const aligned: Array<T | undefined> = new Array(entryTimeframe.length).fill(undefined);
   let cursor = 0;
   let latest: T | undefined;
   for (let index = 0; index < entryTimeframe.length; index += 1) {
-    const closeTime = entryTimeframe[index].time + 15 * 60 * 1000;
+    const closeTime = entryTimeframe[index].time + entryIntervalMs;
     while (cursor < series.length && series[cursor].time <= closeTime) {
       latest = series[cursor];
       cursor += 1;
@@ -84,11 +85,12 @@ function alignPreviousMetrics(
   entryTimeframe: Candle[],
   metrics: MarketMetricsPoint[],
   lookbackMs: number,
+  entryIntervalMs = 15 * 60 * 1000,
 ): Array<MarketMetricsPoint | undefined> {
   const aligned: Array<MarketMetricsPoint | undefined> = new Array(entryTimeframe.length).fill(undefined);
   let cursor = -1;
   for (let index = 0; index < entryTimeframe.length; index += 1) {
-    const cutoff = entryTimeframe[index].time + 15 * 60 * 1000 - lookbackMs;
+    const cutoff = entryTimeframe[index].time + entryIntervalMs - lookbackMs;
     while (cursor + 1 < metrics.length && metrics[cursor + 1].time <= cutoff) cursor += 1;
     aligned[index] = cursor >= 0 ? metrics[cursor] : undefined;
   }
@@ -125,14 +127,16 @@ export function buildLiquidationReclaimFunnel({
   entryTimeframe,
   higherTimeframe,
   metricsTimeframe,
+  entryIntervalMs = 15 * 60 * 1000,
 }: {
   entryTimeframe: Candle[];
   higherTimeframe: Candle[];
   metricsTimeframe: MarketMetricsPoint[];
+  entryIntervalMs?: number;
 }): CandidateFunnel {
   const evaluated = Math.max(0, entryTimeframe.length - 80);
-  const alignedMetrics = alignSeriesToEntryCandles(entryTimeframe, metricsTimeframe);
-  const previousMetrics = alignPreviousMetrics(entryTimeframe, metricsTimeframe, 60 * 60 * 1000);
+  const alignedMetrics = alignSeriesToEntryCandles(entryTimeframe, metricsTimeframe, entryIntervalMs);
+  const previousMetrics = alignPreviousMetrics(entryTimeframe, metricsTimeframe, 60 * 60 * 1000, entryIntervalMs);
   const higherAdx = adx(higherTimeframe);
   const higherTimes = higherTimeframe.map((candle) => candle.time);
   let longFinal = 0;
@@ -330,13 +334,15 @@ export function buildFundingDistribution({
   entryTimeframe,
   fundingTimeframe,
   entryEma20Closes,
+  entryIntervalMs = 15 * 60 * 1000,
 }: {
   entryTimeframe: Candle[];
   fundingTimeframe: FundingPoint[];
   entryEma20Closes?: number[];
+  entryIntervalMs?: number;
 }): CandidateFunnel {
   const evaluated = Math.max(0, entryTimeframe.length - 80);
-  const aligned = alignSeriesToEntryCandles(entryTimeframe, fundingTimeframe);
+  const aligned = alignSeriesToEntryCandles(entryTimeframe, fundingTimeframe, entryIntervalMs);
   const rates: number[] = [];
   const ema20 = entryEma20Closes ?? ema(entryTimeframe.map((candle) => candle.close), 20);
   const atrValues = atr(entryTimeframe);
@@ -468,6 +474,87 @@ export function buildChampionAbsorptionFunnel({
     longStages,
     shortStages,
     distributions: { candleTakerBuyRatio: describe(takerRatios) },
+    diagnosis: [bindingConstraint(longStages, 'long', evaluated), bindingConstraint(shortStages, 'short', evaluated)]
+      .filter((item): item is string => item !== null).join(' ') || null,
+  };
+}
+
+export function buildWilliamsBreakoutFunnel({
+  entryTimeframe,
+}: {
+  entryTimeframe: Candle[];
+}): CandidateFunnel {
+  const evaluated = Math.max(0, entryTimeframe.length - 80);
+  const dayKey = (time: number) => Math.floor(time / 86_400_000);
+  const longCounts = [0, 0];
+  const shortCounts = [0, 0];
+  const gates: number[] = [];
+
+  const dailyCloses: number[] = [];
+  let scanningDay = -1;
+  let runningClose = Number.NaN;
+  let previousDayHigh = Number.NaN;
+  let previousDayLow = Number.NaN;
+  let currentDayOpen = Number.NaN;
+
+  const smaLast = (values: number[], period: number) => {
+    if (values.length < period) return Number.NaN;
+    let sum = 0;
+    for (let index = values.length - period; index < values.length; index += 1) sum += values[index];
+    return sum / period;
+  };
+
+  for (let index = 80; index < entryTimeframe.length; index += 1) {
+    const candle = entryTimeframe[index];
+    const day = dayKey(candle.time);
+    if (day !== scanningDay) {
+      if (scanningDay !== -1) dailyCloses.push(runningClose);
+      scanningDay = day;
+      runningClose = candle.close;
+      currentDayOpen = candle.open;
+      previousDayHigh = Number.NaN;
+      previousDayLow = Number.NaN;
+      for (let back = index - 1; back >= 0; back -= 1) {
+        const priorDay = dayKey(entryTimeframe[back].time);
+        if (priorDay === day - 1) {
+          previousDayHigh = Number.isFinite(previousDayHigh) ? Math.max(previousDayHigh, entryTimeframe[back].high) : entryTimeframe[back].high;
+          previousDayLow = Number.isFinite(previousDayLow) ? Math.min(previousDayLow, entryTimeframe[back].low) : entryTimeframe[back].low;
+        } else if (priorDay < day - 1) break;
+      }
+    } else {
+      runningClose = candle.close;
+    }
+    const previousDayRange = previousDayHigh - previousDayLow;
+    if (!Number.isFinite(previousDayRange) || !(previousDayRange > Number.EPSILON)) continue;
+    const gate = 0.5 * previousDayRange;
+    gates.push(gate);
+    const sma5 = smaLast(dailyCloses, 5);
+    const sma45 = smaLast(dailyCloses, 45);
+    if (!Number.isFinite(sma5) || !Number.isFinite(sma45)) continue;
+    if (sma5 > sma45) {
+      longCounts[0] += 1;
+      if (candle.close >= currentDayOpen + gate) longCounts[1] += 1;
+    }
+    if (sma5 < sma45) {
+      shortCounts[0] += 1;
+      if (candle.close <= currentDayOpen - gate) shortCounts[1] += 1;
+    }
+  }
+
+  const longStages = [
+    stage('Regime SMA5 > SMA45 harian', longCounts[0], evaluated),
+    stage('Close >= open + 0.5 x range hari sebelumnya', longCounts[1], evaluated),
+  ];
+  const shortStages = [
+    stage('Regime SMA5 < SMA45 harian', shortCounts[0], evaluated),
+    stage('Close <= open - 0.5 x range hari sebelumnya', shortCounts[1], evaluated),
+  ];
+  return {
+    name: 'WILLIAMS_VOLATILITY_BREAKOUT_HYPOTHESIS',
+    evaluated,
+    longStages,
+    shortStages,
+    distributions: { previousDayRangeGate: describe(gates) },
     diagnosis: [bindingConstraint(longStages, 'long', evaluated), bindingConstraint(shortStages, 'short', evaluated)]
       .filter((item): item is string => item !== null).join(' ') || null,
   };

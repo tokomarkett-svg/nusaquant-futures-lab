@@ -33,6 +33,19 @@ Paper approval, Demo/Testnet, dan live **tetap terkunci**. Tidak ada private Bin
   Hasil full-history: BTC 25 trade -0.131R PF 0.71; ETH 24 trade -0.091R PF 0.82 → NOT_READY_SAMPLE.
   Candidate terbaik sejauh ini, tetapi tidak dipromosikan; butuh interval 5M atau data footprint.
   Spec: `docs/18-champion-playbook-hypothesis-2026-09-16.md`.
+- 2026-09-17: dua jalur dikerjakan tuntas sekaligus.
+  - Jalur 5M untuk playbook juara #1 diuji penuh (aturan tidak diubah): BTC 38 trade -0.170R
+    PF 0.59; ETH 38 -0.130R PF 0.74 → REJECT. Resolusi bukan masalahnya; jalur 5M ditutup
+    (addendum di `docs/18`). Artifact `reports/local-research-champion-5m.json`.
+  - Otak #2 (Larry Williams, volatility breakout open-gate + SMA5/45 harian) diimplementasikan:
+    `WILLIAMS_VOLATILITY_BREAKOUT_HYPOTHESIS`, spec pra-uji di
+    `docs/19-williams-playbook-hypothesis-2026-09-17.md`. Full-year REJECT keduanya, tetapi
+    long-history 2020-01 → 2026-08 (80 bulan): **ETHUSDT 541 trade +0.084R PF 1.19, OOS 159
+    trade +0.133R, WF 312 trade +0.050R → PASS gerbang promosi — pertama di repo ini.** BTC
+    REJECT. Cross-asset review wajib sebelum paper. Artifact
+    `reports/local-research-williams-longhistory.json`.
+  - `local-research.ts` sekarang punya `--entry=`, `--higher=`, `--skip-baseline`, `--no-metrics`;
+    engine dan metrik sadar interval entry (`entryIntervalMs`). Test 51 → 54 pass.
 
 ## Hasil riset full-history (Sep 2025 → Agu 2026, arsip resmi Binance)
 
@@ -70,7 +83,7 @@ Kesembilan candidate negatif di kedua symbol. Detail lengkap + tabel per candida
 ```bash
 npm install
 npm run typecheck   # core + web + worker
-npm test            # 48 pass
+npm test            # 54 pass
 npm run build
 
 # baseline saja, ~35 detik dengan cache

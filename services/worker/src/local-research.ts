@@ -11,24 +11,38 @@ import {
 } from './binance-archive.ts';
 import {
   evaluateResearchRun,
+  evaluateSingleVariant,
   RESEARCH_VARIANTS,
   type ResearchRunResult,
+  type SingleVariantResult,
 } from './research-evaluation.ts';
 
 /**
  * Local full-history research CLI.
  *
  * Downloads public Binance bulk data only (no API key, no Supabase) and runs the exact same
- * evaluation the Railway research worker runs, so a strategy decision can be reproduced on a laptop
- * and cross-checked against the dashboard job. Output is research-only: nothing here touches paper
+ * evaluation the Railway research worker runs. Output is research-only: nothing here touches paper
  * approval, Testnet, or live orders.
  *
  * Usage:
  *   npm run research:local --workspace @nusaquant/worker
  *   npm run research:local --workspace @nusaquant/worker -- --symbols=BTCUSDT --start=2025-09 --end=2026-08
+ *   npm run research:local --workspace @nusaquant/worker -- --symbols=BTCUSDT --variants=NONE
+ *   npm run research:local --workspace @nusaquant/worker -- --entry=5m --higher=1h \
+ *     --variants=CHAMPION_ABSORPTION_REVERSION_HYPOTHESIS --skip-baseline
+ *   npm run research:local --workspace @nusaquant/worker -- --entry=1h --higher=4h \
+ *     --variants=WILLIAMS_VOLATILITY_BREAKOUT_HYPOTHESIS
  */
 
 const CACHE_DIR = path.resolve(process.cwd(), '.research-cache');
+
+const INTERVAL_MS: Record<string, number> = {
+  '1m': 60_000,
+  '5m': 300_000,
+  '15m': 900_000,
+  '1h': 3_600_000,
+  '4h': 14_400_000,
+};
 
 type Args = {
   symbols: string[];
@@ -37,6 +51,10 @@ type Args = {
   output: string | null;
   refresh: boolean;
   variants: string[] | null;
+  entry: string;
+  higher: string;
+  skipBaseline: boolean;
+  noMetrics: boolean;
 };
 
 function parseArgs(argv: string[]): Args {
@@ -48,11 +66,17 @@ function parseArgs(argv: string[]): Args {
     output: null,
     refresh: false,
     variants: null,
+    entry: '15m',
+    higher: '1h',
+    skipBaseline: false,
+    noMetrics: false,
   };
   for (const raw of argv) {
     const [key, value] = raw.replace(/^--/, '').split('=');
     if (value === undefined) {
       if (key === 'refresh') args.refresh = true;
+      if (key === 'skip-baseline') args.skipBaseline = true;
+      if (key === 'no-metrics') args.noMetrics = true;
       continue;
     }
     if (key === 'symbols') args.symbols = value.split(',').map((item) => item.trim().toUpperCase()).filter(Boolean);
@@ -60,7 +84,14 @@ function parseArgs(argv: string[]): Args {
     if (key === 'end') args.endMonth = value.slice(0, 7);
     if (key === 'out') args.output = value;
     if (key === 'refresh') args.refresh = value === 'true';
-    if (key === 'variants') args.variants = value.split(',').map((item) => item.trim().toUpperCase()).filter(Boolean);
+      if (key === 'variants') args.variants = value.split(',').map((item) => item.trim().toUpperCase()).filter(Boolean);
+      if (key === 'entry') args.entry = value.trim();
+      if (key === 'higher') args.higher = value.trim();
+      if (key === 'skip-baseline') args.skipBaseline = value === 'true';
+      if (key === 'no-metrics') args.noMetrics = value === 'true';
+  }
+  if (!INTERVAL_MS[args.entry] || !INTERVAL_MS[args.higher]) {
+    throw new Error(`Interval tidak didukung: entry=${args.entry} higher=${args.higher}.`);
   }
   return args;
 }
@@ -85,10 +116,18 @@ function formatPf(value: number | null): string {
   return Number.isFinite(value) ? value.toFixed(2) : '∞';
 }
 
+function printFunnel(name: string, funnel: ResearchRunResult['funnels'][string] | SingleVariantResult['funnel'], zeroTrades: boolean): void {
+  if (!funnel || !zeroTrades) return;
+  console.log(`\n  --- funnel ${name} (${funnel.evaluated} candle dievaluasi) ---`);
+  console.log(`  long : ${funnel.longStages.map((item) => `${item.label}=${item.passed} (${(item.share * 100).toFixed(2)}%)`).join(' -> ')}`);
+  console.log(`  short: ${funnel.shortStages.map((item) => `${item.label}=${item.passed} (${(item.share * 100).toFixed(2)}%)`).join(' -> ')}`);
+  if (funnel.diagnosis) console.log(`  diagnosis: ${funnel.diagnosis}`);
+}
+
 function verdict(result: ResearchRunResult): void {
   const baseline = result.baseline;
   console.log(`\n=== ${result.symbol} ===`);
-  console.log(`sample: ${result.sample.entryCandles} candle 15M · ${result.sample.higherCandles} candle 1H · ${result.sample.fundingPoints} funding · ${result.sample.metricsPoints} metrics`);
+  console.log(`sample: ${result.sample.entryCandles} candle entry · ${result.sample.higherCandles} candle higher · ${result.sample.fundingPoints} funding · ${result.sample.metricsPoints} metrics`);
   console.log(`periode: ${new Date(baseline.summary.periodStart ?? 0).toISOString().slice(0, 10)} → ${new Date(baseline.summary.periodEnd ?? 0).toISOString().slice(0, 10)}`);
   console.log(`baseline: ${baseline.summary.totalTrades} trade · ${formatMoney(baseline.summary.netPnl)} USDT · ${baseline.summary.expectancyR.toFixed(3)}R · PF ${formatPf(baseline.summary.profitFactor)} · gate ${baseline.summary.gate}`);
   console.log(`baseline OOS: ${baseline.validation.outOfSample.totalTrades} trade · ${formatMoney(baseline.validation.outOfSample.netPnl)} USDT · ${baseline.validation.outOfSample.expectancyR.toFixed(3)}R · PF ${formatPf(baseline.validation.outOfSample.profitFactor)}`);
@@ -103,17 +142,19 @@ function verdict(result: ResearchRunResult): void {
       + ` => ${candidate.promotionGate.pass ? 'PASS' : 'REJECT'}`,
     );
   }
-  for (const funnel of Object.values(result.funnels)) {
-    const zeroTrades = result.candidates[funnel.name]?.summary.totalTrades === 0;
-    if (!zeroTrades) continue;
-    console.log(`\n  --- funnel ${funnel.name} (${funnel.evaluated} candle dievaluasi) ---`);
-    console.log(`  long : ${funnel.longStages.map((item) => `${item.label}=${item.passed} (${(item.share * 100).toFixed(2)}%)`).join(' -> ')}`);
-    console.log(`  short: ${funnel.shortStages.map((item) => `${item.label}=${item.passed} (${(item.share * 100).toFixed(2)}%)`).join(' -> ')}`);
-    for (const [name, stats] of Object.entries(funnel.distributions)) {
-      console.log(`  dist ${name}: n=${stats.count} min=${stats.min.toFixed(6)} p01=${stats.p01.toFixed(6)} p10=${stats.p10.toFixed(6)} median=${stats.median.toFixed(6)} p90=${stats.p90.toFixed(6)} p99=${stats.p99.toFixed(6)} max=${stats.max.toFixed(6)}`);
-    }
-    if (funnel.diagnosis) console.log(`  diagnosis: ${funnel.diagnosis}`);
+  for (const candidate of Object.values(result.candidates)) {
+    printFunnel(candidate.name, result.funnels[candidate.name], candidate.summary.totalTrades === 0);
   }
+}
+
+function verdictSingle(symbol: string, single: SingleVariantResult, sample: { entryCandles: number; higherCandles: number; fundingPoints: number; metricsPoints: number }): void {
+  console.log(`\n=== ${symbol} · ${single.name} (single-variant run) ===`);
+  console.log(`sample: ${sample.entryCandles} candle entry · ${sample.higherCandles} candle higher · ${sample.fundingPoints} funding · ${sample.metricsPoints} metrics`);
+  console.log(`full: ${single.summary.totalTrades} trade · ${formatMoney(single.summary.netPnl)} USDT · ${single.summary.expectancyR.toFixed(3)}R · PF ${formatPf(single.summary.profitFactor)} · gate ${single.summary.gate}`);
+  console.log(`OOS 30%: ${single.validation.outOfSample.totalTrades} trade · ${formatMoney(single.validation.outOfSample.netPnl)} USDT · ${single.validation.outOfSample.expectancyR.toFixed(3)}R · PF ${formatPf(single.validation.outOfSample.profitFactor)}`);
+  console.log(`WF: ${single.walkForward.aggregate.totalTrades} trade · ${single.walkForward.aggregate.expectancyR.toFixed(3)}R · PF ${formatPf(single.walkForward.aggregate.profitFactor)}`);
+  console.log(`promotion gate: ${single.promotionGate.pass ? 'PASS' : 'REJECT'}${single.promotionGate.pass ? '' : ` (${single.promotionGate.reason})`}`);
+  printFunnel(single.name, single.funnel, single.summary.totalTrades === 0);
 }
 
 async function main(): Promise<void> {
@@ -124,36 +165,58 @@ async function main(): Promise<void> {
     new Date(Date.parse(`${args.endMonth}-01T00:00:00Z`)).getUTCMonth() + 1,
   ) - 1;
   if (!Number.isFinite(startTime) || !Number.isFinite(endTime)) throw new Error('Rentang periode tidak valid.');
+  const entryIntervalMs = INTERVAL_MS[args.entry];
 
   const runs: ResearchRunResult[] = [];
+  const singles: Array<{ symbol: string; result: SingleVariantResult }> = [];
   for (const symbol of args.symbols) {
     const startedAt = Date.now();
-    console.log(JSON.stringify({ localResearch: true, symbol, months: months.length, phase: 'download' }));
+    console.log(JSON.stringify({ localResearch: true, symbol, months: months.length, entry: args.entry, higher: args.higher, phase: 'download' }));
     const [higherTimeframe, entryTimeframe, fundingTimeframe, metricsTimeframe] = await Promise.all([
-      cached<Candle[]>(`${symbol}-1h-${args.startMonth}-${args.endMonth}.json`, args.refresh, () => fetchMonthlyKlines({ symbol, interval: '1h', months })),
-      cached<Candle[]>(`${symbol}-15m-${args.startMonth}-${args.endMonth}.json`, args.refresh, () => fetchMonthlyKlines({ symbol, interval: '15m', months })),
+      cached<Candle[]>(`${symbol}-${args.higher}-${args.startMonth}-${args.endMonth}.json`, args.refresh, () => fetchMonthlyKlines({ symbol, interval: args.higher, months })),
+      cached<Candle[]>(`${symbol}-${args.entry}-${args.startMonth}-${args.endMonth}.json`, args.refresh, () => fetchMonthlyKlines({ symbol, interval: args.entry, months })),
       cached<FundingPoint[]>(`${symbol}-funding-${args.startMonth}-${args.endMonth}.json`, args.refresh, () => fetchMonthlyFunding({ symbol, months })),
-      cached<MarketMetricsPoint[]>(`${symbol}-metrics-${args.startMonth}-${args.endMonth}.json`, args.refresh, () => fetchDailyMetrics({ symbol, startTime, endTime })),
+      args.noMetrics
+        ? Promise.resolve<MarketMetricsPoint[]>([])
+        : cached<MarketMetricsPoint[]>(`${symbol}-metrics-${args.startMonth}-${args.endMonth}.json`, args.refresh, () => fetchDailyMetrics({ symbol, startTime, endTime })),
     ]);
-    console.log(JSON.stringify({
-      localResearch: true,
-      symbol,
-      phase: 'evaluate',
-      higherCandles: higherTimeframe.length,
+    const sampleInfo = {
       entryCandles: entryTimeframe.length,
+      higherCandles: higherTimeframe.length,
       fundingPoints: fundingTimeframe.length,
       metricsPoints: metricsTimeframe.length,
-      variants: RESEARCH_VARIANTS.length,
-    }));
+    };
+    console.log(JSON.stringify({ localResearch: true, symbol, phase: 'evaluate', ...sampleInfo, variants: args.variants ? args.variants.length : RESEARCH_VARIANTS.length }));
+
     const selectedVariants = args.variants
       ? RESEARCH_VARIANTS.filter((variant) => args.variants?.includes(variant.name))
       : undefined;
+
+    if (args.skipBaseline && selectedVariants && selectedVariants.length === 1) {
+      const single = await evaluateSingleVariant({
+        symbol,
+        higherTimeframe,
+        entryTimeframe,
+        fundingTimeframe,
+        metricsTimeframe,
+        entryIntervalMs,
+        variantName: selectedVariants[0].name,
+        onProgress: (progress) => {
+          if (progress % 10 === 0) console.log(JSON.stringify({ localResearch: true, symbol, progress }));
+        },
+      });
+      verdictSingle(symbol, single, sampleInfo);
+      singles.push({ symbol, result: single });
+      continue;
+    }
+
     const result = await evaluateResearchRun({
       symbol,
       higherTimeframe,
       entryTimeframe,
       fundingTimeframe,
       metricsTimeframe,
+      entryIntervalMs,
       variants: selectedVariants,
       onProgress: (progress) => {
         if (progress % 10 === 0 || progress >= 95) console.log(JSON.stringify({ localResearch: true, symbol, progress }));
@@ -166,14 +229,23 @@ async function main(): Promise<void> {
 
   if (args.output) {
     await mkdir(path.dirname(path.resolve(args.output)), { recursive: true });
-    await writeFile(args.output, JSON.stringify({ generatedAt: new Date().toISOString(), months: [args.startMonth, args.endMonth], runs }, null, 2));
+    await writeFile(args.output, JSON.stringify({
+      generatedAt: new Date().toISOString(),
+      months: [args.startMonth, args.endMonth],
+      intervals: { entry: args.entry, higher: args.higher },
+      runs,
+      singles,
+    }, null, 2));
     console.log(JSON.stringify({ localResearch: true, output: args.output }));
   }
 
-  const promoted = runs.flatMap((run) => [
-    ...(run.baseline.promotionGate.pass ? [`${run.symbol}/BASELINE`] : []),
-    ...Object.values(run.candidates).filter((candidate) => candidate.promotionGate.pass).map((candidate) => `${run.symbol}/${candidate.name}`),
-  ]);
+  const promoted = [
+    ...runs.flatMap((run) => [
+      ...(run.baseline.promotionGate.pass ? [`${run.symbol}/BASELINE`] : []),
+      ...Object.values(run.candidates).filter((candidate) => candidate.promotionGate.pass).map((candidate) => `${run.symbol}/${candidate.name}`),
+    ]),
+    ...singles.filter((item) => item.result.promotionGate.pass).map((item) => `${item.symbol}/${item.result.name}`),
+  ];
   console.log(JSON.stringify({
     ok: true,
     symbols: args.symbols,

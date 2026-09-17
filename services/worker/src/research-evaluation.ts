@@ -1,6 +1,7 @@
 import {
   buildChampionAbsorptionFunnel,
   buildFundingDistribution,
+  buildWilliamsBreakoutFunnel,
   buildLiquidationReclaimFunnel,
   buildTakerFlowFunnel,
   runBacktest,
@@ -78,6 +79,11 @@ export const RESEARCH_VARIANTS = [
     rule: 'Taker buy ratio <= 0.38 atau >= 0.62, didahului gerak tiga candle searah flow, rejection close berlawanan, range <= 2.2 ATR, ADX 1H <= 28, target 1.5R.',
     config: { entryPolicy: 'TAKER_FLOW_REJECTION_HYPOTHESIS' as const },
     requiresTakerFlow: true,
+  },
+  {
+    name: 'WILLIAMS_VOLATILITY_BREAKOUT_HYPOTHESIS',
+    rule: 'Playbook juara #2 (Larry Williams): close menembus gate 0.5x range hari sebelumnya dari open harian, hanya searah regime SMA5/45 harian, stop di gate cermin, target 3R. Spec: docs/19.',
+    config: { entryPolicy: 'WILLIAMS_VOLATILITY_BREAKOUT_HYPOTHESIS' as const, maxBarsInTrade: 72 },
   },
   {
     name: 'CHAMPION_ABSORPTION_REVERSION_HYPOTHESIS',
@@ -174,6 +180,7 @@ export type ResearchRunInput = {
   fundingTimeframe: FundingPoint[];
   metricsTimeframe: MarketMetricsPoint[];
   config?: BacktestConfig;
+  entryIntervalMs?: number;
   /** Called between expensive stages so the caller can persist progress. */
   onProgress?: ResearchProgressCallback;
   /** Restrict the variant list, useful for smoke runs. */
@@ -215,6 +222,7 @@ function countTakerFlowCandles(candles: Candle[]): number {
 export async function evaluateResearchRun(input: ResearchRunInput): Promise<ResearchRunResult> {
   const { symbol, higherTimeframe, entryTimeframe, fundingTimeframe, metricsTimeframe } = input;
   const config = { ...RESEARCH_BASE_CONFIG, ...input.config };
+  const entryIntervalMs = input.entryIntervalMs ?? 15 * 60 * 1000;
   const onProgress = input.onProgress ?? (() => {});
 
   if (higherTimeframe.length < 220 || entryTimeframe.length < 80) {
@@ -298,6 +306,7 @@ export async function evaluateResearchRun(input: ResearchRunInput): Promise<Rese
     TAKER_FLOW_REJECTION_HYPOTHESIS: buildTakerFlowFunnel({ entryTimeframe, higherTimeframe }),
     LIQUIDATION_RECLAIM_HYPOTHESIS: buildLiquidationReclaimFunnel({ entryTimeframe, higherTimeframe, metricsTimeframe }),
     CHAMPION_ABSORPTION_REVERSION_HYPOTHESIS: buildChampionAbsorptionFunnel({ entryTimeframe, higherTimeframe }),
+    WILLIAMS_VOLATILITY_BREAKOUT_HYPOTHESIS: buildWilliamsBreakoutFunnel({ entryTimeframe }),
   };
 
   const missing = Object.values(candidates).filter((candidate) => candidate.dataStatus === 'MISSING_DATA').map((candidate) => candidate.name);
@@ -324,5 +333,53 @@ export async function evaluateResearchRun(input: ResearchRunInput): Promise<Rese
         ? ['Kolom taker flow kosong pada seluruh candle; TAKER_FLOW_REJECTION_HYPOTHESIS butuh archive backfill ulang.']
         : []),
     ],
+  };
+}
+
+export type SingleVariantResult = {
+  name: string;
+  rule: string;
+  summary: ReturnType<typeof summarizeReport>;
+  executionAudit: BacktestReport['executionAudit'];
+  excursionAudit: BacktestReport['excursionAudit'];
+  validation: ReturnType<typeof runTemporalValidation>;
+  walkForward: ReturnType<typeof runWalkForwardValidation>;
+  promotionGate: ReturnType<typeof passesPromotionGate>;
+  funnel?: CandidateFunnel;
+};
+
+/**
+ * Runs one hypothesis through full sample, temporal OOS, and walk-forward without computing the
+ * baseline. Used by the local CLI for resolution experiments (for example the champion playbook at
+ * 5M) where the expensive baseline pass adds nothing to the question being asked.
+ */
+export async function evaluateSingleVariant(input: ResearchRunInput & { variantName: string }): Promise<SingleVariantResult> {
+  const { symbol, higherTimeframe, entryTimeframe, fundingTimeframe, metricsTimeframe, variantName } = input;
+  const variant = RESEARCH_VARIANTS.find((item) => item.name === variantName);
+  if (!variant) throw new Error(`Variant tidak dikenal: ${variantName}`);
+  const config = { ...RESEARCH_BASE_CONFIG, ...input.config, ...variant.config };
+  const entryIntervalMs = input.entryIntervalMs ?? 15 * 60 * 1000;
+
+  const report = runBacktest({ symbol, higherTimeframe, entryTimeframe, fundingTimeframe, metricsTimeframe, config: { ...config, entryIntervalMs } });
+  await input.onProgress?.(40);
+  const temporal = runTemporalValidation({ symbol, higherTimeframe, entryTimeframe, fundingTimeframe, metricsTimeframe, config: { ...config, entryIntervalMs }, trainFraction: 0.7, warmupBars: 80 });
+  await input.onProgress?.(70);
+  const walkForward = runWalkForwardValidation({ symbol, higherTimeframe, entryTimeframe, fundingTimeframe, metricsTimeframe, config: { ...config, entryIntervalMs }, foldCount: 3, warmupBars: 80 });
+
+  const funnels: Record<string, CandidateFunnel> = {
+    CHAMPION_ABSORPTION_REVERSION_HYPOTHESIS: buildChampionAbsorptionFunnel({ entryTimeframe, higherTimeframe }),
+    WILLIAMS_VOLATILITY_BREAKOUT_HYPOTHESIS: buildWilliamsBreakoutFunnel({ entryTimeframe }),
+  };
+
+  return {
+    name: variant.name,
+    rule: variant.rule,
+    summary: summarizeReport(report, entryTimeframe),
+    executionAudit: report.executionAudit,
+    excursionAudit: report.excursionAudit,
+    validation: temporal,
+    walkForward,
+    promotionGate: passesPromotionGate(report, temporal.outOfSample, walkForward.aggregate),
+    funnel: funnels[variant.name],
   };
 }

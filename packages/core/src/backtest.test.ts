@@ -276,3 +276,81 @@ test('the consecutive-loss governor can only remove entries, never add them', ()
   });
   assert.ok(withGovernor.totalTrades <= withoutGovernor.totalTrades);
 });
+
+test('williams breakout fires on a daily open-gate expansion in a 5/45 uptrend', () => {
+  const hour = 60 * 60 * 1000;
+  const higher: Candle[] = Array.from({ length: 300 }, (_, index) => {
+    const price = 100 + index * 0.05;
+    return { time: index * hour, open: price, high: price + 0.3, low: price - 0.1, close: price + 0.1, volume: 10 };
+  });
+
+  const day0 = 1_700_000_000_000 - (1_700_000_000_000 % 86_400_000);
+  const entry: Candle[] = [];
+  for (let day = 0; day < 50; day += 1) {
+    const dayClose = 100 + day * 0.1;
+    for (let h = 0; h < 24; h += 1) {
+      const isPrevDay = day === 49;
+      entry.push({
+        time: day0 + day * 86_400_000 + h * hour,
+        open: dayClose - 0.1,
+        high: isPrevDay ? dayClose + 1 : dayClose + 0.2,
+        low: isPrevDay ? dayClose - 1 : dayClose - 0.2,
+        close: dayClose,
+        volume: 50,
+      });
+    }
+  }
+  const triggerDayStart = day0 + 50 * 86_400_000;
+  entry.push({ time: triggerDayStart, open: 104.9, high: 105.0, low: 104.7, close: 104.9, volume: 50 });
+  entry.push({ time: triggerDayStart + hour, open: 105.0, high: 106.2, low: 104.9, close: 106.0, volume: 60 });
+  for (let index = 2; index < 12; index += 1) {
+    entry.push({ time: triggerDayStart + index * hour, open: 106.0, high: 106.6, low: 105.6, close: 106.3, volume: 50 });
+  }
+
+  const report = runBacktest({
+    higherTimeframe: higher,
+    entryTimeframe: entry,
+    config: { entryPolicy: 'WILLIAMS_VOLATILITY_BREAKOUT_HYPOTHESIS', entryIntervalMs: hour },
+  });
+  assert.equal(report.totalTrades, 1, 'breakout gate + regime naik harus menghasilkan satu trade');
+  const trade = report.trades[0];
+  assert.equal(trade.side, 'LONG');
+  assert.ok(trade.stopLoss < 104.9, 'stop di gate cermin bawah open');
+  assert.ok(trade.takeProfit > trade.entry, 'target 3R di atas entry');
+});
+
+test('williams breakout refuses the long side in a 5/45 downtrend', () => {
+  const hour = 60 * 60 * 1000;
+  const higher: Candle[] = Array.from({ length: 300 }, (_, index) => {
+    const price = 200 - index * 0.05;
+    return { time: index * hour, open: price, high: price + 0.3, low: price - 0.1, close: price - 0.1, volume: 10 };
+  });
+  const day0 = 1_700_000_000_000 - (1_700_000_000_000 % 86_400_000);
+  const entry: Candle[] = [];
+  for (let day = 0; day < 50; day += 1) {
+    const dayClose = 200 - day * 0.1;
+    for (let h = 0; h < 24; h += 1) {
+      entry.push({
+        time: day0 + day * 86_400_000 + h * hour,
+        open: dayClose + 0.1,
+        high: day === 49 ? dayClose + 1 : dayClose + 0.2,
+        low: day === 49 ? dayClose - 1 : dayClose - 0.2,
+        close: dayClose,
+        volume: 50,
+      });
+    }
+  }
+  const triggerDayStart = day0 + 50 * 86_400_000;
+  entry.push({ time: triggerDayStart, open: 195.1, high: 195.2, low: 194.9, close: 195.1, volume: 50 });
+  entry.push({ time: triggerDayStart + hour, open: 195.2, high: 196.4, low: 195.1, close: 196.2, volume: 60 });
+  for (let index = 2; index < 12; index += 1) {
+    entry.push({ time: triggerDayStart + index * hour, open: 196.2, high: 196.8, low: 195.8, close: 196.5, volume: 50 });
+  }
+
+  const report = runBacktest({
+    higherTimeframe: higher,
+    entryTimeframe: entry,
+    config: { entryPolicy: 'WILLIAMS_VOLATILITY_BREAKOUT_HYPOTHESIS', entryIntervalMs: hour },
+  });
+  assert.equal(report.totalTrades, 0, 'regime turun melarang sisi long meski gate tertembus');
+});

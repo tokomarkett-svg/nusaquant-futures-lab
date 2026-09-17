@@ -129,3 +129,20 @@ test('funding funnel shows when the extreme threshold is the exchange cap rather
   assert.ok(funnel.longStages[0].passed > 0, 'funding di cap harus terhitung sebagai kondisi terpenuhi');
   assert.ok(funnel.evaluated > 0);
 });
+
+test('observation alignment honors a non-default entry interval', () => {
+  const fiveMinutes = 5 * 60 * 1000;
+  const entryTimeframe = makeCandles(4, Date.parse('2026-01-01T00:00:00Z'), fiveMinutes);
+  const closeOf = (index: number) => entryTimeframe[index].time + fiveMinutes;
+  const series = [
+    { time: closeOf(0), value: 1 },
+    { time: closeOf(0) + 1, value: 2 },
+  ];
+  const aligned = alignSeriesToEntryCandles(entryTimeframe, series, fiveMinutes);
+  assert.equal(aligned[0]?.value, 1);
+  assert.equal(aligned[1]?.value, 2);
+  assert.equal(aligned[3]?.value, 2);
+
+  const future = alignSeriesToEntryCandles(entryTimeframe, [{ time: closeOf(3) + 1, value: 9 }], fiveMinutes);
+  assert.deepEqual(future, [undefined, undefined, undefined, undefined]);
+});

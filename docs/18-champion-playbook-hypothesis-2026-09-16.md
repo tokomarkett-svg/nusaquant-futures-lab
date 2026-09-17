@@ -122,3 +122,26 @@ ETH  short: struktur 19.196 -> 68 -> 9
 - Otak #2 (Larry Williams) dan #3 (Andrea Unger) tetap dalam antrean dengan proses yang sama:
   spesifikasi tertulis dulu, lalu gerbang yang sama. Diversifikasi hanya bernilai jika ada minimal dua
   playbook yang lulus sendirian.
+
+## Addendum 2026-09-17: jalur 5M diuji dan DITOLAK oleh datanya sendiri
+
+Jalur sah #1 dari addendum sebelumnya ("interval riset 5M") sudah dieksekusi penuh:
+`--entry=5m --higher=1h`, full-year 2025-09 → 2026-08, kedua symbol, aturan tidak diubah sama
+sekali. Artifact: `reports/local-research-champion-5m.json`.
+
+| Sample | BTC 5M | BTC 15M (referensi) | ETH 5M | ETH 15M (referensi) |
+| --- | --- | --- | --- | --- |
+| full | 38 trade · −0.170R · PF 0.59 | 25 · −0.131R · PF 0.71 | 38 · −0.130R · PF 0.74 | 24 · −0.091R · PF 0.82 |
+| OOS 30% | 10 · −0.456R · PF 0.23 | 8 · −0.495R | 13 · −0.185R · PF 0.60 | 14 · +0.060R |
+| WF | 26 · −0.395R | 25 · −0.140R | 21 · −0.238R | 20 · −0.140R |
+
+Funnel 5M (dari ~105 ribu candle entry): struktur long 44.81% (BTC) → absorption 0.49% → flip
+0.12%; short 53.00% → 0.56% → 0.13%. Materi baku flip naik ~2x lipat dibanding 15M (0.05%) seperti
+yang diprediksi addendum — tetapi setiap trade tambahannya justru rugi.
+
+Kesimpulan jujur: resolusi 15M **bukan** alasan playbook ini gagal. Pada 5M, proxy absorption dari
+agregat 1-menit menangkap lebih banyak "flip" yang ternyata noise, dan biaya per trade memakan edge
+yang tipis. Sample sekarang cukup (38+38 trade, semua gerbang gagal karena ekspektansi negatif,
+bukan karena jumlah). Jalur 5M **ditutup**; satu-satunya jalur tersisa untuk premis aslinya adalah
+sumber footprint/orderbook tick (jalur #2, fase execution-model terpisah sesuai `docs/14`) — dan itu
+hanya layak dikerjakan jika ada alasan baru, bukan untuk menyelamatkan hasil lama.

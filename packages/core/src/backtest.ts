@@ -29,10 +29,12 @@ export interface BacktestConfig {
   fundingRatePerBar?: number;
   maxBarsInTrade?: number;
   timezone?: string;
-  entryPolicy?: 'BASELINE' | 'TRIAD_TIMING_HYPOTHESIS' | 'TRIAD_RETEST_HYPOTHESIS' | 'TRIAD_FOLLOW_THROUGH_HYPOTHESIS' | 'MEAN_REVERSION_REJECTION_HYPOTHESIS' | 'VOLATILITY_EXPANSION_BREAKOUT_HYPOTHESIS' | 'FUNDING_CROWDING_REVERSION_HYPOTHESIS' | 'TAKER_FLOW_REJECTION_HYPOTHESIS' | 'LIQUIDATION_RECLAIM_HYPOTHESIS' | 'CHAMPION_ABSORPTION_REVERSION_HYPOTHESIS';
+  entryPolicy?: 'BASELINE' | 'TRIAD_TIMING_HYPOTHESIS' | 'TRIAD_RETEST_HYPOTHESIS' | 'TRIAD_FOLLOW_THROUGH_HYPOTHESIS' | 'MEAN_REVERSION_REJECTION_HYPOTHESIS' | 'VOLATILITY_EXPANSION_BREAKOUT_HYPOTHESIS' | 'FUNDING_CROWDING_REVERSION_HYPOTHESIS' | 'TAKER_FLOW_REJECTION_HYPOTHESIS' | 'LIQUIDATION_RECLAIM_HYPOTHESIS' | 'CHAMPION_ABSORPTION_REVERSION_HYPOTHESIS' | 'WILLIAMS_VOLATILITY_BREAKOUT_HYPOTHESIS';
   exitPolicy?: 'BASELINE' | 'MFE_PROFIT_PROTECTION_HYPOTHESIS';
   /** Risk governor: after this many consecutive losing trades, no new entries until the next local day. */
   haltAfterConsecutiveLosses?: number;
+  /** Entry candle duration in ms. Defaults to 15m; observation series are aligned to the candle close. */
+  entryIntervalMs?: number;
 }
 
 export interface BacktestTrade {
@@ -860,6 +862,7 @@ function vwap(candles: Candle[]): number {
 function buildChampionAbsorptionSignal({
   higherTimeframe,
   entryTimeframe,
+  atrValue,
   equity,
   riskFraction,
   feeRate,
@@ -869,6 +872,7 @@ function buildChampionAbsorptionSignal({
 }: {
   higherTimeframe: Candle[];
   entryTimeframe: Candle[];
+  atrValue?: number;
   equity: number;
   riskFraction: number;
   feeRate: number;
@@ -906,7 +910,7 @@ function buildChampionAbsorptionSignal({
   const absorptionBefore = lookback.at(-2);
   const candidates = [absorption, absorptionBefore].filter((candle): candle is Candle => Boolean(candle));
   const averageVolume = lookback.slice(0, -1).reduce((sum, candle) => sum + candle.volume, 0) / Math.max(1, lookback.length - 1);
-  const entryAtr = atr(entryTimeframe).at(-1) ?? Number.NaN;
+  const entryAtr = atrValue ?? atr(entryTimeframe).at(-1) ?? Number.NaN;
   if (!Number.isFinite(entryAtr) || entryAtr <= Number.EPSILON || averageVolume <= 0) return null;
 
   for (const absorptionCandle of candidates) {
@@ -988,6 +992,130 @@ function buildChampionAbsorptionSignal({
     };
   }
   return null;
+}
+
+/**
+ * Champion playbook #2 — Larry Williams: daily open-gate volatility breakout with his 5/45 daily
+ * moving-average regime (his best crossover in the 1975-1987 study cited in Long-Term Secrets to
+ * Short-Term Trading). Spec: docs/19.
+ *
+ * The gate is a fraction k of the previous completed UTC day range, measured from the current day
+ * open. A close beyond the gate says the move expanded beyond the prior day's normal range; the
+ * 5/45 daily regime decides which side is allowed. Stop sits at the mirrored gate, the exact point
+ * where the breakout thesis is wrong.
+ */
+function buildWilliamsVolatilityBreakoutSignal({
+  entryTimeframe,
+  equity,
+  riskFraction,
+  feeRate,
+  slippageRate,
+  fundingRatePerBar,
+  maxBarsInTrade,
+}: {
+  entryTimeframe: Candle[];
+  equity: number;
+  riskFraction: number;
+  feeRate: number;
+  slippageRate: number;
+  fundingRatePerBar: number;
+  maxBarsInTrade: number;
+}): IntelligentSignal | null {
+  const trigger = entryTimeframe.at(-1);
+  if (!trigger || entryTimeframe.length < 2) return null;
+
+  const dayKey = (time: number) => Math.floor(time / 86_400_000);
+  const triggerDay = dayKey(trigger.time);
+
+  // Completed daily closes feed the 5/45 regime; the previous completed day's high/low defines the
+  // range gate; the in-progress day's first open is the anchor. Everything is causal: the current
+  // day's close is never used as a completed daily observation.
+  let currentDayOpen: number | null = null;
+  let previousDayHigh = Number.NaN;
+  let previousDayLow = Number.NaN;
+  let scanningDay = -1;
+  const dailyCloses: number[] = [];
+  let runningClose = Number.NaN;
+
+  for (const candle of entryTimeframe) {
+    const day = dayKey(candle.time);
+    if (day !== scanningDay) {
+      if (scanningDay !== -1 && scanningDay < triggerDay) dailyCloses.push(runningClose);
+      scanningDay = day;
+      runningClose = candle.close;
+      if (day === triggerDay) currentDayOpen = candle.open;
+    } else {
+      runningClose = candle.close;
+    }
+    if (day === triggerDay - 1) {
+      previousDayHigh = Number.isFinite(previousDayHigh) ? Math.max(previousDayHigh, candle.high) : candle.high;
+      previousDayLow = Number.isFinite(previousDayLow) ? Math.min(previousDayLow, candle.low) : candle.low;
+    }
+  }
+  if (currentDayOpen === null || !Number.isFinite(previousDayHigh) || !Number.isFinite(previousDayLow)) return null;
+  const previousDayRange = previousDayHigh - previousDayLow;
+  if (!(previousDayRange > Number.EPSILON)) return null;
+
+  const sma = (values: number[], period: number): number => {
+    if (values.length < period) return Number.NaN;
+    let sum = 0;
+    for (let index = values.length - period; index < values.length; index += 1) sum += values[index];
+    return sum / period;
+  };
+  const sma5 = sma(dailyCloses, 5);
+  const sma45 = sma(dailyCloses, 45);
+  if (!Number.isFinite(sma5) || !Number.isFinite(sma45)) return null;
+  const regimeLong = sma5 > sma45;
+  const regimeShort = sma5 < sma45;
+  if (!regimeLong && !regimeShort) return null;
+
+  const gate = 0.5 * previousDayRange;
+  const longBreak = regimeLong && trigger.close >= currentDayOpen + gate;
+  const shortBreak = regimeShort && trigger.close <= currentDayOpen - gate;
+  if (!longBreak && !shortBreak) return null;
+
+  const decision = longBreak ? 'LONG' : 'SHORT';
+  const entry = trigger.close;
+  const stopLoss = longBreak ? currentDayOpen - gate : currentDayOpen + gate;
+  const stopDistance = Math.abs(entry - stopLoss);
+  if (stopDistance <= Number.EPSILON) return null;
+  const takeProfit = longBreak ? entry + stopDistance * 3 : entry - stopDistance * 3;
+  const riskAmount = equity * riskFraction;
+  const estimatedCostPerUnit = (entry + stopLoss) * (feeRate + slippageRate)
+    + entry * fundingRatePerBar * maxBarsInTrade;
+  const quantity = riskAmount / Math.max(stopDistance + estimatedCostPerUnit, Number.EPSILON);
+  return {
+    decision,
+    candidate: decision,
+    stage: 'TRIGGERED',
+    timing: 'ENTER_NOW',
+    regime: longBreak ? 'TREND_UP' : 'TREND_DOWN',
+    qualityScore: 80,
+    scoreMax: 100,
+    entry,
+    triggerPrice: entry,
+    stopLoss,
+    takeProfit,
+    quantity,
+    riskAmount,
+    riskReward: 3,
+    maxChaseDistance: null,
+    patterns: [],
+    structure: {
+      bias: longBreak ? 'BULLISH' : 'BEARISH',
+      lastSwingHigh: previousDayHigh,
+      lastSwingLow: previousDayLow,
+      breakOfStructure: longBreak ? 'BULLISH' : 'BEARISH',
+      reason: 'Williams: close menembus gate 0.5x range hari sebelumnya dari open, searah regime SMA5/45 harian.',
+    },
+    evidence: [
+      { label: 'Regime 5/45 harian', points: 30, passed: true, explanation: `SMA5 harian ${regimeLong ? 'di atas' : 'di bawah'} SMA45; hanya sisi itu yang boleh breakout.` },
+      { label: 'Open-range gate', points: 40, passed: true, explanation: `Close ${longBreak ? 'di atas' : 'di bawah'} open ${longBreak ? '+' : '-'} 0.5 x range hari sebelumnya.` },
+      { label: 'Stop di balik gate cermin', points: 30, passed: true, explanation: 'Stop pada titik tepat di mana tesis breakout terbukti salah.' },
+    ],
+    blockers: [],
+    explanation: 'Research-only Williams volatility breakout: ekspansi melewati range hari sebelumnya dari open, searah regime 5/45, target 3R.',
+  };
 }
 
 const FUNDING_EXTREME_THRESHOLD = 0.0001;
@@ -1095,6 +1223,7 @@ export function runBacktest({
   let peakEquity = initialEquity;
   let maxDrawdown = 0;
   let index = 0;
+  const entryIntervalMs = config.entryIntervalMs ?? 15 * 60 * 1000;
   const fundingRateAtEntry = new Array<number>(entryTimeframe.length).fill(Number.NaN);
   const metricsAtEntry: Array<MarketMetricsPoint | undefined> = new Array(entryTimeframe.length).fill(undefined);
   const previousMetricsAtEntry: Array<MarketMetricsPoint | undefined> = new Array(entryTimeframe.length).fill(undefined);
@@ -1112,7 +1241,7 @@ export function runBacktest({
       fundingIndex += 1;
     }
     // Entry is evaluated after the 15m candle closes; metrics through that close are allowed.
-    const candleCloseTime = entryTimeframe[entryIndex].time + 15 * 60 * 1000;
+    const candleCloseTime = entryTimeframe[entryIndex].time + entryIntervalMs;
     while (metricsIndex < metricsTimeframe.length && metricsTimeframe[metricsIndex].time <= candleCloseTime) {
       latestMetrics = metricsTimeframe[metricsIndex];
       metricsIndex += 1;
@@ -1127,6 +1256,8 @@ export function runBacktest({
   }
 
   let higherCursor = 0;
+  const entryAtrSeries = atr(entryTimeframe);
+  const entryEma20Series = ema(entryTimeframe.map((candle) => candle.close), 20);
 
   while (index < entryTimeframe.length) {
     const triggerCandle = entryTimeframe[index];
@@ -1165,7 +1296,7 @@ export function runBacktest({
       index += 1;
       continue;
     }
-    const baseSignal = entryPolicy === 'MEAN_REVERSION_REJECTION_HYPOTHESIS' || entryPolicy === 'FUNDING_CROWDING_REVERSION_HYPOTHESIS' || entryPolicy === 'TAKER_FLOW_REJECTION_HYPOTHESIS' || entryPolicy === 'LIQUIDATION_RECLAIM_HYPOTHESIS' || entryPolicy === 'CHAMPION_ABSORPTION_REVERSION_HYPOTHESIS'
+    const baseSignal = entryPolicy === 'MEAN_REVERSION_REJECTION_HYPOTHESIS' || entryPolicy === 'FUNDING_CROWDING_REVERSION_HYPOTHESIS' || entryPolicy === 'TAKER_FLOW_REJECTION_HYPOTHESIS' || entryPolicy === 'LIQUIDATION_RECLAIM_HYPOTHESIS' || entryPolicy === 'CHAMPION_ABSORPTION_REVERSION_HYPOTHESIS' || entryPolicy === 'WILLIAMS_VOLATILITY_BREAKOUT_HYPOTHESIS'
       ? null
       : evaluateIntelligentSignal({
         higherTimeframe: higher,
@@ -1233,10 +1364,23 @@ export function runBacktest({
         continue;
       }
       signal = liquidationSignal;
+    } else if (entryPolicy === 'WILLIAMS_VOLATILITY_BREAKOUT_HYPOTHESIS') {
+      const williamsSignal = buildWilliamsVolatilityBreakoutSignal({
+        entryTimeframe: entryTimeframe.slice(0, index + 1),
+        equity,
+        riskFraction,
+        ...signalConfig,
+      });
+      if (!williamsSignal) {
+        index += 1;
+        continue;
+      }
+      signal = williamsSignal;
     } else if (entryPolicy === 'CHAMPION_ABSORPTION_REVERSION_HYPOTHESIS') {
       const championSignal = buildChampionAbsorptionSignal({
         higherTimeframe: higher,
         entryTimeframe: entryTimeframe.slice(0, index + 1),
+        atrValue: entryAtrSeries[index],
         equity,
         riskFraction,
         ...signalConfig,
