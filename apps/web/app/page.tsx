@@ -29,6 +29,7 @@ export default async function HomePage() {
             <div className="mode-badge">Paper trading</div>
             <div className="health-badge"><span className="health-dot" />Core healthy</div>
             <a className="control-btn" href="/nominasi" style={{ textDecoration: 'none' }}>Papan Nominasi →</a>
+            <a className="control-btn" href="/posisi" style={{ textDecoration: 'none' }}>POSISIKU (pasca-entry) →</a>
             <SupabaseStatus />
           </div>
         </header>
