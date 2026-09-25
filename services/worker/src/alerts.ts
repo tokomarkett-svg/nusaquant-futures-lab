@@ -251,7 +251,7 @@ export type AlertScanRow = AlertCandidate & { rangePct: number; quoteVolume: num
 /** Pindai pasar dengan aturan yang sama seperti papan web. */
 export async function scanAlertCandidates(client: BinancePublicMarketDataClient, limit = MAX_CANDIDATES): Promise<AlertScanRow[]> {
   const tickers = await client.get24hTickerDetails();
-  const liquid = tickers.filter((t) => t.symbol.endsWith('USDT') && !EXCLUDED.test(t.symbol) && !LEVERAGED.test(t.symbol) && t.quoteVolume >= MIN_QUOTE_VOLUME);
+  const liquid = tickers.filter((t) => t.symbol.endsWith('USDT') && !t.symbol.includes('_') && !EXCLUDED.test(t.symbol) && !LEVERAGED.test(t.symbol) && t.quoteVolume >= MIN_QUOTE_VOLUME);
   const withZones = liquid
     .map((ticker) => ({ ticker, zones: computeZones(ticker) }))
     .filter((row): row is { ticker: typeof liquid[number]; zones: Zones } => row.zones !== null && row.zones.rangePct >= MIN_RANGE_PCT);

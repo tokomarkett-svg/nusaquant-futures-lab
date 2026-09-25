@@ -5,6 +5,9 @@
  * Logika zona/tiket berasal dari @nusaquant/core (satu sumber kebenaran dengan worker).
  */
 
+/** Jembatan data futures (worker di Railway). Kosong = jatuh ke cermin spot (pendampingan lokal). */
+const WORKER_DATA_URL = (process.env.WORKER_DATA_URL ?? '').trim().replace(/\/+$/, '');
+
 const BASES = [
   process.env.BINANCE_BASE_URL_MIRROR ?? 'https://data-api.binance.vision',
   'https://api.binance.com',
@@ -24,7 +27,34 @@ export type Candle = {
 
 export type Ticker = { symbol: string; last: number; high: number; low: number; quoteVolume: number };
 
+export type DataMarket = 'FUTURES' | 'SPOT';
+let sumberTerakhir: DataMarket = WORKER_DATA_URL ? 'FUTURES' : 'SPOT';
+/** Pasar yang dipakai panggilan data terakhir — dipajang di papan biar tidak ada kebingungan lagi. */
+export function dataMarket(): DataMarket { return sumberTerakhir; }
+
+const RUTE_PROXY: Record<string, string> = {
+  '/api/v3/ticker/24hr': '/data/tickers',
+  '/api/v3/ticker/price': '/data/prices',
+  '/api/v3/klines': '/data/klines',
+};
+
 async function requestJson(path: string, params: Record<string, string | number> = {}, noStore = true): Promise<unknown> {
+  // Utamakan jembatan futures lewat worker (pasar yang sama dengan notif & meja).
+  const ruteProxy = RUTE_PROXY[path];
+  if (WORKER_DATA_URL && ruteProxy) {
+    try {
+      const url = new URL(ruteProxy, WORKER_DATA_URL);
+      for (const [key, value] of Object.entries(params)) url.searchParams.set(key, String(value));
+      const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(9_000) });
+      if (response.ok) {
+        sumberTerakhir = 'FUTURES';
+        return await response.json();
+      }
+    } catch {
+      // jatuh ke cermin spot di bawah, dan TANDAI dengan jelas
+    }
+  }
+  sumberTerakhir = 'SPOT';
   let lastError: unknown = new Error('Tidak ada sumber data yang dicoba.');
   for (const base of BASES) {
     const url = new URL(path, base);
@@ -54,7 +84,7 @@ export async function fetchTickers(): Promise<Ticker[]> {
   const rows: Ticker[] = [];
   for (const row of payload) {
     const symbol = String(row.symbol ?? '');
-    if (!symbol.endsWith('USDT') || EXCLUDED.test(symbol) || LEVERAGED.test(symbol)) continue;
+    if (!symbol.endsWith('USDT') || symbol.includes('_') || EXCLUDED.test(symbol) || LEVERAGED.test(symbol)) continue;
     const last = toNumber(row.lastPrice);
     const high = toNumber(row.highPrice);
     const low = toNumber(row.lowPrice);
@@ -125,7 +155,7 @@ export type BoardRow = {
 
 export type Funnel = { scanned: number; liquid: number; rangeOk: number; board: number; staleDropped: number };
 
-export type Board = { funnel: Funnel; rows: BoardRow[]; at: string };
+export type Board = { funnel: Funnel; rows: BoardRow[]; at: string; market?: 'FUTURES' | 'SPOT' };
 
 const CONCURRENCY = 6;
 

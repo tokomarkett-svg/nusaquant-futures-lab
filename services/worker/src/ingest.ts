@@ -6,6 +6,7 @@ import { watchResearchJobs } from './research-jobs.ts';
 import { watchRadar } from './radar.ts';
 import { watchAlerts } from './alerts.ts';
 import { watchDesk } from './desk.ts';
+import { startDataProxy } from './data-proxy.ts';
 
 export interface MarketCandleRow {
   symbol: string;
@@ -113,6 +114,14 @@ async function watch(): Promise<void> {
   if (process.env.RUN_RADAR === 'true') tasks.push(watchRadar());
   if (process.env.RUN_ALERTS === 'true') tasks.push(watchAlerts());
   if (process.env.RUN_DESK === 'true') tasks.push(watchDesk());
+
+  // Jembatan data futures untuk web (bisa dimatikan dengan DATA_PROXY=off).
+  if (process.env.DATA_PROXY !== 'off') {
+    const port = Number(process.env.PORT ?? 8080);
+    startDataProxy(port);
+    console.log(JSON.stringify({ proxy: true, market: 'FUTURES', port, at: new Date().toISOString() }));
+  }
+
   await Promise.all(tasks);
 }
 
