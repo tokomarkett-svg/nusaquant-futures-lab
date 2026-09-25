@@ -1,15 +1,16 @@
 import type { MetadataRoute } from 'next';
 
-/** Manifest PWA: supaya papan bisa dipasang sebagai aplikasi di HP (tambahkan ke layar utama). */
+/** Manifest PWA: dipasang sebagai aplikasi di HP — aplikasi dibuka langsung di MODE HP (/hp). */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'NusaQuant — Papan Nominasi',
+    name: 'NusaQuant',
     short_name: 'NusaQuant',
-    description: 'Papan pintu–manis–batal futures: tiket siap entri, meja paper, dan tombol latihan demo.',
-    start_url: '/nominasi',
+    description: 'NusaQuant mode HP: tiket siap entri pintu–manis–batal, papan, posisi, dan meja 20-trade.',
+    start_url: '/hp',
+    id: '/hp',
     scope: '/',
     display: 'standalone',
-    background_color: '#f6faf7',
+    background_color: '#f4f9f5',
     theme_color: '#0e2a1d',
     orientation: 'portrait',
     icons: [

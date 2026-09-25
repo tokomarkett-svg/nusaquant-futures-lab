@@ -2,13 +2,13 @@
  * Halaman & API: jaringan dulu; jaringan mati → versi terakhir tersimpan.
  * Aset ber-hash: cache-first. Versi baru: skipWaiting + controllerchange → aktif otomatis.
  */
-const VERSI = 'nq-v1';
+const VERSI = 'nq-v2'; // v2: manifest start_url pindah ke /hp (mode HP) — cache lama dibuang otomatis saat activate
 const HALAMAN = [`${VERSI}-halaman`];
 const ASET = [`${VERSI}-aset`];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(HALAMAN).then((cache) => cache.addAll(['/nominasi']).catch(() => undefined)),
+    caches.open(HALAMAN).then((cache) => cache.addAll(['/hp', '/nominasi']).catch(() => undefined)),
   );
   self.skipWaiting();
 });
@@ -58,7 +58,7 @@ self.addEventListener('fetch', (event) => {
           return await fetch(request);
         } catch {
           const cache = await caches.open(HALAMAN);
-          return (await cache.match(request)) || (await cache.match('/nominasi')) || Response.error();
+          return (await cache.match(request)) || (await cache.match('/hp')) || (await cache.match('/nominasi')) || Response.error();
         }
       })(),
     );
