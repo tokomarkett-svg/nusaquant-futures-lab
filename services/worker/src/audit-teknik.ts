@@ -35,7 +35,7 @@ async function audit(symbol: string): Promise<void> {
   const last = Number(ticker.lastPrice), high = Number(ticker.highPrice), low = Number(ticker.lowPrice), vol = Number(ticker.quoteVolume);
   const m15 = keCandle(m15raw as unknown[]).filter((c) => c.time + 900_000 <= Date.now());
   const h1 = keCandle(h1raw as unknown[]).filter((c) => c.time + 3_600_000 <= Date.now());
-  const zones = computeZones({ last, high, low, quoteVolume: vol });
+  const zones = computeZones({ last, high, low });
   const umurMenit = Math.round((Date.now() - ((m15.at(-1)?.time ?? 0) + 900_000)) / 60_000);
 
   console.log(`\n══════════ ${symbol} ══════════`);
