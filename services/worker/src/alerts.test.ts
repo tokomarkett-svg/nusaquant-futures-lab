@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildBellText, buildStartupText, buildTicketText, collectAlertsForCandidate, createAlertStore, describeTelegramConfig, discoverChatFromUpdates, explainTelegramError, resolveAlertMode, sendTelegram, type AlertCandidate } from './alerts.ts';
+import { buildBellText, buildStartupText, buildTicketText, collectAlertsForCandidate, createAlertStore, describeTelegramConfig, discoverChatFromUpdates, explainTelegramError, jenisPerpText, resolveAlertMode, sendTelegram, type AlertCandidate } from './alerts.ts';
+import { jenisPerp } from '@nusaquant/core';
 import type { SetupMarkers, Ticket } from '@nusaquant/core';
 
 const setupNoC1: SetupMarkers = {
@@ -196,4 +197,18 @@ test('mode notifikasi: semua / tiketsiap / tiketsemua berperilaku sesuai pilihan
   const storeTiket = createAlertStore();
   assert.equal(collectAlertsForCandidate(candidateBell, storeTiket, { mode: 'tiketsemua' }).length, 0);
   assert.equal(collectAlertsForCandidate(tanpaGate, storeTiket, { mode: 'tiketsemua' }).length, 1);
+});
+
+
+test('jenisPerp: perp saham & komoditas ditandai, koin kripto tidak', () => {
+  assert.equal(jenisPerp('ARMUSDT'), 'saham');
+  assert.equal(jenisPerp('HOODUSDT'), 'saham');
+  assert.equal(jenisPerp('NATGASUSDT'), 'komoditas');
+  assert.equal(jenisPerp('XAUUSDT'), 'komoditas');
+  assert.equal(jenisPerp('RUNEUSDT'), 'kripto');
+  assert.equal(jenisPerp('BTCUSDT'), 'kripto');
+  assert.match(jenisPerpText('saham') ?? '', /Perp SAHAM/);
+  assert.match(jenisPerpText('komoditas') ?? '', /KOMODITAS/);
+  assert.equal(jenisPerpText('kripto'), null);
+  assert.equal(jenisPerpText(undefined), null);
 });

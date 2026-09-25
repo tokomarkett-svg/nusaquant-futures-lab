@@ -8,7 +8,7 @@
 
 import {
   MIN_QUOTE_VOLUME, MIN_RANGE_PCT, STALE_CANDLE_MINUTES,
-  computeZones, distanceToPintu, detectSetup, computeTicket, gateFromCandles,
+  computeZones, distanceToPintu, detectSetup, computeTicket, gateFromCandles, jenisPerp,
   type Candle, type SetupMarkers, type Side, type Ticket, type Zones,
 } from '@nusaquant/core';
 import { BinancePublicMarketDataClient, scanMarketClient, type DataMarket } from './market-data.ts';
@@ -25,7 +25,16 @@ export type AlertCandidate = {
   garis?: { pintu: number; manis: number; batal: number };
   /** Pasar sumber data garis & tiket ini (FUTURES = sama dengan chart murid). */
   market?: DataMarket;
+  /** Jenis aset di bawahnya — perp saham/komoditas perlu ditandai agar tak dicari di daftar koin. */
+  jenis?: 'saham' | 'komoditas' | 'kripto';
 };
+
+/** Baris penanda untuk notif/papan — kosong untuk kripto. jenisPerp() datang dari core. */
+export function jenisPerpText(jenis: 'saham' | 'komoditas' | 'kripto' | undefined): string | null {
+  if (jenis === 'saham') return '🏷 Perp SAHAM (bukan kripto) — ada di menu Futures Binance';
+  if (jenis === 'komoditas') return '🏷 Perp KOMODITAS (emas/gas/logam — bukan kripto) — ada di menu Futures Binance';
+  return null;
+}
 
 export type AlertMessage = { key: string; kind: 'X' | 'TIKET' | 'TIKET_TANPA_GATE'; text: string };
 
@@ -66,6 +75,7 @@ export function buildBellText(candidate: AlertCandidate): string {
     `Arah: <b>${candidate.side}</b> · gate 1H: ${candidate.gate}${candidate.gateAlign ? ' (searah ✔)' : ' (BELUM searah)'}`,
     `Harga: ${candidate.priceNow.toFixed(digits)}`,
     marketText,
+    ...(jenisPerpText(candidate.jenis) ? [jenisPerpText(candidate.jenis)!] : []),
     '',
     'Langkah: buka papan, lihat candle 1 (buntut ≥2× badan, close paruh atas/bawah).',
     'Belum entry — candle 1 & 2 belum tentu sah.',
@@ -99,6 +109,7 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket, papan
       '',
       `Gate 1H ${candidate.gate} · MA99 searah ✔ · stop ${ticket.riskPct.toFixed(2)}% dari entry · target 2R`,
       marketText,
+      ...(jenisPerpText(candidate.jenis) ? [jenisPerpText(candidate.jenis)!] : []),
       garisText,
       lahirText,
       ticket.warnings.length ? `⚠ ${ticket.warnings.join(' · ')}` : 'Semua pagar lolos — harga masih di dekat pintu.',
@@ -114,6 +125,7 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket, papan
   return [
     `${status}`,
     `<b>${candidate.symbol}</b> · ${candidate.side} · gate 1H ${candidate.gate}${candidate.gateAlign ? ' ✔' : ''}`,
+    ...(jenisPerpText(candidate.jenis) ? [jenisPerpText(candidate.jenis)!] : []),
     '',
     `Entry  : <b>${format(ticket.entry)}</b>`,
     `Stop   : ${format(ticket.stop)} (jarak ${ticket.riskPct.toFixed(2)}%)`,
@@ -346,6 +358,7 @@ export async function scanAlertCandidates(client: BinancePublicMarketDataClient,
           // FUTURES = pasar yang dilihat murid. SPOT = jalan darurat; notif otomatis memberi peringatan.
           // Opsional-call: klien palsu di tes boleh tidak punya marketUsed().
           market: client.marketUsed?.() ?? 'FUTURES',
+          jenis: jenisPerp(ticker.symbol),
           rangePct: zones.rangePct,
           quoteVolume: ticker.quoteVolume,
           dataAgeMin: Math.round(dataAgeMin),

@@ -187,6 +187,11 @@ export default function PapanNominasi() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <b style={{ fontSize: 15 }}>{row.symbol.replace('USDT', '')}</b>
                     <span style={{ fontSize: 10.5, fontWeight: 800, padding: '2px 8px', borderRadius: 6, background: row.side === 'LONG' ? '#eaf8ef' : '#fdeeee', color: row.side === 'LONG' ? 'var(--green-dark)' : 'var(--red)', border: `1px solid ${row.side === 'LONG' ? '#c8e9d5' : '#f3d4d4'}` }}>{row.side}</span>
+                    {row.jenis !== 'kripto' && (
+                      <span title="Perp saham/komoditas — cari di menu Futures Binance, bukan daftar koin kripto" style={{ fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 6, background: '#f1ecfb', color: '#5b3fa8', border: '1px solid #d9cdf2' }}>
+                        {row.jenis === 'saham' ? 'SAHAM' : 'KOMODITAS'}
+                      </span>
+                    )}
                     <span style={{ fontSize: 10.5, fontWeight: 800, padding: '2px 8px', borderRadius: 6, background: status.bg, color: status.fg, border: `1px solid ${status.border}` }}>{status.label}</span>
                     <span style={{ marginLeft: 'auto', fontFamily: "'DM Mono', monospace", fontSize: 15, fontWeight: 700, color: direction === 1 ? 'var(--green-dark)' : direction === -1 ? 'var(--red)' : 'var(--ink)', transition: 'color .3s' }}>
                       {live.toFixed(digits)}{direction === 1 ? ' ▲' : direction === -1 ? ' ▼' : ''}

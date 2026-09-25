@@ -24,6 +24,25 @@ export function stopMode(): 'buntut' | 'batal' {
   return (process.env.PMB_STOP_MODE ?? 'buntut') as 'buntut' | 'batal';
 }
 
+/**
+ * Perp saham & komoditas di Binance Futures USDT-M (bukan kripto) — daftar dari exchangeInfo live
+ * 25/9. Dipakai notif & papan supaya pemilik tidak mencari ARM/HOOD/NATGAS di daftar koin kripto
+ * dan mengira notifnya salah koin. Simbol baru tinggal ditambah di sini.
+ */
+const BASE_PERP_SAHAM = new Set([
+  'AAOI', 'AAPL', 'AMAT', 'AMD', 'AMZN', 'ANTHROPIC', 'ARM', 'AVGO', 'AXTI', 'BABA', 'BBX', 'BMNR',
+  'BNC', 'BR', 'BTR', 'BTW', 'COIN', 'CRCL', 'CRDO', 'CRWV', 'DELL', 'FLNC', 'GOOGL', 'HOOD',
+  'META', 'MSFT', 'MSTR', 'NFLX', 'NVDA', 'ORCL', 'TSLA',
+]);
+const BASE_PERP_KOMODITAS = new Set(['NATGAS', 'COPPER', 'XAU', 'XAG', 'OIL']);
+
+export function jenisPerp(symbol: string): 'saham' | 'komoditas' | 'kripto' {
+  const base = symbol.toUpperCase().replace(/USDT$/, '');
+  if (BASE_PERP_KOMODITAS.has(base)) return 'komoditas';
+  if (BASE_PERP_SAHAM.has(base)) return 'saham';
+  return 'kripto';
+}
+
 export type Side = 'LONG' | 'SHORT';
 export type Gate = 'HIJAU' | 'MERAH' | 'KUNING';
 /** PADAM = sisi itu kena BATAL (zona mati sampai High/Low 24 jam bergeser) — bukan mode nonton. */

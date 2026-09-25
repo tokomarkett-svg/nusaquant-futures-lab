@@ -132,6 +132,7 @@ import {
   computeZones, gateFromCandles, smaSeries, bucketOf, distanceToPintu, detectTouchAge, detectSetup, computeTicket,
 } from '@nusaquant/core';
 import type { Side, Gate, Status, Bucket, Zones, SetupMarkers, Ticket } from '@nusaquant/core';
+import { jenisPerp } from '@nusaquant/core';
 
 export type BoardRow = {
   symbol: string;
@@ -149,6 +150,8 @@ export type BoardRow = {
   bucket: Bucket | null;
   dataAgeMin: number;
   volJt: number;
+  /** Jenis aset: perp saham/komoditas ditandai supaya tidak dicari di daftar koin kripto. */
+  jenis: 'saham' | 'komoditas' | 'kripto';
   setup: { x: number | null; candle1: number | null; candle2: number | null; valid: boolean; note: string | null };
   ticket: Ticket | null;
 };
@@ -222,6 +225,7 @@ export async function scanBoard(limit = 40): Promise<Board> {
           bucket: bucketOf(touchAgeMin),
           dataAgeMin: Math.round(dataAgeMin),
           volJt: Number((ticker.quoteVolume / 1e6).toFixed(1)),
+          jenis: jenisPerp(ticker.symbol),
           setup: { x: setup.x, candle1: setup.candle1, candle2: setup.candle2, valid: setup.valid, note: setup.notes.at(-1) ?? null },
           ticket,
         };
