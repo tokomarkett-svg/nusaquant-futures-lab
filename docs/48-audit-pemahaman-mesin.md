@@ -40,3 +40,35 @@ Metode: `audit-teknik.ts` — recompute penuh dari data live, tiap aturan ditamp
 Bot tidak ngawur: dia hanya bersuara setelah lolos 8 pintu — likuid ≥5jt, range ≥3%, data ≤45 menit,
 zona hidup (belum kena batal), X sah, candle 1 sah, candle 2 sah & muda, gate searah.
 Diam berarti belum ada paket yang pantas — bukan bot rusak.
+
+## F. Uji notif (uji-notif.ts, 25/9 ±20:00 WIB) — LONG & SHORT bentuknya persis teknik kita
+
+**Paket SAH & MASIH HIDUP saat uji (ini yang bakal berbunyi di Telegram):**
+
+```
+🎯 SIAP ENTRI — ETCUSDT LONG
+
+👉 ENTRY: 9.5980  (BUY)
+🛑 SL     : 9.4100  (−0.31 USDT)
+✅ TP     : 9.9740  (+0.62 USDT)
+📦 Ukuran : 1,6489 coin
+
+Gate 1H HIJAU ✔ · stop 1.96% dari entry · target 2R
+📏 Garis pas bot: pintu 9.4993 · manis 9.3935 · batal 9.2629
+Lahir 19:45 WIB — tiket umurnya pendek, lirik yang baru
+Semua pagar lolos — harga masih di dekat pintu.
+
+Salin persis ke Binance: BUY ETCUSDT 9.5980 SL 9.4100 TP 9.9740
+1% risiko · maksimal 2 trade/hari · stop dipasang SEBELUM entry.
+```
+
+**Bentuk kartu SHORT yang sah (replay SNDK 13:45 WIB, gate MERAH ✔ — tapi sudah tua, tak dikirim):**
+`🟠 TIKET BASI — jangan dikejar · SNDKUSDT · SHORT · gate 1H MERAH ✔ · Entry 1785.22 · SL 1792.09 · TP 1771.48 · garis pintu 1786.39 manis 1793.19 batal 1801.59`
+
+**Bukti "jangan asal" — tiga cara bot MENOLAK bicara:**
+1. NIL LONG paket sah tapi C2 umur 18 candle + harga lari 2,4R → `TIKET BASI — jangan dikejar` (tidak dikirim).
+2. SNDK SHORT sah tapi C2 umur 24 candle → ditolak.
+3. SOXL SHORT sah tapi gate saat lahir HIJAU (lawan arah short) → `TIKET TERBENTUK TAPI GATE BELUM SEARAH — JANGAN EKSEKUSI` (tidak dikirim).
+
+Alat uji: `services/worker/src/uji-notif.ts` — memindai koin terlikuid, mencari paket LONG & SHORT,
+lalu me-render notif Telegram PERSIS seperti aslinya (pakai buildTicketText yang sama dengan mesin).
