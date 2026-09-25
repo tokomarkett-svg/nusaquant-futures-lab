@@ -8,6 +8,7 @@ const digitsFor = (price: number) => (price >= 100 ? 2 : price >= 1 ? 4 : price 
 
 export default function SiapEntri({ rows, prices }: { rows: BoardRow[]; prices: Record<string, number> }) {
   const [copied, setCopied] = useState<string | null>(null);
+  const [buka, setBuka] = useState<Record<string, { state: 'loading' | 'opened' | 'error'; message?: string }>>({});
   const ready = rows.filter((row) => row.ticket?.actionable && row.gateAlign).slice(0, 3);
   if (ready.length === 0) return null;
 
@@ -22,6 +23,25 @@ export default function SiapEntri({ rows, prices }: { rows: BoardRow[]; prices: 
       setTimeout(() => setCopied(null), 2000);
     } catch {
       /* browser menolak clipboard — abaikan */
+    }
+  };
+
+  const entriPaper = async (row: BoardRow) => {
+    setBuka((prev) => ({ ...prev, [row.symbol]: { state: 'loading' } }));
+    try {
+      const response = await fetch('/api/meja/buka', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ symbol: row.symbol, side: row.side }),
+      });
+      const hasil = await response.json() as { ok: boolean; error?: string; position?: { entry: number } };
+      if (!hasil.ok) {
+        setBuka((prev) => ({ ...prev, [row.symbol]: { state: 'error', message: hasil.error ?? 'Gagal membuka posisi paper.' } }));
+        return;
+      }
+      setBuka((prev) => ({ ...prev, [row.symbol]: { state: 'opened', message: `POSISI PAPER DIBUKA @ ${hasil.position?.entry} — meja mengawasi SL/TP` } }));
+    } catch {
+      setBuka((prev) => ({ ...prev, [row.symbol]: { state: 'error', message: 'Server tidak terjangkau — coba lagi.' } }));
     }
   };
 
@@ -61,14 +81,29 @@ export default function SiapEntri({ rows, prices }: { rows: BoardRow[]; prices: 
                 : `masih dekat pintu (${runR.toFixed(1)}R)`}
             </div>
 
-            <button
-              onClick={() => void salin(row)}
-              className="control-btn"
-              style={{ marginTop: 10, fontWeight: 800, borderColor: copied === row.symbol ? 'var(--green-dark)' : undefined, color: copied === row.symbol ? 'var(--green-dark)' : undefined }}
-            >
-              {copied === row.symbol ? 'TERSALIN ✓' : '📋 SALIN TIKET'}
-            </button>
-            <span style={{ marginLeft: 10, fontSize: 11, color: 'var(--muted)' }}>{salinText}</span>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+              <button
+                onClick={() => void salin(row)}
+                className="control-btn"
+                style={{ fontWeight: 800, borderColor: copied === row.symbol ? 'var(--green-dark)' : undefined, color: copied === row.symbol ? 'var(--green-dark)' : undefined }}
+              >
+                {copied === row.symbol ? 'TERSALIN ✓' : '📋 SALIN TIKET'}
+              </button>
+              <button
+                onClick={() => void entriPaper(row)}
+                disabled={lari || buka[row.symbol]?.state === 'loading' || buka[row.symbol]?.state === 'opened'}
+                className="control-btn"
+                style={{ fontWeight: 800, background: 'var(--green-dark)', color: 'white', borderColor: 'var(--green-dark)', opacity: lari ? 0.45 : 1 }}
+              >
+                {buka[row.symbol]?.state === 'loading' ? 'MEMBUKA…' : buka[row.symbol]?.state === 'opened' ? 'TERBUKA ✓' : '⚡ ENTRI (PAPER)'}
+              </button>
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>{salinText}</span>
+            </div>
+            {buka[row.symbol]?.message && (
+              <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: buka[row.symbol].state === 'error' ? 'var(--red)' : 'var(--green-dark)' }}>
+                {buka[row.symbol].state === 'error' ? '⛔ ' : '✅ '}{buka[row.symbol].message}
+              </div>
+            )}
           </div>
         );
       })}
