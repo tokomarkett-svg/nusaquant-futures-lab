@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test lib/*.test.ts"
+    "test": "if find lib -maxdepth 1 -name '*.test.ts' | grep -q .; then node --import tsx --test lib/*.test.ts; else echo 'web: belum ada file test — dilewati'; fi"
   },
   "dependencies": {
     "@nusaquant/core": "0.1.0",

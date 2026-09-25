@@ -93,6 +93,23 @@ export function bucketOf(minutes: number | null): Bucket | null {
   return '>3 jam';
 }
 
+/**
+ * Zona yang tergambar SEKARANG "lahir" sejak bar terakhir yang mencetak anchor High/Low-nya.
+ * Dipakai aturan BATAL: close menembus garis batal mematikan sisi itu SAMPAI High/Low 24 jam
+ * bergeser (zona baru tergambar) — bukan sampai harga iseng balik di atas garis.
+ * null bila anchor tidak terlihat di data yang tersedia (pemanggil lalu memakai aturan lama).
+ */
+function anchorEpochTime(candles: Candle[], zones: Zones): number | null {
+  const eps = Math.max(Math.abs(zones.high), Math.abs(zones.low)) * 1e-9 + 1e-15;
+  let latest: number | null = null;
+  for (const candle of candles) {
+    if (Math.abs(candle.high - zones.high) <= eps || Math.abs(candle.low - zones.low) <= eps) {
+      latest = candle.time;
+    }
+  }
+  return latest;
+}
+
 /** Jarak ke pintu: negatif = harga sudah di dalam pita (bel sudah berbunyi). */
 export function distanceToPintu(zones: Zones, side: Side, last: number): number {
   const pintu = zoneOf(zones, side).pintu;
@@ -140,14 +157,20 @@ export function detectSetup(candles: Candle[], zones: Zones, side: Side): SetupM
   const bars = candles.slice(-TOUCH_EXPIRY_CANDLES * 4);
   const empty = { entry: null, stop: null, riskDistance: null };
 
-  // Aturan batal: candle TERTUTUP terakhir di luar garis batal → zona sisi ini MATI.
-  // Tidak menghukum koinnya: begitu High/Low 24 jam bergulir, zona baru tergambar dan sisi ini dinilai lagi.
+  // Aturan batal (doktrin): candle TERTUTUP menembus garis batal → zona sisi ini MATI,
+  // dan tetap mati SAMPAI zona baru tergambar (High/Low 24 jam bergeser) — harga balik
+  // sesaat di atas garis TIDAK menghidupkan zona kembali (inilah yang dulu bikin entri
+  // muncul padahal di chart murid zonanya sudah mati).
+  // Pemeriksaan memakai SEMUA candle tertutup sejak zona ini lahir; kalau anchor High/Low
+  // tidak terlihat di data (mis. candle parsial), jatuh ke aturan lama (candle terakhir saja).
   const terakhir = bars.at(-1);
-  const zonaBatal = terakhir ? (side === 'LONG' ? terakhir.close < zone.batal : terakhir.close > zone.batal) : false;
-  if (zonaBatal) {
+  const epoch = anchorEpochTime(candles, zones);
+  const jendelaMati = epoch !== null ? candles.filter((b) => b.time >= epoch) : terakhir ? [terakhir] : [];
+  const tembusBatal = jendelaMati.filter((b) => (side === 'LONG' ? b.close < zone.batal : b.close > zone.batal));
+  if (tembusBatal.length > 0) {
     return {
       side, x: null, candle1: null, candle2: null, staleBars: null, valid: false,
-      notes: [`zona ${side} kena BATAL: candle tertutup di luar garis batal (${side === 'LONG' ? 'di bawah' : 'di atas'} ${zone.batal.toPrecision(6)}) — sisi ini mati sampai zona baru tergambar (High/Low 24j bergeser)`],
+      notes: [`zona ${side} kena BATAL: ${tembusBatal.length} candle tertutup menembus garis batal (${side === 'LONG' ? 'di bawah' : 'di atas'} ${zone.batal.toPrecision(6)}) — sisi ini mati sampai zona baru tergambar (High/Low 24j bergeser)`],
       ...empty,
     };
   }
@@ -170,7 +193,11 @@ export function detectSetup(candles: Candle[], zones: Zones, side: Side): SetupM
   const x = bars[xIndex];
   let c1Index: number | null = null;
   let c1InvalidReason: string | null = null;
-  for (let index = xIndex; index < Math.min(bars.length, xIndex + TOUCH_EXPIRY_CANDLES + 1); index += 1) {
+  // Kamus visual X·1·2: X = bel pintu (bentuk BEBAS) · candle 1 = bukti pertarungan (buntut ≥2×
+  // badan di pita, close paruh luar) · candle 2 = kunci masuk. Karena itu candle 1 WAJIB candle
+  // SETELAH X — candle X tidak boleh dirangkap jadi candle 1 (dulu bikin entri lahir satu candle
+  // lebih awal dari pola manual).
+  for (let index = xIndex + 1; index <= Math.min(bars.length - 1, xIndex + TOUCH_EXPIRY_CANDLES); index += 1) {
     const candle = bars[index];
     const inBand = side === 'LONG'
       ? candle.low <= zone.pintu && candle.low >= zone.batal

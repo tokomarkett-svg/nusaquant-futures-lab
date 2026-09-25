@@ -11,7 +11,7 @@ import {
   computeZones, distanceToPintu, detectSetup, computeTicket, gateFromCandles,
   type Candle, type SetupMarkers, type Side, type Ticket, type Zones,
 } from '@nusaquant/core';
-import { BinancePublicMarketDataClient, DEFAULT_BINANCE_BASE_URL } from './market-data.ts';
+import { BinancePublicMarketDataClient, scanMarketClient, type DataMarket } from './market-data.ts';
 
 export type AlertCandidate = {
   symbol: string;
@@ -23,6 +23,8 @@ export type AlertCandidate = {
   ticket: Ticket | null;
   /** Garis pintu-manis-batal sisi kandidat (zona 24 jam saat dipindai). */
   garis?: { pintu: number; manis: number; batal: number };
+  /** Pasar sumber data garis & tiket ini (FUTURES = sama dengan chart murid). */
+  market?: DataMarket;
 };
 
 export type AlertMessage = { key: string; kind: 'X' | 'TIKET' | 'TIKET_TANPA_GATE'; text: string };
@@ -56,12 +58,14 @@ const digitsFor = (price: number) => (price >= 100 ? 2 : price >= 1 ? 4 : price 
 
 export function buildBellText(candidate: AlertCandidate): string {
   const digits = digitsFor(candidate.priceNow);
-  const zone = candidate.side === 'LONG' ? candidate.setup : candidate.setup;
-  void zone;
+  const marketText = candidate.market === 'SPOT'
+    ? '⚠ Data SPOT (futures tak terjangkau) — garis bisa BEDA dengan chart futures-mu'
+    : '📊 Data FUTURES — sama dengan chart futures-mu';
   return [
     `🔔 <b>BEL PINTU — ${candidate.symbol}</b>`,
     `Arah: <b>${candidate.side}</b> · gate 1H: ${candidate.gate}${candidate.gateAlign ? ' (searah ✔)' : ' (BELUM searah)'}`,
     `Harga: ${candidate.priceNow.toFixed(digits)}`,
+    marketText,
     '',
     'Langkah: buka papan, lihat candle 1 (buntut ≥2× badan, close paruh atas/bawah).',
     'Belum entry — candle 1 & 2 belum tentu sah.',
@@ -75,6 +79,9 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket, papan
   const garisText = candidate.garis
     ? `📏 Garis pas bot: pintu ${format(candidate.garis.pintu)} · manis ${format(candidate.garis.manis)} · batal ${format(candidate.garis.batal)}`
     : '';
+  const marketText = candidate.market === 'SPOT'
+    ? '⚠ Data SPOT (futures tak terjangkau) — garis bisa BEDA dengan chart futures-mu'
+    : '📊 Data FUTURES — sama dengan chart futures-mu';
   const lahirText = candidate.setup.candle2
     ? `Lahir ${new Date(candidate.setup.candle2 + 7 * 3_600_000).toISOString().slice(11, 16)} WIB — tiket umurnya pendek, lirik yang baru`
     : '';
@@ -90,7 +97,8 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket, papan
       `✅ TP     : ${format(ticket.target)}  (+${ticket.rewardUsdt} USDT)`,
       `📦 Ukuran : ${ticket.sizeCoin.toLocaleString('id-ID', { maximumFractionDigits: 4 })} coin`,
       '',
-      `Gate 1H ${candidate.gate} ✔ · stop ${ticket.riskPct.toFixed(2)}% dari entry · target 2R`,
+      `Gate 1H ${candidate.gate} · MA99 searah ✔ · stop ${ticket.riskPct.toFixed(2)}% dari entry · target 2R`,
+      marketText,
       garisText,
       lahirText,
       ticket.warnings.length ? `⚠ ${ticket.warnings.join(' · ')}` : 'Semua pagar lolos — harga masih di dekat pintu.',
@@ -117,6 +125,7 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket, papan
       : ticket.warnings.length ? `⚠ ${ticket.warnings.join(' · ')}` : 'Semua pagar lolos: gate searah, stop di sisi benar, harga belum lari.',
     '',
     garisText,
+    marketText,
     `Ingat: 1% risiko · maksimal 2 trade/hari · stop dipasang SEBELUM entry.${tautanChart}`,
   ].join('\n');
 }
@@ -334,6 +343,9 @@ export async function scanAlertCandidates(client: BinancePublicMarketDataClient,
           garis: side === 'LONG'
             ? { pintu: zones.long.pintu, manis: zones.long.manis, batal: zones.long.batal }
             : { pintu: zones.short.pintu, manis: zones.short.manis, batal: zones.short.batal },
+          // FUTURES = pasar yang dilihat murid. SPOT = jalan darurat; notif otomatis memberi peringatan.
+          // Opsional-call: klien palsu di tes boleh tidak punya marketUsed().
+          market: client.marketUsed?.() ?? 'FUTURES',
           rangePct: zones.rangePct,
           quoteVolume: ticker.quoteVolume,
           dataAgeMin: Math.round(dataAgeMin),
@@ -353,7 +365,8 @@ export async function runAlertCycle(
   client?: BinancePublicMarketDataClient,
   options: { chatId?: string; mode?: AlertMode; papanUrl?: string } = {},
 ): Promise<{ scanned: number; sent: number; messages: AlertMessage[] }> {
-  const market = client ?? new BinancePublicMarketDataClient({ baseUrl: process.env.BINANCE_BASE_URL ?? DEFAULT_BINANCE_BASE_URL });
+  // Futures dulu: garis & tiket harus diukur dari pasar yang sama dengan chart murid.
+  const market = client ?? scanMarketClient();
   const rows = await scanAlertCandidates(market);
   const messages: AlertMessage[] = [];
   for (const row of rows) {

@@ -40,12 +40,20 @@ function assertNonNegative(value: number, label: string): number {
 }
 
 /**
- * Default sumber data: mirror publik Binance (spot klines ≈ perp untuk lab riset paper).
+ * Default sumber data umum (ingest/riset): mirror publik Binance (spot klines ≈ perp untuk lab riset paper).
  * Host futures asli (fapi.binance.com) mengembalikan HTTP 451 untuk IP server sejak
  * pertengahan September 2026, membuat ingest stale; mirror /api/v3 tidak diblokir.
  * Set BINANCE_BASE_URL ke fapi secara eksplisit bila jaringan memungkinkan.
+ *
+ * PENTING untuk pemindaian teknik (notif & meja): garis pintu/manis/batal + tiket WAJIB diukur
+ * dari FUTURES (pasar yang diperdagangkan murid & terlihat di chart-nya) — lihat scanMarketClient().
  */
 export const DEFAULT_BINANCE_BASE_URL = 'https://data-api.binance.vision';
+export const FUTURES_BASE_DEFAULT = 'https://fapi.binance.com';
+
+export type DataMarket = 'FUTURES' | 'SPOT';
+
+const marketOfBase = (base: string): DataMarket => (/fapi\.binance\./.test(base) ? 'FUTURES' : 'SPOT');
 
 export class BinancePublicMarketDataClient {
   private readonly baseUrl: string;
@@ -53,6 +61,9 @@ export class BinancePublicMarketDataClient {
   private readonly timeoutMs: number;
   private readonly fallbackBaseUrl: string | null;
   private fallbackAnnounced = false;
+  /** Host terakhir yang TERBUKTI berhasil — dipakai lebih dulu supaya tidak menghantam host mati berulang-ulang. */
+  private stickyBase: string | null = null;
+  private marketTerakhir: DataMarket | null = null;
 
   constructor(options: MarketDataClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? DEFAULT_BINANCE_BASE_URL;
@@ -67,6 +78,11 @@ export class BinancePublicMarketDataClient {
   /** Deskripsi sumber data untuk log startup (tanpa rahasia). */
   describeSource(): { baseUrl: string; fallbackBaseUrl: string | null } {
     return { baseUrl: this.baseUrl, fallbackBaseUrl: this.fallbackBaseUrl };
+  }
+
+  /** Pasar sumber data panggilan terakhir yang sukses — dipajang di notif/papan supaya tidak menyesatkan. */
+  marketUsed(): DataMarket | null {
+    return this.marketTerakhir;
   }
 
   private pathsFor(base: string): { klines: string; markPrice: string; tickers: string } {
@@ -99,10 +115,16 @@ export class BinancePublicMarketDataClient {
     params: Record<string, string>,
   ): Promise<unknown> {
     const bases = [this.baseUrl, ...(this.fallbackBaseUrl ? [this.fallbackBaseUrl] : [])];
+    // Host yang terbukti hidup dicoba lebih dulu (sticky) — hemat waktu & rate-limit.
+    const ordered = this.stickyBase && bases.includes(this.stickyBase)
+      ? [this.stickyBase, ...bases.filter((base) => base !== this.stickyBase)]
+      : bases;
     let lastError: unknown = new Error('Binance request gagal tanpa percobaan.');
-    for (const base of bases) {
+    for (const base of ordered) {
       try {
         const payload = await this.attempt(base, pickPath(this.pathsFor(base)), params);
+        this.stickyBase = base;
+        this.marketTerakhir = marketOfBase(base);
         if (base !== this.baseUrl && !this.fallbackAnnounced) {
           this.fallbackAnnounced = true;
           console.warn(`[market-data] host utama ${new URL(this.baseUrl).host} tidak dapat dipakai — memakai mirror ${new URL(base).host}`);
@@ -234,4 +256,17 @@ export class CandlePollingLoop {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
   }
+}
+
+/**
+ * Klien khusus PEMINDAIAN TEKNIK (notif Telegram, meja paper, papan json):
+ * FUTURES dulu — itulah pasar yang diperdagangkan murid dan terlihat di chart-nya.
+ * Mirror spot hanya jalan darurat bila fapi tak terjangkau, dan pemakaianya SELALU
+ * ditandai (marketUsed → teks notif) supaya tidak ada lagi tiket yang angkanya
+ * tidak cocok dengan chart futures.
+ * Atur ulang lewat env SCAN_BINANCE_BASE_URL bila jaringan menuntut hal lain.
+ */
+export function scanMarketClient(): BinancePublicMarketDataClient {
+  const base = (process.env.SCAN_BINANCE_BASE_URL ?? FUTURES_BASE_DEFAULT).trim() || FUTURES_BASE_DEFAULT;
+  return new BinancePublicMarketDataClient({ baseUrl: base });
 }

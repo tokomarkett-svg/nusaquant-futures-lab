@@ -12,7 +12,7 @@ import zlib from 'node:zlib';
 import { bukaDemo, tutupDemo, tokenSah } from './exec-demo.ts';
 import { sendTelegram, scanAlertCandidates } from './alerts.ts';
 import { createSupabaseDeskStore } from './desk.ts';
-import { BinancePublicMarketDataClient, DEFAULT_BINANCE_BASE_URL } from './market-data.ts';
+import { scanMarketClient } from './market-data.ts';
 
 const INTERVAL_MS: Record<string, number> = {
   '5m': 300_000, '15m': 900_000, '30m': 1_800_000, '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000,
@@ -184,7 +184,8 @@ export function createDataProxyHandler(upstreamBase = process.env.WORKER_UPSTREA
     }
     if (route === '/data/papan-json' && req.method === 'GET') {
       try {
-        const market = new BinancePublicMarketDataClient({ baseUrl: process.env.BINANCE_BASE_URL ?? DEFAULT_BINANCE_BASE_URL });
+        // Futures dulu: papan darurat harus menampilkan garis dari pasar yang sama dengan notif & chart.
+        const market = scanMarketClient();
         const rows = await scanAlertCandidates(market, 12);
         const payload = rows.map((r) => ({
           symbol: r.symbol, side: r.side, price: r.priceNow, gate: r.gate, gateAlign: r.gateAlign,
@@ -193,6 +194,7 @@ export function createDataProxyHandler(upstreamBase = process.env.WORKER_UPSTREA
           entry: r.ticket?.entry ?? null, stop: r.ticket?.stop ?? null, target: r.ticket?.target ?? null,
           sizeCoin: r.ticket?.sizeCoin ?? null, riskPct: r.ticket?.riskPct ?? null,
           garis: r.garis ?? null, ageMin: r.dataAgeMin,
+          market: r.market ?? 'FUTURES',
         }));
         return balasJson(200, { ok: true, rows: payload, at: new Date().toISOString() });
       } catch (error) {

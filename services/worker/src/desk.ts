@@ -18,7 +18,7 @@ import {
   detectSetup, computeTicket, gateFromCandles, distanceToPintu, RISK_USDT, TOUCH_EXPIRY_CANDLES,
   type Candle, type SetupMarkers, type Side, type Ticket, type Zones,
 } from '@nusaquant/core';
-import { BinancePublicMarketDataClient, DEFAULT_BINANCE_BASE_URL } from './market-data.ts';
+import { BinancePublicMarketDataClient, scanMarketClient } from './market-data.ts';
 import { discoverChatFromUpdates, scanAlertCandidates, sendTelegram } from './alerts.ts';
 import { tutupDemo } from './exec-demo.ts';
 import { createWorkerSupabaseClient } from './supabase.ts';
@@ -489,7 +489,8 @@ export async function watchDesk(): Promise<void> {
     console.error('[desk] tidak bisa menyiapkan penyimpanan:', error instanceof Error ? error.message : error);
     return;
   }
-  const market = new BinancePublicMarketDataClient({ baseUrl: process.env.BINANCE_BASE_URL ?? DEFAULT_BINANCE_BASE_URL });
+  // Futures dulu: posisi paper harus mengikuti pasar yang sama dengan chart murid.
+  const market = scanMarketClient();
   let chatId = (process.env.TELEGRAM_CHAT_ID ?? '').trim() || undefined;
   // Sama seperti alerts: pakai chat yang benar-benar menyapa bot kalau token tersedia.
   if (process.env.TELEGRAM_BOT_TOKEN) {

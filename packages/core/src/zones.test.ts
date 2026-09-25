@@ -125,3 +125,43 @@ test('zona kena batal: tutup di luar garis batal mematikan sisi itu, koin tidak 
   const shortSisa = detectSetup(menembus, zones, 'SHORT');
   assert.equal(/BATAL/.test(shortSisa.notes.join(' ')), false, 'sisi short tidak ikut mati');
 });
+
+test('X tidak boleh dirangkap jadi candle 1 — C1 wajib candle SETELAH X (kamus X·1·2)', () => {
+  const candles: Candle[] = [
+    mk(0, 101, 102, 100.5, 101.4),    // di luar ruangan (low > pintu)
+    mk(1, 100.2, 101.3, 96.4, 101.0), // X — kebetulan berbentuk hammer sempurna (buntut 3.8 = 4.75× badan, close paruh atas), tapi X bentuknya BEBAS dan bukan candle 1
+    mk(2, 100.8, 101.6, 100.6, 101.4),// menembus puncak X — kalau X dihitung C1, ini langsung jadi C2 (entri prematur satu candle)
+  ];
+  const setup = detectSetup(candles, zones, 'LONG');
+  assert.equal(setup.valid, false, 'entri tidak boleh lahir tanpa candle 1 yang berdiri sendiri setelah X');
+  assert.equal(setup.candle1, null);
+  assert.match(setup.notes.join(' '), /candle 1 belum sah/);
+});
+
+test('kena BATAL di tengah jendela mematikan sisi walau candle terakhir pulang di atas garis', () => {
+  const candles: Candle[] = [
+    mk(0, 101, 110, 100.5, 101.4),   // anchor HIGH 110 — zona ini lahir dari sini
+    mk(1, 101.4, 101.6, 90, 95.8),   // anchor LOW 90 + X menusuk pintu
+    mk(2, 95.8, 96.0, 94.8, 94.6),   // TERTUTUP 94.6 — DI BAWAH BATAL (95) → zona long mati
+    mk(3, 94.6, 96.8, 94.4, 96.5),   // pulang di atas batal — zona TETAP mati sampai High/Low baru
+  ];
+  const setup = detectSetup(candles, zones, 'LONG');
+  assert.equal(setup.valid, false);
+  assert.match(setup.notes.join(' '), /BATAL/);
+});
+
+test('zona baru (High/Low bergeser) menghidupkan sisi lagi — batal lama tidak menghukum selamanya', () => {
+  const candles: Candle[] = [
+    mk(0, 101, 110, 100.5, 101.4),   // anchor HIGH lama
+    mk(1, 101.4, 101.6, 90, 95.8),   // anchor LOW lama
+    mk(2, 95.8, 96.0, 94.8, 94.6),   // kena batal zona lama (94.6 < 95)
+    mk(3, 94.6, 112, 94.2, 101.0),   // HIGH BARU 112 → zona tergambar ulang; batal lama tak berlaku
+  ];
+  const zonaBaru: Zones = {
+    high: 112, low: 90, range: 22, rangePct: 20,
+    long: { pintu: 112 - 22 * 0.705, manis: 112 - 22 * 0.786, batal: 112 - 22 * 0.886 },
+    short: { pintu: 90 + 22 * 0.705, manis: 90 + 22 * 0.786, batal: 90 + 22 * 0.886 },
+  };
+  const setup = detectSetup(candles, zonaBaru, 'LONG');
+  assert.equal(/BATAL/.test(setup.notes.join(' ')), false, 'sisi long hidup lagi dengan zona baru');
+});
