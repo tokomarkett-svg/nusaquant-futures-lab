@@ -130,6 +130,25 @@ export async function POST(request: Request) {
     payload: { entry: ticket.entry, stop: ticket.stop, target: ticket.target, size: eksekusi.qty ?? ticket.sizeCoin, risk: RISK_USDT, via: 'DEMO', setupKey, orders: metadata.demoOrderIds },
   }).then((j) => { if (j.error) console.error('[meja] jurnal demo gagal:', j.error.message); });
 
+  // 5) Kabari HP lewat Telegram (tidak memblokir jawaban kalau gagal kirim)
+  const sideOrder = side === 'LONG' ? 'BUY' : 'SELL';
+  const digits = ticket.entry >= 100 ? 2 : ticket.entry >= 1 ? 4 : ticket.entry >= 0.01 ? 5 : 7;
+  void fetch(new URL('/notify/demo', worker), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      token,
+      text: [
+        `🧪 <b>ORDER DEMO (TESTNET)</b> — ${symbol} ${side}`,
+        '',
+        `👉 ENTRY: ${ticket.entry.toFixed(digits)}  (${sideOrder})`,
+        `🛑 SL: ${ticket.stop.toFixed(digits)}  ·  ✅ TP: ${ticket.target.toFixed(digits)}`,
+        `📦 ${eksekusi.qty ?? ''} coin · lewat tombol latihanmu`,
+      ].join('\n'),
+    }),
+    signal: AbortSignal.timeout(9_000),
+  }).catch(() => undefined);
+
   return NextResponse.json({
     ok: true, testnet: true,
     position: { symbol, side, entry: ticket.entry, stop: ticket.stop, target: ticket.target, qty: eksekusi.qty, orders: metadata.demoOrderIds },

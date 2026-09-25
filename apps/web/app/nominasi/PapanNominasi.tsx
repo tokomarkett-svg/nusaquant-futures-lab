@@ -108,7 +108,7 @@ export default function PapanNominasi() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <h2 style={{ margin: 0, fontSize: 18, letterSpacing: '-0.02em' }}>Papan Nominasi</h2>
           <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 999, background: '#eaf8ef', color: 'var(--green-dark)', border: '1px solid #c8e9d5' }}>● LIVE</span>
-          <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 999, background: '#f3efff', color: '#5b3fa8', border: '1px solid #ded2ff' }}>PAPER ONLY</span>
+          <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 999, background: '#f3efff', color: '#5b3fa8', border: '1px solid #ded2ff' }}>PAPER + DEMO</span>
           <span
             title={(board?.market ?? 'SPOT') === 'FUTURES' ? 'Papan, notif Telegram, dan meja paper membaca pasar futures yang sama.' : 'Jembatan futures belum aktif — papan sementara memakai cermin spot (tidak sinkron dengan notif).'}
             style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 999, background: (board?.market ?? 'SPOT') === 'FUTURES' ? '#eaf8ef' : '#fff4e0', color: (board?.market ?? 'SPOT') === 'FUTURES' ? 'var(--green-dark)' : '#a3690b', border: `1px solid ${(board?.market ?? 'SPOT') === 'FUTURES' ? '#c8e9d5' : '#ecd9a0'}` }}

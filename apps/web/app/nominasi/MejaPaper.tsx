@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 type OpenPosition = {
   symbol: string; side: 'LONG' | 'SHORT'; entry: number; stop: number; target: number;
-  sizeCoin: number; openedAt: string; processScore: number | null; setupKey: string;
+  sizeCoin: number; openedAt: string; processScore: number | null; setupKey: string; via?: string;
 };
 
 type MejaPayload = {
@@ -109,6 +109,8 @@ export default function MejaPaper() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <b style={{ fontSize: 14 }}>{position.symbol.replace('USDT', '')}</b>
                   <span style={{ fontSize: 10.5, fontWeight: 800, padding: '2px 8px', borderRadius: 6, background: position.side === 'LONG' ? '#eaf8ef' : '#fdeeee', color: position.side === 'LONG' ? 'var(--green-dark)' : 'var(--red)' }}>{position.side}</span>
+                  {position.via === 'DEMO' && <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: 5, background: '#fff4e0', color: '#a3690b' }}>🧪 TESTNET</span>}
+                  {position.via === 'TOMBOL' && <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: 5, background: '#eaf8ef', color: 'var(--green-dark)' }}>👍 TOMBOL</span>}
                   <span style={{ marginLeft: 'auto', fontFamily: "'DM Mono', monospace", fontSize: 14, fontWeight: 700 }}>{live.toFixed(digits)}</span>
                   <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: moveColor }}>{move >= 0 ? '+' : ''}{move.toFixed(2)}R</span>
                 </div>

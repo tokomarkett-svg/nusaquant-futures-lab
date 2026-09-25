@@ -9,6 +9,7 @@
  */
 import http from 'node:http';
 import { bukaDemo, tutupDemo, tokenSah } from './exec-demo.ts';
+import { sendTelegram } from './alerts.ts';
 
 const INTERVAL_MS: Record<string, number> = {
   '5m': 300_000, '15m': 900_000, '30m': 1_800_000, '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000,
@@ -88,6 +89,19 @@ export function createDataProxyHandler(upstreamBase = process.env.WORKER_UPSTREA
         return balasJson(200, await tutupDemo(String(parsed.symbol ?? '').toUpperCase()));
       } catch (error) {
         return balasJson(502, { ok: false, error: error instanceof Error ? error.message : 'gagal menutup demo.' });
+      }
+    }
+    if (route === '/notify/demo' && req.method === 'POST') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      try {
+        const parsed = JSON.parse(body || '{}') as { token?: string; text?: string };
+        if (!tokenSah(parsed.token, process.env.EXEC_TOKEN)) return balasJson(401, { ok: false, error: 'token eksekusi salah/kosong.' });
+        const teks = String(parsed.text ?? '').slice(0, 600);
+        await sendTelegram(teks, { chatId: (process.env.TELEGRAM_CHAT_ID ?? '').trim() || undefined });
+        return balasJson(200, { ok: true });
+      } catch (error) {
+        return balasJson(502, { ok: false, error: error instanceof Error ? error.message : 'gagal kirim telegram.' });
       }
     }
     if (route === '/data/prices') {

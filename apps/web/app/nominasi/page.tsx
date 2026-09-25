@@ -33,7 +33,7 @@ export default function NominasiPage() {
             </div>
             <div className="hero-note">
               <strong>Tanpa order.</strong><br />
-              Ini layar pantauan. Tidak ada tombol beli/jual, tidak ada dana tersambung — paper trading sampai 20 trade disiplin selesai.
+              Ini layar pantauan. Ada tombol latihan: PAPER (jurnal saja) dan DEMO TESTNET (order format-sungguhan ke akun demo resmi Binance). Uang asli tetap tidak tersambung — itu menunggu 20 trade disiplin.
             </div>
           </div>
           <PapanNominasi />

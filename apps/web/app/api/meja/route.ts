@@ -56,6 +56,7 @@ export async function GET() {
       target: Number(row.take_profit), sizeCoin: Number(row.quantity), openedAt: row.opened_at,
       processScore: Number((row.metadata as Record<string, unknown> | null)?.processScore ?? 0) || null,
       setupKey: String((row.metadata as Record<string, unknown> | null)?.setupKey ?? ''),
+      via: String((row.metadata as Record<string, unknown> | null)?.via ?? 'ROBOT'),
     })),
     today: {
       dayStart,
