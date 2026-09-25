@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="640" viewBox="0 0 900 640" font-family="Arial, sans-serif">
+<rect width="900" height="640" fill="#0e1116"/>
+<text x="20" y="30" fill="#e8eaed" font-size="20" font-weight="bold">Pola 2 Candle — versi kartun (atas = harga NAIK)</text>
+<rect x="20" y="300" width="700" height="80" fill="#ff9800" opacity="0.12"/>
+<line x1="20" y1="300" x2="720" y2="300" stroke="#ffb74d" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="24" y="294" fill="#ffb74d" font-size="15" font-weight="bold">PINTU ZONA — harga masuk sini = mulai nonton</text>
+<line x1="20" y1="380" x2="720" y2="380" stroke="#ff7043" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="24" y="398" fill="#ff7043" font-size="15" font-weight="bold">GARIS BATAL — candle close di bawah sini = ide mati, pulang</text>
+<!-- candle X -->
+<line x1="170" y1="310" x2="170" y2="370" stroke="#ef5350" stroke-width="3"/>
+<rect x="156" y="318" width="28" height="44" fill="#ef5350"/>
+<circle cx="170" cy="270" r="16" fill="#c62828"/><text x="170" y="276" fill="#fff" font-size="17" font-weight="bold" text-anchor="middle">X</text>
+<text x="170" y="425" fill="#ef9a9a" font-size="14" font-weight="bold" text-anchor="middle">close di BAWAH</text>
+<text x="170" y="443" fill="#ef9a9a" font-size="14" font-weight="bold" text-anchor="middle">= seller masih menang</text>
+<text x="170" y="461" fill="#ef9a9a" font-size="14" font-weight="bold" text-anchor="middle">= JANGAN masuk, nonton</text>
+<!-- candle 1 -->
+<line x1="330" y1="275" x2="330" y2="330" stroke="#26a69a" stroke-width="3"/>
+<rect x="316" y="280" width="28" height="16" fill="#26a69a"/>
+<circle cx="330" cy="240" r="16" fill="#ffa726"/><text x="330" y="246" fill="#111" font-size="17" font-weight="bold" text-anchor="middle">1</text>
+<text x="330" y="425" fill="#ffcc80" font-size="14" font-weight="bold" text-anchor="middle">wick BAWAH panjang,</text>
+<text x="330" y="443" fill="#ffcc80" font-size="14" font-weight="bold" text-anchor="middle">close di ATAS</text>
+<text x="330" y="461" fill="#ffcc80" font-size="14" font-weight="bold" text-anchor="middle">= seller gagal menjatuhkan</text>
+<!-- candle 2 -->
+<line x1="490" y1="235" x2="490" y2="295" stroke="#26a69a" stroke-width="3"/>
+<rect x="476" y="240" width="28" height="50" fill="#26a69a"/>
+<circle cx="490" cy="200" r="16" fill="#66bb6a"/><text x="490" y="206" fill="#111" font-size="17" font-weight="bold" text-anchor="middle">2</text>
+<text x="490" y="322" fill="#a5d6a7" font-size="14" font-weight="bold" text-anchor="middle">hijau close DI ATAS</text>
+<text x="490" y="340" fill="#a5d6a7" font-size="14" font-weight="bold" text-anchor="middle">puncak candle 1</text>
+<text x="490" y="358" fill="#a5d6a7" font-size="14" font-weight="bold" text-anchor="middle">= ENTRY saat candle ini CLOSE</text>
+<line x1="330" y1="275" x2="470" y2="275" stroke="#ffa726" stroke-width="1.5" stroke-dasharray="4 4"/>
+<!-- entry / stop / target -->
+<line x1="490" y1="240" x2="880" y2="240" stroke="#66bb6a" stroke-width="2.5" stroke-dasharray="6 4"/>
+<text x="726" y="234" fill="#66bb6a" font-size="15" font-weight="bold">ENTRY (close candle 2)</text>
+<line x1="330" y1="335" x2="880" y2="335" stroke="#ef5350" stroke-width="2.5" stroke-dasharray="6 4"/>
+<text x="726" y="352" fill="#ef5350" font-size="15" font-weight="bold">STOP = di bawah wick candle 1</text>
+<line x1="490" y1="50" x2="880" y2="50" stroke="#4fc3f7" stroke-width="2.5" stroke-dasharray="6 4"/>
+<text x="726" y="44" fill="#4fc3f7" font-size="15" font-weight="bold">TARGET = 2 x jarak stop</text>
+<line x1="620" y1="240" x2="620" y2="335" stroke="#ef5350" stroke-width="3"/>
+<text x="600" y="292" fill="#ef9a9a" font-size="15" font-weight="bold" text-anchor="end">1R</text>
+<line x1="660" y1="240" x2="660" y2="50" stroke="#4fc3f7" stroke-width="3"/>
+<text x="640" y="150" fill="#81d4fa" font-size="15" font-weight="bold" text-anchor="end">2R</text>
+<polyline points="505,235 560,160 610,110 680,55" fill="none" stroke="#26a69a" stroke-width="2.5" opacity="0.7"/>
+<circle cx="690" cy="50" r="16" fill="#4fc3f7"/><text x="690" y="56" fill="#111" font-size="17" font-weight="bold" text-anchor="middle">3</text>
+<text x="690" y="86" fill="#81d4fa" font-size="14" font-weight="bold" text-anchor="middle">kena target = keluar, selesai</text>
+<text x="20" y="505" fill="#e8eaed" font-size="16" font-weight="bold">Cara pakai (urutan tanganmu):</text>
+<text x="20" y="530" fill="#cfd8dc" font-size="15">1. Harga BELUM di zona? Tutup aplikasi. Harga masuk zona (alarm bunyi)? Buka 15m.</text>
+<text x="20" y="553" fill="#cfd8dc" font-size="15">2. Lihat candle yang sudah CLOSE satu-satu: close bawah = tunggu (itu "X", bukan sesuatu yang dicari).</text>
+<text x="20" y="576" fill="#cfd8dc" font-size="15">3. Muncul candle 1 (wick bawah panjang, close atas)? Siap-siap. Muncul candle 2 (hijau menutup di atas puncak 1)? MASUK.</text>
+<text x="20" y="599" fill="#cfd8dc" font-size="15">4. Pasang STOP di bawah wick 1. TARGET = jarak entry-stop dikali 2, ke atas. Selesai. Tidak ada tebakan.</text>
+</svg>

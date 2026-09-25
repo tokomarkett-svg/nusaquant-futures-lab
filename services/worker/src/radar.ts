@@ -1,5 +1,5 @@
 import type { Candle } from '@nusaquant/core';
-import { BinancePublicMarketDataClient } from './market-data.ts';
+import { BinancePublicMarketDataClient, DEFAULT_BINANCE_BASE_URL } from './market-data.ts';
 import { createWorkerSupabaseClient } from './supabase.ts';
 
 // Universe pra-registrasi (docs/24): 80 perpetual likuid; fallback bila ticker 24h tak terjangkau.
@@ -124,7 +124,7 @@ export async function persistRadar(readings: RadarReading[]): Promise<void> {
 }
 
 export async function watchRadar(): Promise<void> {
-  const client = new BinancePublicMarketDataClient({ baseUrl: process.env.BINANCE_BASE_URL ?? 'https://fapi.binance.com' });
+  const client = new BinancePublicMarketDataClient({ baseUrl: process.env.BINANCE_BASE_URL ?? DEFAULT_BINANCE_BASE_URL });
   const universe = await resolveRadarUniverse(client);
   console.log(JSON.stringify({ radar: true, universe: universe.length, at: new Date().toISOString() }));
   const pollMs = Math.max(Number(process.env.RADAR_POLL_MS ?? 300_000), 60_000);

@@ -1,5 +1,5 @@
 import type { Candle } from '@nusaquant/core';
-import { BinancePublicMarketDataClient } from './market-data.ts';
+import { BinancePublicMarketDataClient, DEFAULT_BINANCE_BASE_URL } from './market-data.ts';
 import { PaperSessionController, resolveBotSessionIds } from './session-control.ts';
 import { createWorkerSupabaseClient } from './supabase.ts';
 import { watchResearchJobs } from './research-jobs.ts';
@@ -46,14 +46,15 @@ export function toMarketCandleRows(symbol: string, interval: string, candles: Ca
 export async function ingestSymbol({
   symbol,
   intervals = ['15m', '1h'],
-  limit = 500,
+  // 1000 candle 15m ≈ 10,4 hari — menutup celah ingest saat data sempat stale.
+  limit = 1000,
 }: {
   symbol: string;
   intervals?: string[];
   limit?: number;
 }): Promise<Record<string, number>> {
   const client = createWorkerSupabaseClient();
-  const market = new BinancePublicMarketDataClient({ baseUrl: process.env.BINANCE_BASE_URL ?? 'https://fapi.binance.com' });
+  const market = new BinancePublicMarketDataClient({ baseUrl: process.env.BINANCE_BASE_URL ?? DEFAULT_BINANCE_BASE_URL });
   const counts: Record<string, number> = {};
 
   for (const interval of intervals) {

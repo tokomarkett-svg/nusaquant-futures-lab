@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="660" viewBox="0 0 900 660" font-family="Arial, sans-serif">
+<rect width="900" height="660" fill="#0e1116"/>
+<text x="20" y="30" fill="#e8eaed" font-size="20" font-weight="bold">Anatomi Candle: "wick bawah panjang + close di paruh atas" (atas = harga NAIK)</text>
+
+<!-- ============ ANATOMI ============ -->
+<line x1="170" y1="90" x2="170" y2="390" stroke="#26a69a" stroke-width="3"/>
+<rect x="150" y="130" width="40" height="80" fill="#26a69a"/>
+<line x1="95" y1="240" x2="250" y2="240" stroke="#9aa0a6" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="95" y="256" fill="#9aa0a6" font-size="12">tengah range (batas paruh atas / bawah)</text>
+<line x1="195" y1="90" x2="300" y2="90" stroke="#546e7a" stroke-width="1"/>
+<text x="305" y="94" fill="#b0bec5" font-size="14" font-weight="bold">HIGH = ujung wick atas</text>
+<line x1="195" y1="130" x2="300" y2="130" stroke="#66bb6a" stroke-width="1"/>
+<text x="305" y="134" fill="#a5d6a7" font-size="14" font-weight="bold">CLOSE = tepi atas badan (candle hijau)</text>
+<line x1="195" y1="210" x2="300" y2="210" stroke="#546e7a" stroke-width="1"/>
+<text x="305" y="214" fill="#b0bec5" font-size="14" font-weight="bold">OPEN = tepi bawah badan</text>
+<line x1="195" y1="390" x2="300" y2="390" stroke="#ef5350" stroke-width="1"/>
+<text x="305" y="394" fill="#ef9a9a" font-size="14" font-weight="bold">LOW = ujung wick bawah</text>
+<line x1="120" y1="210" x2="120" y2="390" stroke="#ffa726" stroke-width="2.5"/>
+<text x="60" y="300" fill="#ffcc80" font-size="14" font-weight="bold" transform="rotate(-90 60 300)">WICK BAWAH = "buntut"</text>
+<text x="105" y="176" fill="#a5d6a7" font-size="13" font-weight="bold">BADAN</text>
+
+<!-- ============ 3 CONTOH ============ -->
+<text x="560" y="70" fill="#e8eaed" font-size="16" font-weight="bold">Tiga bentuk, tiga vonis:</text>
+<!-- contoh 1: candle 1 -->
+<line x1="600" y1="110" x2="600" y2="380" stroke="#26a69a" stroke-width="3"/>
+<rect x="585" y="120" width="30" height="45" fill="#26a69a"/>
+<line x1="560" y1="245" x2="640" y2="245" stroke="#9aa0a6" stroke-width="1" stroke-dasharray="4 4"/>
+<circle cx="600" cy="95" r="13" fill="#66bb6a"/><text x="600" y="100" fill="#111" font-size="14" font-weight="bold" text-anchor="middle">✔</text>
+<text x="600" y="405" fill="#a5d6a7" font-size="13.5" font-weight="bold" text-anchor="middle">CANDLE 1</text>
+<text x="600" y="423" fill="#a5d6a7" font-size="12.5" text-anchor="middle">buntut bawah panjang</text>
+<text x="600" y="439" fill="#a5d6a7" font-size="12.5" text-anchor="middle">close di paruh ATAS</text>
+<text x="600" y="455" fill="#a5d6a7" font-size="12.5" text-anchor="middle">= seller gagal → siap-siap</text>
+<!-- contoh 2: X -->
+<line x1="710" y1="110" x2="710" y2="380" stroke="#ef5350" stroke-width="3"/>
+<rect x="695" y="300" width="30" height="70" fill="#ef5350"/>
+<line x1="670" y1="245" x2="750" y2="245" stroke="#9aa0a6" stroke-width="1" stroke-dasharray="4 4"/>
+<circle cx="710" cy="95" r="13" fill="#c62828"/><text x="710" y="100" fill="#fff" font-size="14" font-weight="bold" text-anchor="middle">✖</text>
+<text x="710" y="405" fill="#ef9a9a" font-size="13.5" font-weight="bold" text-anchor="middle">X</text>
+<text x="710" y="423" fill="#ef9a9a" font-size="12.5" text-anchor="middle">close di paruh BAWAH</text>
+<text x="710" y="439" fill="#ef9a9a" font-size="12.5" text-anchor="middle">= seller masih menang</text>
+<text x="710" y="455" fill="#ef9a9a" font-size="12.5" text-anchor="middle">= tunggu, jangan masuk</text>
+<!-- contoh 3: netral -->
+<line x1="820" y1="170" x2="820" y2="330" stroke="#26a69a" stroke-width="3"/>
+<rect x="805" y="210" width="30" height="70" fill="#26a69a"/>
+<line x1="780" y1="250" x2="860" y2="250" stroke="#9aa0a6" stroke-width="1" stroke-dasharray="4 4"/>
+<circle cx="820" cy="150" r="13" fill="#c62828"/><text x="820" y="155" fill="#fff" font-size="14" font-weight="bold" text-anchor="middle">✖</text>
+<text x="820" y="405" fill="#ef9a9a" font-size="13.5" font-weight="bold" text-anchor="middle">NETRAL</text>
+<text x="820" y="423" fill="#ef9a9a" font-size="12.5" text-anchor="middle">buntut pendek-pendek</text>
+<text x="820" y="439" fill="#ef9a9a" font-size="12.5" text-anchor="middle">= tidak ada bantingan</text>
+<text x="820" y="455" fill="#ef9a9a" font-size="12.5" text-anchor="middle">= tunggu</text>
+
+<!-- ============ PENJELASAN ============ -->
+<text x="20" y="500" fill="#e8eaed" font-size="16" font-weight="bold">Kenapa dua ciri ini yang dicari?</text>
+<text x="20" y="525" fill="#cfd8dc" font-size="14.5">• Wick bawah panjang = harga sempat DIBANTING jauh ke bawah, tapi ditolak naik lagi = tenaga seller habis di situ.</text>
+<text x="20" y="548" fill="#cfd8dc" font-size="14.5">• Close di paruh atas = saat candle tutup, buyer yang pegang kendali = "bantingan tidak dibayar".</text>
+<text x="20" y="571" fill="#cfd8dc" font-size="14.5">• Gabungan keduanya = bukti seller gagal. Ini lampu kuning: SIAP-SIAP. Lampu hijau (entry) tetap candle 2.</text>
+<text x="20" y="600" fill="#ffb74d" font-size="15" font-weight="bold">Cek cepat di chart: (1) buntut bawah minimal ±2× badan? (2) badan/close di atas garis tengah range? Dua-duanya YA = candle 1.</text>
+<text x="20" y="625" fill="#9aa0a6" font-size="13">Catatan: candle hijau dengan close paruh atas tapi TANPA buntut bawah = buyer kuat, tapi bukan bukti bantingan gagal → bukan candle 1.</text>
+</svg>

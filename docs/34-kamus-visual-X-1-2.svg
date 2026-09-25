@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="720" viewBox="0 0 1000 720" font-family="Arial">
+<rect width="1000" height="720" fill="#0e1116"/>
+<text x="20" y="30" fill="#e8eaed" font-size="20" font-weight="bold">KAMUS VISUAL: X vs Candle 1 vs Candle 2 (long)</text>
+<rect x="40" y="300" width="600" height="160" fill="#ff980015"/>
+<line x1="40" y1="300" x2="640" y2="300" stroke="#ffb74d" stroke-width="1.5" stroke-dasharray="7 5"/>
+<text x="645" y="305" fill="#ffb74d" font-size="14" font-weight="bold">PINTU</text>
+<line x1="40" y1="380" x2="640" y2="380" stroke="#ffcc80" stroke-width="1.5" stroke-dasharray="7 5"/>
+<text x="645" y="385" fill="#ffcc80" font-size="14" font-weight="bold">MANIS</text>
+<line x1="40" y1="460" x2="640" y2="460" stroke="#ef9a9a" stroke-width="1.5" stroke-dasharray="7 5"/>
+<text x="645" y="465" fill="#ef9a9a" font-size="14" font-weight="bold">BATAL</text>
+<line x1="120" y1="230" x2="120" y2="340" stroke="#ef5350" stroke-width="3"/>
+<rect x="105" y="240" width="30" height="70" fill="#ef5350"/>
+<circle cx="120" cy="200" r="16" fill="#ffd54f"/><text x="120" y="206" fill="#111" font-size="16" font-weight="bold" text-anchor="middle">X</text>
+<text x="120" y="500" fill="#ffd54f" font-size="13" text-anchor="middle">X: low menusuk pintu.</text>
+<text x="120" y="518" fill="#ffd54f" font-size="13" text-anchor="middle">Bentuk BEBAS, tanpa 2:1.</text>
+<line x1="320" y1="305" x2="320" y2="410" stroke="#26a69a" stroke-width="3"/>
+<rect x="305" y="310" width="30" height="30" fill="#26a69a"/>
+<circle cx="320" cy="200" r="16" fill="#ffd54f"/><text x="320" y="206" fill="#111" font-size="16" font-weight="bold" text-anchor="middle">1</text>
+<line x1="352" y1="310" x2="352" y2="340" stroke="#80deea" stroke-width="2"/>
+<text x="360" y="330" fill="#80deea" font-size="13">badan = 1</text>
+<line x1="352" y1="340" x2="352" y2="410" stroke="#f48fb1" stroke-width="2"/>
+<text x="360" y="380" fill="#f48fb1" font-size="13">buntut ≥ 2</text>
+<text x="320" y="500" fill="#a5d6a7" font-size="13" text-anchor="middle">C1: DI DALAM ruangan,</text>
+<text x="320" y="518" fill="#a5d6a7" font-size="13" text-anchor="middle">buntut ≥ 2× badan, close paruh atas</text>
+<line x1="290" y1="305" x2="640" y2="305" stroke="#90caf9" stroke-width="1.2" stroke-dasharray="4 4"/>
+<text x="470" y="298" fill="#90caf9" font-size="12">puncak candle 1</text>
+<line x1="540" y1="270" x2="540" y2="330" stroke="#26a69a" stroke-width="3"/>
+<rect x="525" y="275" width="30" height="45" fill="#26a69a"/>
+<circle cx="540" cy="200" r="16" fill="#ffd54f"/><text x="540" y="206" fill="#111" font-size="16" font-weight="bold" text-anchor="middle">2</text>
+<line x1="500" y1="275" x2="660" y2="275" stroke="#42a5f5" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="665" y="279" fill="#42a5f5" font-size="13">ENTRY di close-2</text>
+<text x="540" y="500" fill="#a5d6a7" font-size="13" text-anchor="middle">C2: TIDAK wajib dalam ruangan;</text>
+<text x="540" y="518" fill="#a5d6a7" font-size="13" text-anchor="middle">wajib: CLOSE di atas puncak 1</text>
+<line x1="700" y1="60" x2="700" y2="700" stroke="#2a2f36" stroke-width="1"/>
+<text x="720" y="100" fill="#e8eaed" font-size="16" font-weight="bold">Tes 2:1 (buntut : badan)</text>
+<line x1="760" y1="150" x2="760" y2="270" stroke="#26a69a" stroke-width="3"/>
+<rect x="748" y="150" width="24" height="40" fill="#26a69a"/>
+<text x="790" y="230.0" fill="#69f0ae" font-size="14" font-weight="bold">2× = SAH</text>
+<line x1="760" y1="300" x2="760" y2="420" stroke="#26a69a" stroke-width="3"/>
+<rect x="748" y="300" width="24" height="60" fill="#26a69a"/>
+<text x="790" y="390.0" fill="#ef9a9a" font-size="14" font-weight="bold">1× = gagal</text>
+<line x1="760" y1="450" x2="760" y2="500" stroke="#26a69a" stroke-width="3"/>
+<rect x="748" y="450" width="24" height="50" fill="#26a69a"/>
+<text x="790" y="500.0" fill="#ef9a9a" font-size="14" font-weight="bold">0× = gagal</text>
+<text x="720" y="560" fill="#cfd8dc" font-size="13">Contoh angka: badan 0.0001 →</text>
+<text x="720" y="580" fill="#cfd8dc" font-size="13">buntut wajib ≥ 0.0002</text>
+<text x="720" y="610" fill="#9aa0a6" font-size="13">RUNE 06:45 = 3.6× ✔</text>
+<text x="720" y="630" fill="#9aa0a6" font-size="13">ONT 17:00 = 1.9× ✖</text>
+<text x="20" y="700" fill="#ffb74d" font-size="14" font-weight="bold">X = bel pintu (bebas) · C1 = bukti pertarungan di dalam ruangan (2:1) · C2 = kunci masuk (close &gt; puncak 1, boleh di luar ruangan)</text>
+</svg>

@@ -39,15 +39,29 @@ function assertNonNegative(value: number, label: string): number {
   return value;
 }
 
+/**
+ * Default sumber data: mirror publik Binance (spot klines ≈ perp untuk lab riset paper).
+ * Host futures asli (fapi.binance.com) mengembalikan HTTP 451 untuk IP server sejak
+ * pertengahan September 2026, membuat ingest stale; mirror /api/v3 tidak diblokir.
+ * Set BINANCE_BASE_URL ke fapi secara eksplisit bila jaringan memungkinkan.
+ */
+export const DEFAULT_BINANCE_BASE_URL = 'https://data-api.binance.vision';
+
 export class BinancePublicMarketDataClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
+  private readonly spotMirror: boolean;
 
   constructor(options: MarketDataClientOptions = {}) {
-    this.baseUrl = options.baseUrl ?? 'https://fapi.binance.com';
+    this.baseUrl = options.baseUrl ?? DEFAULT_BINANCE_BASE_URL;
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.timeoutMs = options.timeoutMs ?? 8_000;
+    this.spotMirror = !/fapi\.binance\./.test(this.baseUrl);
+  }
+
+  private apiPath(futuresPath: string, spotPath: string): string {
+    return this.spotMirror ? spotPath : futuresPath;
   }
 
   async getKlines({ symbol, interval, limit = 500, endTime, closedOnly = true }: {
@@ -58,7 +72,7 @@ export class BinancePublicMarketDataClient {
     closedOnly?: boolean;
   }): Promise<Candle[]> {
     const duration = getIntervalMs(interval);
-    const url = new URL('/fapi/v1/klines', this.baseUrl);
+    const url = new URL(this.apiPath('/fapi/v1/klines', '/api/v3/klines'), this.baseUrl);
     url.searchParams.set('symbol', symbol.toUpperCase());
     url.searchParams.set('interval', interval);
     url.searchParams.set('limit', String(Math.min(Math.max(limit, 1), 1500)));
@@ -97,16 +111,17 @@ export class BinancePublicMarketDataClient {
   }
 
   async getMarkPrice(symbol: string): Promise<number> {
-    const url = new URL('/fapi/v1/premiumIndex', this.baseUrl);
+    // Mirror spot tidak punya premiumIndex; proksi mark = harga terakhir spot (lab paper).
+    const url = new URL(this.apiPath('/fapi/v1/premiumIndex', '/api/v3/ticker/price'), this.baseUrl);
     url.searchParams.set('symbol', symbol.toUpperCase());
     const response = await this.fetchImpl(url);
     if (!response.ok) throw new Error(`Binance mark price error: HTTP ${response.status}`);
-    const payload = await response.json() as { markPrice?: string };
-    return assertPositive(Number(payload.markPrice), 'mark price');
+    const payload = await response.json() as { markPrice?: string; price?: string };
+    return assertPositive(Number(payload.markPrice ?? payload.price), 'mark price');
   }
 
   async get24hTickers(): Promise<Array<{ symbol: string; quoteVolume: number }>> {
-    const url = new URL('/fapi/v1/ticker/24hr', this.baseUrl);
+    const url = new URL(this.apiPath('/fapi/v1/ticker/24hr', '/api/v3/ticker/24hr'), this.baseUrl);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
