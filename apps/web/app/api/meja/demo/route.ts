@@ -4,6 +4,7 @@ import {
   computeZones, detectSetup, computeTicket, gateFromCandles, RISK_USDT,
   fetchKlines, fetchTickers,
 } from '../../../../lib/binance';
+import { adaDiTestnet } from '../../../../lib/testnet';
 
 export const dynamic = 'force-dynamic';
 
@@ -71,6 +72,11 @@ export async function POST(request: Request) {
     setupKey = `${symbol}:${side}:${setup.candle2 ?? 0}`;
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : 'Gagal mengambil data pasar.' }, { status: 502 });
+  }
+
+  // 1b) Koin harus terdaftar di testnet — koin terbaru sering belum ada di sana.
+  if (!(await adaDiTestnet(symbol))) {
+    return NextResponse.json({ ok: false, error: `${symbol} belum terdaftar di testnet Binance — latihan koin ini pakai ENTRI (PAPER).` }, { status: 409 });
   }
 
   // 2) Pagar latihan demo: 1 posisi/koin, kuota sendiri 3/hari (jatah robot tidak dipakai).

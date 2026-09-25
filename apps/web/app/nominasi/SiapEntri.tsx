@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { BoardRow } from '../../lib/binance';
 
 const orderSideOf = (side: 'LONG' | 'SHORT') => (side === 'LONG' ? 'BUY' : 'SELL');
@@ -10,8 +10,18 @@ export default function SiapEntri({ rows, prices }: { rows: BoardRow[]; prices: 
   const [copied, setCopied] = useState<string | null>(null);
   const [buka, setBuka] = useState<Record<string, { state: 'loading' | 'opened' | 'error'; message?: string }>>({});
   const [demo, setDemo] = useState<Record<string, { state: 'loading' | 'opened' | 'error'; message?: string }>>({});
+  const [testnet, setTestnet] = useState<Set<string> | null>(null);
   const ready = rows.filter((row) => row.ticket?.actionable && row.gateAlign).slice(0, 3);
   if (ready.length === 0) return null;
+
+  useEffect(() => {
+    let hidup = true;
+    fetch('/api/testnet-simbol')
+      .then((r) => r.json() as Promise<{ ok: boolean; symbols: string[] }>)
+      .then((body) => { if (hidup && body.ok) setTestnet(new Set(body.symbols)); })
+      .catch(() => { /* gagal → tombol demo tetap tampil, server testnet yang menolak */ });
+    return () => { hidup = false; };
+  }, []);
 
   const entriDemo = async (row: BoardRow) => {
     setDemo((prev) => ({ ...prev, [row.symbol]: { state: 'loading' } }));
@@ -109,15 +119,19 @@ export default function SiapEntri({ rows, prices }: { rows: BoardRow[]; prices: 
               >
                 {copied === row.symbol ? 'TERSALIN ✓' : '📋 SALIN TIKET'}
               </button>
-              <button
-                onClick={() => void entriDemo(row)}
-                disabled={lari || demo[row.symbol]?.state === 'loading' || demo[row.symbol]?.state === 'opened'}
-                className="control-btn"
-                style={{ fontWeight: 800, borderColor: 'var(--amber)', color: 'var(--amber)', opacity: lari ? 0.45 : 1 }}
-                title="Kirim order sungguhan-format ke Binance Futures TESTNET (uang pura-pura resmi dari Binance)"
-              >
-                {demo[row.symbol]?.state === 'loading' ? 'MENGIRIM…' : demo[row.symbol]?.state === 'opened' ? 'DEMO MASUK ✓' : '🧪 ENTRI DEMO (TESTNET)'}
-              </button>
+              {testnet !== null && !testnet.has(row.symbol) ? (
+                <span style={{ fontSize: 11, color: 'var(--muted)', padding: '6px 0' }}>🧪 koin ini belum ada di testnet — latihan pakai PAPER</span>
+              ) : (
+                <button
+                  onClick={() => void entriDemo(row)}
+                  disabled={lari || demo[row.symbol]?.state === 'loading' || demo[row.symbol]?.state === 'opened'}
+                  className="control-btn"
+                  style={{ fontWeight: 800, background: 'var(--amber)', borderColor: 'var(--amber)', color: '#241a02', opacity: lari ? 0.45 : 1 }}
+                  title="Kirim order sungguhan-format ke Binance Futures TESTNET (uang pura-pura resmi dari Binance)"
+                >
+                  {demo[row.symbol]?.state === 'loading' ? 'MENGIRIM…' : demo[row.symbol]?.state === 'opened' ? 'DEMO MASUK ✓' : '🧪 ENTRI DEMO (TESTNET)'}
+                </button>
+              )}
               <button
                 onClick={() => void entriPaper(row)}
                 disabled={lari || buka[row.symbol]?.state === 'loading' || buka[row.symbol]?.state === 'opened'}
