@@ -142,7 +142,9 @@ export function collectAlertsForCandidate(
     if (!store.has(key)) {
       const kind = candidate.gateAlign ? 'TIKET' : 'TIKET_TANPA_GATE';
       const allowed = mode === 'semua' || (mode === 'tiketsiap' && kind === 'TIKET') || mode === 'tiketsemua';
-      if (allowed) messages.push({ key, kind, text: buildTicketText(candidate, candidate.ticket, options.papanUrl) });
+      const sisiBoleh = (process.env.PMB_SIDES ?? 'LONG').toUpperCase().split(',').map((x) => x.trim());
+      const bolehSisi = sisiBoleh.includes('*') || sisiBoleh.includes(candidate.side);
+      if (allowed && bolehSisi) messages.push({ key, kind, text: buildTicketText(candidate, candidate.ticket, options.papanUrl) });
     }
   }
 
@@ -271,12 +273,19 @@ export async function scanAlertCandidates(client: BinancePublicMarketDataClient,
       try {
         const [m15, h1] = await Promise.all([
           client.getKlines({ symbol: ticker.symbol, interval: '15m', limit: 140 }),
-          client.getKlines({ symbol: ticker.symbol, interval: '1h', limit: 120 }),
+          client.getKlines({ symbol: ticker.symbol, interval: '1h', limit: 130 }),
         ]);
         const newest = m15.at(-1)?.time ?? 0;
         const dataAgeMin = (now - (newest + 900_000)) / 60_000;
         if (m15.length < 20 || h1.length < 99 || dataAgeMin > STALE_CANDLE_MINUTES) return null;
         const { gate } = gateFromCandles(h1);
+        // gate harus MATANG: warna sama minimal 4 jam beruntun (uji balik 25/9: tiket gate muda rugi)
+        let gateMatang = true;
+        for (let jam = 1; jam <= 4; jam++) {
+          const potong = h1.slice(0, Math.max(99, h1.length - jam));
+          if (potong.length < 99 || gateFromCandles(potong).gate !== gate) { gateMatang = false; break; }
+        }
+        if (!gateMatang) return null;
         const distLong = distanceToPintu(zones, 'LONG', ticker.last);
         const distShort = distanceToPintu(zones, 'SHORT', ticker.last);
         const insideLong = ticker.last <= zones.long.pintu && ticker.last >= zones.long.batal;

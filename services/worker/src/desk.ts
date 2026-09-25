@@ -26,6 +26,9 @@ import { createWorkerSupabaseClient } from './supabase.ts';
 export const DESK_SESSION_ID = process.env.DESK_SESSION_ID ?? '00000000-0000-4000-8000-000000000010';
 export const DESK_SESSION_NAME = 'Meja Papan (Pintu–Manis–Batal)';
 export const MAX_TRADES_PER_DAY = 2;
+/** v3 (uji balik 25/9): sementara hanya LONG — short terbukti rugi di semua varian (−0,4..−1,0R). */
+const SISI_AKTIF: ('LONG' | 'SHORT')[] = (process.env.PMB_SIDES ?? 'LONG')
+  .toUpperCase().split(',').map((x) => x.trim()).filter((x): x is 'LONG' | 'SHORT' => x === 'LONG' || x === 'SHORT');
 export const MAX_CONSECUTIVE_LOSSES = 2;
 /** Posisi yang tidak menyentuh SL/TP dalam 48 jam (192 candle 15m) ditutup di harga terakhir. */
 export const TIMEOUT_BARS = 192;
@@ -413,7 +416,9 @@ export async function runDeskCycle(deps: DeskCycleDeps): Promise<DeskCycleResult
   // 2) cari tiket siap baru.
   const candidates = await scanAlertCandidates(deps.market);
   result.scannedCandidates = candidates.length;
-  const ready = candidates.filter((row) => row.ticket !== null && row.ticket.actionable && row.gateAlign);
+  const ready = candidates.filter((row) =>
+    row.ticket !== null && row.ticket.actionable && row.gateAlign && SISI_AKTIF.includes(row.side),
+  );
   result.readyTickets = ready.length;
 
   const openedTodayBefore = today.filter((p) => p.metadata.source === 'MEJA_PAPAN').length;

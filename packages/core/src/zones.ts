@@ -19,6 +19,10 @@ export const RISK_USDT = 0.31;
 export const TARGET_R = 2;
 /** Kalau harga sudah berjalan > 0,5R dari entry → jangan dikejar. */
 export const CHASE_LIMIT_R = 0.5;
+/** Profil v3 (uji balik 25/9): stop struktural di garis batal — menaikkan menang 18%→26%. */
+export function stopMode(): 'buntut' | 'batal' {
+  return (process.env.PMB_STOP_MODE ?? 'batal') as 'buntut' | 'batal';
+}
 
 export type Side = 'LONG' | 'SHORT';
 export type Gate = 'HIJAU' | 'MERAH' | 'KUNING';
@@ -286,8 +290,19 @@ export function computeTicket(candles: Candle[], zones: Zones, side: Side, price
   const kedaluwarsa = entryAgeBars !== null && entryAgeBars > 3;
   if (kedaluwarsa) warnings.push(`candle 2 sudah ${entryAgeBars} candle lalu — tiket dianggap basi`);
 
+  // Profil v3: stop struktural di garis batal (bukan buntut candle) — lega dari noise.
+  let stopAkhir = stop;
+  let riskAkhir = riskDistance;
+  let targetAkhir = target;
+  if (stopMode() === 'batal') {
+    stopAkhir = zone.batal;
+    riskAkhir = side === 'LONG' ? entry - stopAkhir : stopAkhir - entry;
+    if (!(riskAkhir > 0)) return null;
+    targetAkhir = side === 'LONG' ? entry + TARGET_R * riskAkhir : entry - TARGET_R * riskAkhir;
+  }
+
   const distanceNowPct = ((priceNow - entry) / entry) * 100;
-  const travelledR = Math.abs(priceNow - entry) / riskDistance;
+  const travelledR = Math.abs(priceNow - entry) / riskAkhir;
   const chaseRisk = travelledR > CHASE_LIMIT_R;
   if (chaseRisk) {
     warnings.push(`harga sudah berjalan ${travelledR.toFixed(1)}R dari entry — jangan dikejar, tunggu setup baru (aturan anti-nyangkut)`);
@@ -296,11 +311,11 @@ export function computeTicket(candles: Candle[], zones: Zones, side: Side, price
   return {
     side,
     entry,
-    stop,
-    target,
-    riskDistance,
-    riskPct: (riskDistance / entry) * 100,
-    sizeCoin: RISK_USDT / riskDistance,
+    stop: stopAkhir,
+    target: targetAkhir,
+    riskDistance: riskAkhir,
+    riskPct: (riskAkhir / entry) * 100,
+    sizeCoin: RISK_USDT / riskAkhir,
     riskUsdt: RISK_USDT,
     rewardUsdt: RISK_USDT * TARGET_R,
     rr: TARGET_R,

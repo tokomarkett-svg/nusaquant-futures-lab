@@ -203,8 +203,9 @@ test('siklus: tiket siap gate searah → posisi paper dibuka + jurnal 6/6 + pesa
   assert.equal(position.symbol, 'TESTUSDT');
   assert.equal(position.side, 'LONG');
   assert.equal(position.entry, 96.85);
-  assert.equal(position.stop, 95.0);
-  assert.ok(Math.abs(position.target - 100.55) < 1e-9, `target meleset: ${position.target}`);
+  // profil v3: stop = garis batal zona fixture (bukan lagi buntut candle 1)
+  assert.ok(Math.abs(position.stop - 92.28) < 1e-9, `stop v3 meleset: ${position.stop}`);
+  assert.ok(Math.abs(position.target - 105.99) < 0.02, `target v3 meleset: ${position.target}`);
   assert.equal(position.metadata.source, 'MEJA_PAPAN');
   assert.equal(position.metadata.processScore, 6);
 
