@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { Board, BoardRow, Status } from '../../lib/binance';
+import SiapEntri from './SiapEntri';
 
 type Filter = 'SEMUA' | 'LONG' | 'SHORT' | 'SEARAH' | 'TIKET';
 
@@ -134,6 +135,8 @@ export default function PapanNominasi() {
           </button>
         ))}
       </div>
+
+      <SiapEntri rows={board?.rows ?? []} prices={prices} />
 
       {error && <section className="panel" style={{ padding: 16, borderRadius: 18, color: 'var(--red)' }}>Gagal memindai: {error}</section>}
       {loading && !board && <section className="panel" style={{ padding: 20, borderRadius: 18, color: 'var(--muted)' }}>Memindai pasar… (sekitar 3–6 detik)</section>}

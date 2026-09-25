@@ -39,11 +39,13 @@ test('bel pintu: hanya dikirim untuk X yang masih segar', () => {
 
 test('tiket siap: pesannya memuat entry, stop, target, ukuran, dan pengingat risiko', () => {
   const text = buildTicketText(candidateTicket, ticket);
-  assert.match(text, /TIKET SIAP/);
-  assert.match(text, /101\.20/);
+  assert.match(text, /SIAP ENTRI/);
+  assert.match(text, /ENTRY: 101\.20/);
+  assert.match(text, /BUY RUNEUSDT 101\.20 SL 96\.40 TP 110\.80/);
   assert.match(text, /96\.40/);
   assert.match(text, /110\.80/);
   assert.match(text, /1% risiko/);
+  assert.doesNotMatch(text, /JANGAN EKSEKUSI/);
 
   const basi = buildTicketText(candidateTicket, { ...ticket, actionable: false, chaseRisk: true, warnings: ['harga sudah berjalan 0.8R — jangan dikejar'] });
   assert.match(basi, /TIKET BASI — jangan dikejar/);

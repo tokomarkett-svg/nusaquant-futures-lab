@@ -69,9 +69,29 @@ export function buildBellText(candidate: AlertCandidate): string {
 export function buildTicketText(candidate: AlertCandidate, ticket: Ticket): string {
   const digits = digitsFor(ticket.entry);
   const format = (value: number) => value.toFixed(digits);
+
+  // Kartu SIAP ENTRI: hanya untuk tiket actionable + gate searah — angka entry jadi hero.
+  if (candidate.gateAlign && ticket.actionable) {
+    const orderSide = candidate.side === 'LONG' ? 'BUY' : 'SELL';
+    return [
+      `🎯 <b>SIAP ENTRI — ${candidate.symbol} ${candidate.side}</b>`,
+      '',
+      `👉 <b>ENTRY: ${format(ticket.entry)}</b>  (${orderSide})`,
+      `🛑 SL     : ${format(ticket.stop)}  (−${ticket.riskUsdt} USDT)`,
+      `✅ TP     : ${format(ticket.target)}  (+${ticket.rewardUsdt} USDT)`,
+      `📦 Ukuran : ${ticket.sizeCoin.toLocaleString('id-ID', { maximumFractionDigits: 4 })} coin`,
+      '',
+      `Gate 1H ${candidate.gate} ✔ · stop ${ticket.riskPct.toFixed(2)}% dari entry · target 2R`,
+      ticket.warnings.length ? `⚠ ${ticket.warnings.join(' · ')}` : 'Semua pagar lolos — harga masih di dekat pintu.',
+      '',
+      `Salin persis ke Binance: <code>${orderSide} ${candidate.symbol} ${format(ticket.entry)} SL ${format(ticket.stop)} TP ${format(ticket.target)}</code>`,
+      '1% risiko · maksimal 2 trade/hari · stop dipasang SEBELUM entry.',
+    ].join('\n');
+  }
+
   const status = !candidate.gateAlign
     ? '⚠️ <b>TIKET TERBENTUK TAPI GATE BELUM SEARAH — JANGAN EKSEKUSI</b>'
-    : ticket.actionable ? '🎯 <b>TIKET SIAP — boleh dieksekusi</b>' : '🟠 <b>TIKET BASI — jangan dikejar</b>';
+    : '🟠 <b>TIKET BASI — jangan dikejar</b>';
   return [
     `${status}`,
     `<b>${candidate.symbol}</b> · ${candidate.side} · gate 1H ${candidate.gate}${candidate.gateAlign ? ' ✔' : ''}`,
