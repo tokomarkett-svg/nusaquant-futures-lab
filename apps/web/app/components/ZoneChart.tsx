@@ -56,6 +56,11 @@ export default function ZoneChart({ candles, zones, ma25, ma99, markers = [], li
 
   const band = (upper: number, lower: number) => ({ y: yAt(upper), h: Math.max(1, yAt(lower) - yAt(upper)) });
 
+  const lastCandle = candles.at(-1)!;
+  const shownPrice = livePrice ?? lastCandle.close;
+  const up = shownPrice >= lastCandle.open;
+  const liveY = yAt(shownPrice);
+
   const zoneRows = [
     { key: 'L-pintu', value: zones.long.pintu, label: 'pintu long', color: '#0e7490', dash: '0' },
     { key: 'L-manis', value: zones.long.manis, label: 'manis long', color: '#0e7490', dash: '5 4' },
@@ -82,10 +87,6 @@ export default function ZoneChart({ candles, zones, ma25, ma99, markers = [], li
 
   const longBand = band(zones.long.pintu, zones.long.batal);
   const shortBand = band(zones.short.batal, zones.short.pintu);
-  const lastCandle = candles.at(-1)!;
-  const shownPrice = livePrice ?? lastCandle.close;
-  const up = shownPrice >= lastCandle.open;
-  const liveY = yAt(shownPrice);
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="zone-chart" role="img" aria-label="Chart candle dengan zona pintu manis batal">
@@ -94,12 +95,18 @@ export default function ZoneChart({ candles, zones, ma25, ma99, markers = [], li
       <rect x={left} y={longBand.y} width={plotW} height={longBand.h} fill="#0e7490" opacity={0.14} />
       <rect x={left} y={shortBand.y} width={plotW} height={shortBand.h} fill="#b45309" opacity={0.14} />
 
-      {zoneRows.map((row) => (
-        <g key={row.key}>
-          <line x1={left} x2={left + plotW} y1={yAt(row.value)} y2={yAt(row.value)} stroke={row.color} strokeWidth={row.dash === '0' ? 1.6 : 1.1} strokeDasharray={row.dash === '0' ? undefined : row.dash} />
-          <text x={left + plotW + 6} y={yAt(row.value) + 3.5} fill={row.color} fontSize={10.5} fontFamily="ui-monospace, monospace">{row.label} {format(row.value)}</text>
-        </g>
-      ))}
+      {zoneRows.map((row) => {
+        const lineY = yAt(row.value);
+        const collides = Math.abs(lineY - liveY) < 15;
+        const labelY = collides ? (lineY <= liveY ? lineY - 10 : lineY + 16) : lineY + 3.5;
+        return (
+          <g key={row.key}>
+            <line x1={left} x2={left + plotW} y1={lineY} y2={lineY} stroke={row.color} strokeWidth={row.dash === '0' ? 1.6 : 1.1} strokeDasharray={row.dash === '0' ? undefined : row.dash} />
+            <rect x={left + plotW + 2} y={labelY - 9} width={104} height={14} rx={3} fill="#0b1220" opacity={0.82} />
+            <text x={left + plotW + 6} y={labelY} fill={row.color} fontSize={10.5} fontFamily="ui-monospace, monospace">{row.label} {format(row.value)}</text>
+          </g>
+        );
+      })}
 
       <line x1={left} x2={left + plotW} y1={yAt(zones.high)} y2={yAt(zones.high)} stroke="#64748b" strokeWidth={1} strokeDasharray="1 5" />
       <text x={left + 6} y={yAt(zones.high) - 5} fill="#94a3b8" fontSize={10.5} fontFamily="ui-monospace, monospace">H 24j {format(zones.high)}</text>
