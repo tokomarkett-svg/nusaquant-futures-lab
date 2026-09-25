@@ -18,6 +18,8 @@ const STOP_BATAL = process.env.PMB_STOP === 'batal';        // stop di garis bat
 const C2_MARGIN = Number(process.env.PMB_C2_MARGIN ?? '0'); // C2 harus menembus C1 lebih dalam (× jarak risiko)
 const GATE_JAM = Number(process.env.PMB_GATE_JAM ?? '0');   // gate harus set warna N jam beruntun
 const TREND = process.env.PMB_TREND ?? '';                  // 'searah' | 'lawan' — filter arah trend hari
+const GATE_WAJIB = process.env.PMB_GATE === '1';            // MA 1H wajib searah saat entry (riset docs/50)
+const MA15_WAJIB = process.env.PMB_MA15 === '1';            // MA 15m (25/99) wajib searah saat entry (riset docs/50)
 const WIB = 7 * 3_600_000;
 const wib = (ms: number) => new Date(ms + WIB).toISOString().slice(5, 16).replace('T', ' ');
 
@@ -105,6 +107,15 @@ async function uji(simbol: string): Promise<void> {
       if (!searah) continue;
       const setup = detectSetup(c.slice(0, i + 1), zones, sisi);
       if (!setup.valid || setup.candle2 !== kini.time) continue;
+      if (GATE_WAJIB && gate !== (sisi === 'LONG' ? 'HIJAU' : 'MERAH')) continue;
+      if (MA15_WAJIB) {
+        const closes15 = c.slice(0, i + 1).map((x) => x.close);
+        if (closes15.length < 99) continue;
+        const rata = (n: number) => closes15.slice(-n).reduce((acc, v) => acc + v, 0) / n;
+        const ma25x = rata(25); const ma99x = rata(99); const cl = closes15.at(-1) ?? Number.NaN;
+        const hijau15 = cl > ma99x && ma25x > ma99x; const merah15 = cl < ma99x && ma25x < ma99x;
+        if ((sisi === 'LONG' && !hijau15) || (sisi === 'SHORT' && !merah15)) continue;
+      }
       const tiket = computeTicket(c.slice(0, i + 1), zones, sisi, kini.close);
       if (!tiket?.actionable) continue;
       if (C2_MARGIN > 0 && setup.candle1) {

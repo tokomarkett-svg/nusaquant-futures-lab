@@ -49,6 +49,18 @@ test('tiket long: entry = close candle 2, stop = buntut candle 1, target = 2R, u
   assert.equal(ticket.warnings.length, 0);
 });
 
+test('candle 2 induk: close belum merebut pintu → tidak layak entri', () => {
+  const candles: Candle[] = [
+    mk(0, 101, 101.5, 100.4, 101.2),  // di luar ruangan (di atas pintu 100)
+    mk(1, 101, 101.2, 99.8, 100.5),   // X: low 99.8 menusuk pintu 100
+    mk(2, 99.0, 99.8, 96.0, 99.6),    // C1: low 96 di pita (95..100), buntut 5x badan, badan terlihat, close paruh atas
+    mk(3, 99.6, 99.95, 99.5, 99.9),   // C2: tembus puncak C1 (99.8) TAPI belum capai pintu (100) → DITOLAK
+  ];
+  const setup = detectSetup(candles, zones, 'LONG');
+  assert.equal(setup.valid, false);
+  assert.match(setup.notes.join(' '), /C2 tidak layak: close belum merebut kembali garis pintu/);
+});
+
 test('opsi riset (PMB_STOP_MODE=batal): stop pindah ke garis batal', () => {
   process.env.PMB_STOP_MODE = 'batal';
   try {

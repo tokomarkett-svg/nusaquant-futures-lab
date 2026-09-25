@@ -231,6 +231,18 @@ export function detectSetup(candles: Candle[], zones: Zones, side: Side): SetupM
   }
 
   const candle2 = bars[c2Index];
+  // KUALITAS C2 — candle 2 adalah "induk": dari dia kelihatan layak/tidaknya entri (docs/50).
+  const merebutPintu = side === 'LONG' ? candle2.close > zone.pintu : candle2.close < zone.pintu;
+  const c2Range = Math.max(1e-12, candle2.high - candle2.low);
+  const c2ParuhLuar = side === 'LONG'
+    ? (candle2.close - candle2.low) / c2Range >= 0.5
+    : (candle2.high - candle2.close) / c2Range >= 0.5;
+  if (!merebutPintu || !c2ParuhLuar) {
+    notes.push(!merebutPintu
+      ? `C2 tidak layak: close belum merebut kembali garis pintu (${zone.pintu.toPrecision(6)}) — tembusannya belum berkuasa.`
+      : 'C2 tidak layak: close tidak di paruh luar candle-nya (buntut lawan masih panjang) — tenaga tembus lemah.');
+    return { side, x: x.time, candle1: c1.time, candle2: candle2.time, staleBars, valid: false, notes, ...empty };
+  }
   const entry = candle2.close;
   const stop = side === 'LONG' ? c1.low : c1.high;
   const riskDistance = Math.abs(entry - stop);
