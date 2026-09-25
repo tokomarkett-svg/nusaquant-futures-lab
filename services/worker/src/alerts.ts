@@ -210,10 +210,34 @@ export async function runAlertCycle(store: ReturnType<typeof createAlertStore>, 
   return { scanned: rows.length, sent, messages };
 }
 
+/** Pesan sapa saat worker menyala — bukti cepat bahwa token & chat id sudah benar. */
+export function buildStartupText(): string {
+  return [
+    '✅ <b>NusaQuant alert aktif</b>',
+    '',
+    'Bot memantau seluruh pasar USDT dengan sistem pintu–manis–batal.',
+    'Yang akan kamu terima:',
+    '🔔 BEL PINTU — harga menyentuh pintu & gate searah',
+    '🎯 TIKET SIAP — entry, stop, target 2R, ukuran coin',
+    '⚠️ JANGAN EKSEKUSI — tiket muncul tapi gate melawan',
+    '',
+    'Ingat: 1% risiko · maks 2 trade/hari · stop sebelum entry.',
+  ].join('\n');
+}
+
 export async function watchAlerts(): Promise<void> {
   const store = createAlertStore();
   const pollMs = Math.max(Number(process.env.ALERT_POLL_MS ?? 120_000), 60_000);
-  console.log(JSON.stringify({ alerts: true, watch: true, pollMs, hasToken: Boolean(process.env.TELEGRAM_BOT_TOKEN), at: new Date().toISOString() }));
+  const hasToken = Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID);
+  console.log(JSON.stringify({ alerts: true, watch: true, pollMs, hasToken, at: new Date().toISOString() }));
+  if (hasToken) {
+    try {
+      await sendTelegram(buildStartupText());
+      console.log(JSON.stringify({ alerts: true, startupMessage: 'sent', at: new Date().toISOString() }));
+    } catch (error) {
+      console.error('[alerts] gagal kirim pesan sapa:', error instanceof Error ? error.message : error);
+    }
+  }
   for (;;) {
     try {
       const result = await runAlertCycle(store);

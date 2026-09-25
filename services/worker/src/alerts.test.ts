@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildBellText, buildTicketText, collectAlertsForCandidate, createAlertStore, sendTelegram, type AlertCandidate } from './alerts.ts';
+import { buildBellText, buildStartupText, buildTicketText, collectAlertsForCandidate, createAlertStore, sendTelegram, type AlertCandidate } from './alerts.ts';
 import type { SetupMarkers, Ticket } from '@nusaquant/core';
 
 const setupNoC1: SetupMarkers = {
@@ -76,6 +76,13 @@ test('bel pintu tidak dikirim kalau gate belum searah', () => {
   const store = createAlertStore();
   const misaligned: AlertCandidate = { ...candidateBell, gate: 'MERAH', gateAlign: false };
   assert.equal(collectAlertsForCandidate(misaligned, store).length, 0);
+});
+
+test('pesan sapa startup memuat label aktif dan aturan risiko', () => {
+  const text = buildStartupText();
+  assert.match(text, /alert aktif/);
+  assert.match(text, /BEL PINTU/);
+  assert.match(text, /1% risiko/);
 });
 
 test('tanpa token, pengiriman jatuh ke mode DRY RUN (tidak melempar error)', async () => {
