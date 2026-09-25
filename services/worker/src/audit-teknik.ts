@@ -42,6 +42,9 @@ async function audit(symbol: string): Promise<void> {
   console.log(`LIVE: harga ${f(last)} · candle 15m terakhir ditutup ${umurMenit} mnt lalu (wajib ≤45)`);
   console.log(`[1] Likuiditas: ${f(vol / 1e6, 1)} jt ≥ ${MIN_QUOTE_VOLUME / 1e6} jt → ${vol >= MIN_QUOTE_VOLUME ? 'LOLOS' : 'GAGAL'}`);
   if (!zones) { console.log('zona nihil'); return; }
+  const mulaiHariWib = Math.floor((Date.now() - 17 * 3_600_000) / 86_400_000) * 86_400_000 + 17 * 3_600_000;
+  const openHariIni = (m15.find((c) => c.time >= mulaiHariWib) ?? m15[0]).open;
+  console.log(`[1b] Arah hari (langkah 1 pelajaran): harga ${f(last)} vs open hari ini ${f(openHariIni)} → hari ${last >= openHariIni ? 'NAIK (hanya LONG)' : 'TURUN (hanya SHORT)'}`);
   console.log(`[2] Range 24j: ${f(zones.rangePct, 1)}% ≥ ${MIN_RANGE_PCT}% → ${zones.rangePct >= MIN_RANGE_PCT ? 'LOLOS' : 'GAGAL'}`);
   console.log(`[3] Garis (0.705/0.786/0.886) LONG : pintu ${f(zones.long.pintu)} manis ${f(zones.long.manis)} batal ${f(zones.long.batal)}`);
   console.log(`    Garis (0.705/0.786/0.886) SHORT: pintu ${f(zones.short.pintu)} manis ${f(zones.short.manis)} batal ${f(zones.short.batal)}`);

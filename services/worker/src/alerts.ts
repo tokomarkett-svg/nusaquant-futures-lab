@@ -296,6 +296,15 @@ export async function scanAlertCandidates(client: BinancePublicMarketDataClient,
         const insideLong = ticker.last <= zones.long.pintu && ticker.last >= zones.long.batal;
         const insideShort = ticker.last >= zones.short.pintu && ticker.last <= zones.short.batal;
         const side: Side = insideLong || (Math.abs(distLong) <= Math.abs(distShort) && distLong >= -0.5) ? 'LONG' : 'SHORT';
+        // LANGKAH 1 pelajaran pemilik: TENTUKAN ARAH HARI DULU.
+        // Hari NAIK = harga sekarang di atas OPEN hari ini (tengah malam WIB) → hanya LONG.
+        // Hari TURUN = di bawah open → hanya SHORT.
+        // Insiden MINA 25/9: hari turun −6% tapi mesin suruh LONG → rugi nyata. Aturan ini mencegahnya.
+        const mulaiHariWib = Math.floor((now - 17 * 3_600_000) / 86_400_000) * 86_400_000 + 17 * 3_600_000;
+        const candleHariIni = m15.filter((c) => c.time >= mulaiHariWib);
+        const openHariIni = (candleHariIni[0] ?? m15[0]).open;
+        const hariNaik = ticker.last >= openHariIni;
+        if ((side === 'LONG' && !hariNaik) || (side === 'SHORT' && hariNaik)) return null;
         const gateAlign = (side === 'LONG' && gate === 'HIJAU') || (side === 'SHORT' && gate === 'MERAH');
         const setup = detectSetup(m15 as Candle[], zones, side);
         const ticket = computeTicket(m15 as Candle[], zones, side, ticker.last);
