@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildBellText, buildStartupText, buildTicketText, collectAlertsForCandidate, createAlertStore, describeTelegramConfig, discoverChatFromUpdates, explainTelegramError, sendTelegram, type AlertCandidate } from './alerts.ts';
+import { buildBellText, buildStartupText, buildTicketText, collectAlertsForCandidate, createAlertStore, describeTelegramConfig, discoverChatFromUpdates, explainTelegramError, resolveAlertMode, sendTelegram, type AlertCandidate } from './alerts.ts';
 import type { SetupMarkers, Ticket } from '@nusaquant/core';
 
 const setupNoC1: SetupMarkers = {
@@ -162,4 +162,30 @@ test('penemu chat id: mengabaikan grup & aman saat belum ada percakapan', async 
     fetchImpl: (async () => ({ ok: true, status: 200, json: async () => ({ ok: true, result: [] }) }) as unknown as Response) as typeof fetch,
   });
   assert.equal(empty, null);
+});
+
+test('mode notifikasi: semua / tiketsiap / tiketsemua berperilaku sesuai pilihan', () => {
+  assert.equal(resolveAlertMode(undefined), 'semua');
+  assert.equal(resolveAlertMode('TIKETSIAP'), 'tiketsiap');
+  assert.equal(resolveAlertMode(' tiket-semua '), 'tiketsemua');
+  assert.equal(resolveAlertMode('ngawur'), 'semua', 'nilai tak dikenal kembali ke default');
+
+  const siap: AlertCandidate = { ...candidateTicket, gate: 'HIJAU', gateAlign: true };
+  const tanpaGate: AlertCandidate = { ...candidateTicket, gate: 'MERAH', gateAlign: false };
+
+  // mode semua: bel pintu boleh, tiket apa pun boleh
+  const storeAll = createAlertStore();
+  assert.equal(collectAlertsForCandidate(candidateBell, storeAll, { mode: 'semua' }).length, 1);
+  assert.equal(collectAlertsForCandidate(tanpaGate, storeAll, { mode: 'semua' })[0].kind, 'TIKET_TANPA_GATE');
+
+  // mode tiketsiap: hanya tiket gate searah, tanpa bel, tanpa peringatan
+  const storeSiap = createAlertStore();
+  assert.equal(collectAlertsForCandidate(candidateBell, storeSiap, { mode: 'tiketsiap' }).length, 0, 'bel pintu tidak dikirim');
+  assert.equal(collectAlertsForCandidate(tanpaGate, storeSiap, { mode: 'tiketsiap' }).length, 0, 'tiket tanpa gate tidak dikirim');
+  assert.equal(collectAlertsForCandidate(siap, storeSiap, { mode: 'tiketsiap' }).length, 1);
+
+  // mode tiketsemua: tiket apa pun, tanpa bel
+  const storeTiket = createAlertStore();
+  assert.equal(collectAlertsForCandidate(candidateBell, storeTiket, { mode: 'tiketsemua' }).length, 0);
+  assert.equal(collectAlertsForCandidate(tanpaGate, storeTiket, { mode: 'tiketsemua' }).length, 1);
 });

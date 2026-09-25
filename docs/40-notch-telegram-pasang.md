@@ -32,6 +32,16 @@ Satu setup tidak dikirim dua kali (ada dedupe).
 Pesan pertama datang saat ada kandidat layak (bisa beberapa menit, bisa beberapa jam — pasar yang menentukan).
 Kalau ingin bukti cepat: kirim pesan apa pun ke bot-mu — bot hanya membalas kalau kita pasang handler, jadi tidak ada balasan; yang benar adalah menunggu log `alerts: scanned … sent …`.
 
+## Pilihan mode notifikasi (variabel `ALERT_MODE`)
+| Nilai | Yang dikirim | Cocok untuk |
+|---|---|---|
+| `semua` (default) | 🔔 bel pintu + 🎯 tiket siap + ⚠️ peringatan gate | Masa belajar: melihat bagaimana setup tumbuh |
+| `tiketsiap` | **hanya 🎯 tiket siap** (gate searah, bisa dieksekusi) | Eksekusi uang sungguhan — paling tenang |
+| `tiketsemua` | semua tiket tanpa bel pintu | Pantau tanpa gangguan bel |
+
+Cara ganti: Railway → Variables → tambah `ALERT_MODE` = `tiketsiap` → Save.
+Perbandingan tanggal: **tiket terakhir** = setup terbaru. Kalau tiket menunjukkan candle 2 dari beberapa candle lalu → sudah basi (aturan anti-nyangkut).
+
 ## Catatan keamanan
 - Token = kunci kirim pesan. Kalau bocor, orang bisa mengirim pesan seolah dari bot kita (tidak bisa menyentuh dana).
 - Tidak ada akses Binance, tidak ada API key, tidak ada perintah trading dari Telegram.

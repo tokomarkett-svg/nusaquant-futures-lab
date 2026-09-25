@@ -25,6 +25,21 @@ export type AlertCandidate = {
 
 export type AlertMessage = { key: string; kind: 'X' | 'TIKET' | 'TIKET_TANPA_GATE'; text: string };
 
+/**
+ * Mode notifikasi:
+ *  semua      → bel pintu + tiket siap + peringatan gate (default, untuk belajar)
+ *  tiketsiap  → HANYA tiket yang gate-nya searah & bisa dieksekusi (paling tenang, untuk real)
+ *  tiketsemua → semua tiket (tanpa bel pintu)
+ */
+export type AlertMode = 'semua' | 'tiketsiap' | 'tiketsemua';
+
+export function resolveAlertMode(value = process.env.ALERT_MODE): AlertMode {
+  const normalized = (value ?? '').trim().toLowerCase();
+  if (normalized === 'tiketsiap' || normalized === 'tiket-siap') return 'tiketsiap';
+  if (normalized === 'tiketsemua' || normalized === 'tiket-semua') return 'tiketsemua';
+  return 'semua';
+}
+
 /** Penyimpan sederhana agar satu setup tidak dikirim berulang-ulang. */
 export function createAlertStore() {
   const seen = new Set<string>();
@@ -78,13 +93,14 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket): stri
 export function collectAlertsForCandidate(
   candidate: AlertCandidate,
   store: ReturnType<typeof createAlertStore>,
-  options: { bellAgeBars?: number } = {},
+  options: { bellAgeBars?: number; mode?: AlertMode } = {},
 ): AlertMessage[] {
   const messages: AlertMessage[] = [];
   const bellAgeBars = options.bellAgeBars ?? 1;
+  const mode = options.mode ?? resolveAlertMode();
 
   // Bel pintu hanya dikirim kalau gate sudah searah (aturan: gate dulu, baru pintu).
-  if (candidate.gateAlign && candidate.setup.x !== null && candidate.setup.candle1 === null && candidate.setup.staleBars !== null && candidate.setup.staleBars <= bellAgeBars) {
+  if (mode === 'semua' && candidate.gateAlign && candidate.setup.x !== null && candidate.setup.candle1 === null && candidate.setup.staleBars !== null && candidate.setup.staleBars <= bellAgeBars) {
     const key = `${candidate.symbol}:${candidate.side}:X:${candidate.setup.x}`;
     if (!store.has(key)) messages.push({ key, kind: 'X', text: buildBellText(candidate) });
   }
@@ -92,11 +108,9 @@ export function collectAlertsForCandidate(
   if (candidate.ticket && candidate.ticket.actionable && candidate.setup.candle2 !== null) {
     const key = `${candidate.symbol}:${candidate.side}:TIKET:${candidate.setup.candle2}`;
     if (!store.has(key)) {
-      messages.push({
-        key,
-        kind: candidate.gateAlign ? 'TIKET' : 'TIKET_TANPA_GATE',
-        text: buildTicketText(candidate, candidate.ticket),
-      });
+      const kind = candidate.gateAlign ? 'TIKET' : 'TIKET_TANPA_GATE';
+      const allowed = mode === 'semua' || (mode === 'tiketsiap' && kind === 'TIKET') || mode === 'tiketsemua';
+      if (allowed) messages.push({ key, kind, text: buildTicketText(candidate, candidate.ticket) });
     }
   }
 
@@ -258,14 +272,14 @@ export async function scanAlertCandidates(client: BinancePublicMarketDataClient,
 export async function runAlertCycle(
   store: ReturnType<typeof createAlertStore>,
   client?: BinancePublicMarketDataClient,
-  options: { chatId?: string } = {},
+  options: { chatId?: string; mode?: AlertMode } = {},
 ): Promise<{ scanned: number; sent: number; messages: AlertMessage[] }> {
   const market = client ?? new BinancePublicMarketDataClient({ baseUrl: process.env.BINANCE_BASE_URL ?? DEFAULT_BINANCE_BASE_URL });
   const rows = await scanAlertCandidates(market);
   const messages: AlertMessage[] = [];
   for (const row of rows) {
     if (!row.gateAlign && row.setup.candle2 === null) continue; // hemat: gate belum searah & belum ada paket = tidak ada yang dikabarkan
-    messages.push(...collectAlertsForCandidate(row, store));
+    messages.push(...collectAlertsForCandidate(row, store, { mode: options.mode }));
   }
   let sent = 0;
   for (const message of messages) {
@@ -298,6 +312,7 @@ export function buildStartupText(): string {
 export async function watchAlerts(): Promise<void> {
   const store = createAlertStore();
   const pollMs = Math.max(Number(process.env.ALERT_POLL_MS ?? 120_000), 60_000);
+  const mode = resolveAlertMode();
   const config = describeTelegramConfig();
   const maskId = (value: string) => (value.length <= 4 ? '****' : `${value.slice(0, 2)}…${value.slice(-2)} (${value.length} digit)`);
   let effectiveChatId = (process.env.TELEGRAM_CHAT_ID ?? '').trim();
@@ -322,7 +337,7 @@ export async function watchAlerts(): Promise<void> {
   }
 
   const hasToken = Boolean(config.tokenPresent && effectiveChatId);
-  console.log(JSON.stringify({ alerts: true, watch: true, pollMs, hasToken, chatIdMasked: effectiveChatId ? maskId(effectiveChatId) : null, config, at: new Date().toISOString() }));
+  console.log(JSON.stringify({ alerts: true, watch: true, pollMs, mode, hasToken, chatIdMasked: effectiveChatId ? maskId(effectiveChatId) : null, config, at: new Date().toISOString() }));
   if (!hasToken) {
     console.warn('[alerts] token/chat id belum lengkap → mode DRY RUN (pesan hanya ditulis di log). Pesan sapa akan dicoba lagi setiap siklus setelah variabel diisi.');
   }
@@ -340,7 +355,7 @@ export async function watchAlerts(): Promise<void> {
           console.error('[alerts] diagnosa:', JSON.stringify(describeTelegramConfig()));
         }
       }
-      const result = await runAlertCycle(store, undefined, { chatId: effectiveChatId });
+      const result = await runAlertCycle(store, undefined, { chatId: effectiveChatId, mode });
       console.log(JSON.stringify({ alerts: true, scanned: result.scanned, sent: result.sent, seen: store.size(), startupSent, at: new Date().toISOString() }));
     } catch (error) {
       console.error('[alerts]', error instanceof Error ? error.message : error);
