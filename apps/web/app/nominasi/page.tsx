@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import PapanNominasi from './PapanNominasi';
+import MejaPaper from './MejaPaper';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +37,9 @@ export default function NominasiPage() {
             </div>
           </div>
           <PapanNominasi />
+          <div style={{ marginTop: 12 }}>
+            <MejaPaper />
+          </div>
         </main>
       </div>
     </div>

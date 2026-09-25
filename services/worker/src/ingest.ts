@@ -5,6 +5,7 @@ import { createWorkerSupabaseClient } from './supabase.ts';
 import { watchResearchJobs } from './research-jobs.ts';
 import { watchRadar } from './radar.ts';
 import { watchAlerts } from './alerts.ts';
+import { watchDesk } from './desk.ts';
 
 export interface MarketCandleRow {
   symbol: string;
@@ -111,6 +112,7 @@ async function watch(): Promise<void> {
   if (process.env.RUN_RESEARCH_JOBS === 'true') tasks.push(watchResearchJobs());
   if (process.env.RUN_RADAR === 'true') tasks.push(watchRadar());
   if (process.env.RUN_ALERTS === 'true') tasks.push(watchAlerts());
+  if (process.env.RUN_DESK === 'true') tasks.push(watchDesk());
   await Promise.all(tasks);
 }
 
