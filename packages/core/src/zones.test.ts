@@ -88,3 +88,15 @@ test('tiket basi: candle 2 > 3 candle lalu MEMATIKAN actionable (kasus ALLO 16 c
   assert.equal(basi.actionable, false, 'tiket umur 16 candle tidak boleh actionable');
   assert.match(basi.warnings.join(' '), /tiket dianggap basi/);
 });
+test('zona kena batal: tutup di luar garis batal mematikan sisi itu, koin tidak dihukum', () => {
+  // candle terakhir ditutup 94.5 — di bawah garis batal long (95) → sisi LONG mati
+  const menembus = [...longCandles.slice(0, -1), mk(longCandles.length - 1, 96, 96.2, 94.2, 94.5)];
+  const longMati = detectSetup(menembus, zones, 'LONG');
+  assert.equal(longMati.valid, false);
+  assert.equal(longMati.x, null, 'X lama ikut gugur — zona sudah batal');
+  assert.match(longMati.notes.join(' '), /BATAL/);
+
+  // zona long batal tidak membunuh sisi SHORT (cermin: 94.5 masih di dalam untuk short)
+  const shortSisa = detectSetup(menembus, zones, 'SHORT');
+  assert.equal(/BATAL/.test(shortSisa.notes.join(' ')), false, 'sisi short tidak ikut mati');
+});

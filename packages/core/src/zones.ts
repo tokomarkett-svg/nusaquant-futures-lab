@@ -136,6 +136,18 @@ export function detectSetup(candles: Candle[], zones: Zones, side: Side): SetupM
   const bars = candles.slice(-TOUCH_EXPIRY_CANDLES * 4);
   const empty = { entry: null, stop: null, riskDistance: null };
 
+  // Aturan batal: candle TERTUTUP terakhir di luar garis batal → zona sisi ini MATI.
+  // Tidak menghukum koinnya: begitu High/Low 24 jam bergulir, zona baru tergambar dan sisi ini dinilai lagi.
+  const terakhir = bars.at(-1);
+  const zonaBatal = terakhir ? (side === 'LONG' ? terakhir.close < zone.batal : terakhir.close > zone.batal) : false;
+  if (zonaBatal) {
+    return {
+      side, x: null, candle1: null, candle2: null, staleBars: null, valid: false,
+      notes: [`zona ${side} kena BATAL: candle tertutup di luar garis batal (${side === 'LONG' ? 'di bawah' : 'di atas'} ${zone.batal.toPrecision(6)}) — sisi ini mati sampai zona baru tergambar (High/Low 24j bergeser)`],
+      ...empty,
+    };
+  }
+
   let xIndex: number | null = null;
   for (let index = bars.length - 1; index >= 1; index -= 1) {
     const candle = bars[index];
