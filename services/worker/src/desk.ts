@@ -364,7 +364,14 @@ export async function runDeskCycle(deps: DeskCycleDeps): Promise<DeskCycleResult
 
   // 1) awasi posisi terbuka lebih dulu — inilah bagian yang menjaga modal.
   for (const position of open) {
-    const candles = await deps.market.getKlines({ symbol: position.symbol, interval: '15m', limit: 300 });
+    let candles: Awaited<ReturnType<typeof deps.market.getKlines>>;
+    try {
+      candles = await deps.market.getKlines({ symbol: position.symbol, interval: '15m', limit: 300 });
+    } catch (error) {
+      console.error(`[desk] data ${position.symbol} gagal — posisi dilewati siklus ini:`, error instanceof Error ? error.message : error);
+      continue;
+    }
+    if (!candles.length) { console.error(`[desk] data ${position.symbol} kosong — dilewati`); continue; }
     const after = candlesAfterEntry(candles as Candle[], Date.parse(position.openedAt));
     const evaluation = evaluateExit(position, after);
     if (evaluation.outcome === 'OPEN' || evaluation.r === null || evaluation.exitPrice === null) continue;

@@ -23,7 +23,7 @@ const ticket: Ticket = {
 };
 
 const candidateBell: AlertCandidate = { symbol: 'ONTUSDT', side: 'LONG', priceNow: 0.05771, gate: 'HIJAU', gateAlign: true, setup: setupNoC1, ticket: null };
-const candidateTicket: AlertCandidate = { symbol: 'RUNEUSDT', side: 'LONG', priceNow: 101.3, gate: 'HIJAU', gateAlign: true, setup: setupTicket, ticket };
+const candidateTicket: AlertCandidate = { symbol: 'RUNEUSDT', side: 'LONG', priceNow: 101.3, gate: 'HIJAU', gateAlign: true, setup: setupTicket, ticket, garis: { pintu: 100.5, manis: 100.1, batal: 99.6 } };
 
 test('bel pintu: hanya dikirim untuk X yang masih segar', () => {
   const store = createAlertStore();
@@ -49,6 +49,9 @@ test('tiket siap: pesannya memuat entry, stop, target, ukuran, dan pengingat ris
 
   const denganTautan = buildTicketText(candidateTicket, ticket, 'https://papan.example.app');
   assert.match(denganTautan, /https:\/\/papan\.example\.app\/nominasi\/RUNEUSDT/);
+  assert.match(text, /pintu 100\.50/);
+  assert.match(text, /batal 99\.60/);
+  assert.match(text, /Lahir \d{2}:\d{2} WIB/);
 
   const basi = buildTicketText(candidateTicket, { ...ticket, actionable: false, chaseRisk: true, warnings: ['harga sudah berjalan 0.8R — jangan dikejar'] });
   assert.match(basi, /TIKET BASI — jangan dikejar/);

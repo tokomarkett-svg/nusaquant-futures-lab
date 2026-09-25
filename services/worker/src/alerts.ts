@@ -21,6 +21,8 @@ export type AlertCandidate = {
   gateAlign: boolean;
   setup: SetupMarkers;
   ticket: Ticket | null;
+  /** Garis pintu-manis-batal sisi kandidat (zona 24 jam saat dipindai). */
+  garis?: { pintu: number; manis: number; batal: number };
 };
 
 export type AlertMessage = { key: string; kind: 'X' | 'TIKET' | 'TIKET_TANPA_GATE'; text: string };
@@ -70,6 +72,12 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket, papan
   const digits = digitsFor(ticket.entry);
   const format = (value: number) => value.toFixed(digits);
   const tautanChart = papanUrl ? `\n🔎 Chart live: ${papanUrl}/nominasi/${candidate.symbol}` : '';
+  const garisText = candidate.garis
+    ? `📏 Garis pas bot: pintu ${format(candidate.garis.pintu)} · manis ${format(candidate.garis.manis)} · batal ${format(candidate.garis.batal)}`
+    : '';
+  const lahirText = candidate.setup.candle2
+    ? `Lahir ${new Date(candidate.setup.candle2 + 7 * 3_600_000).toISOString().slice(11, 16)} WIB — tiket umurnya pendek, lirik yang baru`
+    : '';
 
   // Kartu SIAP ENTRI: hanya untuk tiket actionable + gate searah — angka entry jadi hero.
   if (candidate.gateAlign && ticket.actionable) {
@@ -83,6 +91,8 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket, papan
       `📦 Ukuran : ${ticket.sizeCoin.toLocaleString('id-ID', { maximumFractionDigits: 4 })} coin`,
       '',
       `Gate 1H ${candidate.gate} ✔ · stop ${ticket.riskPct.toFixed(2)}% dari entry · target 2R`,
+      garisText,
+      lahirText,
       ticket.warnings.length ? `⚠ ${ticket.warnings.join(' · ')}` : 'Semua pagar lolos — harga masih di dekat pintu.',
       '',
       `Salin persis ke Binance: <code>${orderSide} ${candidate.symbol} ${format(ticket.entry)} SL ${format(ticket.stop)} TP ${format(ticket.target)}</code>${tautanChart}`,
@@ -106,6 +116,7 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket, papan
       ? `⛔ Gate 1H = ${candidate.gate} — tidak searah dengan ${candidate.side}. Tunggu gate berbalik; tiket ini untuk latihan/jurnal saja.`
       : ticket.warnings.length ? `⚠ ${ticket.warnings.join(' · ')}` : 'Semua pagar lolos: gate searah, stop di sisi benar, harga belum lari.',
     '',
+    garisText,
     `Ingat: 1% risiko · maksimal 2 trade/hari · stop dipasang SEBELUM entry.${tautanChart}`,
   ].join('\n');
 }
@@ -282,6 +293,9 @@ export async function scanAlertCandidates(client: BinancePublicMarketDataClient,
           gateAlign,
           setup,
           ticket,
+          garis: side === 'LONG'
+            ? { pintu: zones.long.pintu, manis: zones.long.manis, batal: zones.long.batal }
+            : { pintu: zones.short.pintu, manis: zones.short.manis, batal: zones.short.batal },
           rangePct: zones.rangePct,
           quoteVolume: ticker.quoteVolume,
           dataAgeMin: Math.round(dataAgeMin),
