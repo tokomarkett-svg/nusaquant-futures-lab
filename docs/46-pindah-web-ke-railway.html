@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pindah web ke Railway — pamungkas</title>
+</head>
+<body style="margin:0;background:#f6faf7;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#16241b;line-height:1.55;">
+<div style="max-width:430px;margin:0 auto;padding:18px 14px 40px;">
+
+  <div style="background:#0e2a1d;color:#eafff3;border-radius:16px;padding:18px 16px;">
+    <div style="font-size:11px;letter-spacing:.12em;font-weight:800;color:#7ff0b0;">NUSAQUANT · KEPUTUSAN PAMUNGKAS</div>
+    <h1 style="margin:8px 0 4px;font-size:20px;line-height:1.3;">Web pindah ke RAILWAY — titik.</h1>
+    <div style="font-size:13px;color:#b8e6cc;">Bukti: papan darurat di domain Railway sudah terbuka di HP-mu (200 OK), sementara vercel.app naik-turun. Domain <b>*.up.railway.app</b> tidak ikut disapu provider-mu. Maka: semua tinggal di satu rumah.</div>
+  </div>
+
+  <!-- siapkan 4 nilai -->
+  <div style="background:#fff;border:1px solid #dcebe1;border-radius:16px;padding:16px;margin-top:12px;">
+    <div style="font-size:11px;font-weight:800;letter-spacing:.1em;color:#5c7a67;">LANGKAH 0 · SIAPKAN 4 NILAI (di catatan HP)</div>
+    <div style="margin-top:8px;font-size:13px;">
+      <div style="background:#f0f9f3;border-radius:10px;padding:9px 12px;margin-bottom:6px;"><b>WORKER_DATA_URL</b><br><code>https://nusaquantworker-production.up.railway.app</code></div>
+      <div style="background:#f0f9f3;border-radius:10px;padding:9px 12px;margin-bottom:6px;"><b>WORKER_EXEC_TOKEN</b><br><code>nq-exec-f3bb46e935c37bf593b061f8b2f0ef52f0dc</code></div>
+      <div style="background:#f0f9f3;border-radius:10px;padding:9px 12px;margin-bottom:6px;"><b>SUPABASE_URL</b> dan <b>SUPABASE_SERVICE_ROLE_KEY</b><br><span style="color:#3c5747;">→ salin nilainya dari Vercel: <b>Settings → Environment Variables</b> (tap ikon mata untuk melihat nilai). Atau dari Railway → worker → Variables (nama yang sama).</span></div>
+    </div>
+  </div>
+
+  <!-- buat service -->
+  <div style="background:#fff;border:1px solid #dcebe1;border-radius:16px;padding:16px;margin-top:12px;">
+    <div style="font-size:11px;font-weight:800;letter-spacing:.1em;color:#5c7a67;">LANGKAH 1 · BUAT LAYANAN WEB DI RAILWAY (±6 menit)</div>
+    <div style="margin-top:8px;font-size:13px;">
+      <div style="background:#f0f9f3;border-radius:10px;padding:10px 12px;margin-bottom:7px;"><b>1.</b> Railway → proyekmu → kanan-atas <b>+ New</b> → <b>GitHub Repo</b> → pilih <b>nusaquant-futures-lab</b> (repo yang sama dengan worker). <u>Jangan deploy dulu</u> — set dulu langkah 2–3.</div>
+      <div style="background:#f0f9f3;border-radius:10px;padding:10px 12px;margin-bottom:7px;"><b>2.</b> Klik layanan baru itu → <b>Settings</b> → cari <b>Build Command</b> → <b>Override</b> → isi:<br><code>npm install --no-audit --no-fund &amp;&amp; npm run build</code></div>
+      <div style="background:#f0f9f3;border-radius:10px;padding:10px 12px;margin-bottom:7px;"><b>3.</b> Masih di Settings → <b>Custom Start Command</b> → isi:<br><code>npm run start</code></div>
+      <div style="background:#f0f9f3;border-radius:10px;padding:10px 12px;margin-bottom:7px;"><b>4.</b> Tab <b>Variables</b> → tambah <b>4 variabel</b> dari Langkah 0 (nama &amp; nilai persis).</div>
+      <div style="background:#f0f9f3;border-radius:10px;padding:10px 12px;margin-bottom:7px;"><b>5.</b> <b>Settings → Networking → Generate Domain</b> → Simpan → catat alamat barumu: <code>web-production-xxxx.up.railway.app</code></div>
+      <div style="background:#eaf8ef;border:1px solid #c8e9d5;border-radius:10px;padding:10px 12px;"><b>6.</b> Tunggu Deploy <b>Success</b> (±4 menit) → buka alamat baru → <b>badge hijau FUTURES + kartu 🎯</b> = PINDAH BERES ✓</div>
+    </div>
+  </div>
+
+  <!-- setelah pindah -->
+  <div style="background:#fff;border:1px solid #dcebe1;border-radius:16px;padding:16px;margin-top:12px;">
+    <div style="font-size:11px;font-weight:800;letter-spacing:.1em;color:#5c7a67;">LANGKAH 2 · RAPIHKAN (2 menit)</div>
+    <div style="margin-top:8px;font-size:13px;">
+      <div style="background:#f0f9f3;border-radius:10px;padding:10px 12px;margin-bottom:7px;">📱 Buka alamat BARU di Chrome → <b>⋮ → Install app</b> → ikon NusaQuant di layar utama otomatis pakai domain yang aman ini.</div>
+      <div style="background:#f0f9f3;border-radius:10px;padding:10px 12px;margin-bottom:7px;">🧪 Uji tombol kuning <b>ENTRI DEMO (TESTNET)</b> di kartu 🎯 — semuanya sudah tersambung di Railway, tidak ada yang perlu diubah.</div>
+      <div style="background:#fdeeee;border:1px solid #efc9c9;border-radius:10px;padding:10px 12px;">🛏️ Vercel biarkan tidur (hapus boleh, nanti saja). Jangan dipakai lagi sebagai alamat utama.</div>
+    </div>
+  </div>
+
+  <!-- fallback -->
+  <div style="background:#fff;border:1px solid #dcebe1;border-radius:16px;padding:16px;margin-top:12px;">
+    <div style="font-size:11px;font-weight:800;letter-spacing:.1em;color:#5c7a67;">JARING PENGAMAN YANG SUDAH JALAN</div>
+    <div style="margin-top:8px;font-size:13px;color:#3c5747;">Selama membangun: <b>Notification Telegram tetap hidup</b> · <b>papan darurat</b> <code>nusaquantworker-production.up.railway.app/papan</code> tetap bisa dibuka kapan pun · meja paper tetap menjaga posisi. Tidak ada satu detik pun sistem buta.</div>
+  </div>
+
+  <div style="text-align:center;color:#5c7a67;font-size:12px;margin-top:14px;">Kalau ada layar yang beda dari panduan ini — screenshot, kutuntun dari titik itu 🤝</div>
+
+</div>
+</body>
+</html>
