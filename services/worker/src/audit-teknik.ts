@@ -45,6 +45,11 @@ async function audit(symbol: string): Promise<void> {
   const mulaiHariWib = Math.floor((Date.now() - 17 * 3_600_000) / 86_400_000) * 86_400_000 + 17 * 3_600_000;
   const openHariIni = (m15.find((c) => c.time >= mulaiHariWib) ?? m15[0]).open;
   console.log(`[1b] Arah hari (langkah 1 pelajaran): harga ${f(last)} vs open hari ini ${f(openHariIni)} → hari ${last >= openHariIni ? 'NAIK (hanya LONG)' : 'TURUN (hanya SHORT)'}`);
+  const closes15 = m15.map((c) => c.close);
+  const rata15 = (n: number) => closes15.slice(-n).reduce((acc, v) => acc + v, 0) / n;
+  const ma25x = rata15(25); const ma99x = rata15(99); const close15 = closes15.at(-1) ?? Number.NaN;
+  const arah15 = close15 > ma99x && ma25x > ma99x ? 'HIJAU' : close15 < ma99x && ma25x < ma99x ? 'MERAH' : 'KUNING';
+  console.log(`[1c] MA 15m: close ${f(close15)} · MA25 ${f(ma25x)} · MA99 ${f(ma99x)} → ${arah15} (wajib searah sisi yang dicari)`);
   console.log(`[2] Range 24j: ${f(zones.rangePct, 1)}% ≥ ${MIN_RANGE_PCT}% → ${zones.rangePct >= MIN_RANGE_PCT ? 'LOLOS' : 'GAGAL'}`);
   console.log(`[3] Garis (0.705/0.786/0.886) LONG : pintu ${f(zones.long.pintu)} manis ${f(zones.long.manis)} batal ${f(zones.long.batal)}`);
   console.log(`    Garis (0.705/0.786/0.886) SHORT: pintu ${f(zones.short.pintu)} manis ${f(zones.short.manis)} batal ${f(zones.short.batal)}`);

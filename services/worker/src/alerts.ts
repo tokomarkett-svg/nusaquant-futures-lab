@@ -222,13 +222,12 @@ export async function discoverChatFromUpdates(
 }
 
 /**
- * Saklar utama notif Telegram. Default: BUNGKAM (PMB_NOTIF belum diset = tidak ada yang dikirim).
- * Alasan 25/9 malam: sinyal melawan arah hari bikin pemilik rugi nyata — semua notif dihentikan
- * sampai aturan arah-hari diuji data dan pemilik minta nyalakan lagi (Railway Variables: PMB_NOTIF=1).
+ * Saklar utama notif Telegram. Status: NYALA (pemilik menyalakan eksplisit 25/9 malam, setelah
+ * langkah arah-hari + MA 15m/1H cocok dipasang). Matikan kapan pun: Railway Variables PMB_NOTIF=0.
  * Tes yang menyuntik fetchImpl sendiri tidak terdampak.
  */
 export function notifDibungkam(options: { fetchImpl?: typeof fetch } = {}): boolean {
-  return process.env.PMB_NOTIF !== '1' && !options.fetchImpl;
+  return (process.env.PMB_NOTIF ?? '1') === '0' && !options.fetchImpl;
 }
 
 export async function sendTelegram(text: string, options: { token?: string; chatId?: string; fetchImpl?: typeof fetch } = {}): Promise<boolean> {
@@ -305,6 +304,16 @@ export async function scanAlertCandidates(client: BinancePublicMarketDataClient,
         const openHariIni = (candleHariIni[0] ?? m15[0]).open;
         const hariNaik = ticker.last >= openHariIni;
         if ((side === 'LONG' && !hariNaik) || (side === 'SHORT' && hariNaik)) return null;
+        // MA 15m juga wajib searah (pelajaran pemilik: jangan melawan MA — kalau trend short,
+        // tunggu harga kena PINTU SHORT walau sempat naik; bounce tanpa MA searah = jebakan).
+        if (m15.length >= 99) {
+          const closes15 = (m15 as Candle[]).map((c) => c.close);
+          const rata = (n: number) => closes15.slice(-n).reduce((acc, v) => acc + v, 0) / n;
+          const ma25x = rata(25); const ma99x = rata(99); const close15 = closes15.at(-1) ?? Number.NaN;
+          const hijau15 = close15 > ma99x && ma25x > ma99x;
+          const merah15 = close15 < ma99x && ma25x < ma99x;
+          if ((side === 'LONG' && !hijau15) || (side === 'SHORT' && !merah15)) return null;
+        }
         const gateAlign = (side === 'LONG' && gate === 'HIJAU') || (side === 'SHORT' && gate === 'MERAH');
         const setup = detectSetup(m15 as Candle[], zones, side);
         const ticket = computeTicket(m15 as Candle[], zones, side, ticker.last);
