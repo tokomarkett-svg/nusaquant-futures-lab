@@ -14,7 +14,8 @@
     "research:metrics": "RUN_RESEARCH_METRICS_BACKFILL=true node --import tsx src/metrics-backfill.ts",
     "research:local": "node --import tsx src/local-research.ts",
     "desk:dry": "node --import tsx src/desk-dry.ts",
-    "desk:diag": "node --import tsx src/desk-diag.ts"
+    "desk:diag": "node --import tsx src/desk-diag.ts",
+    "audit:teknik": "node --import tsx src/audit-teknik.ts"
   },
   "dependencies": {
     "@nusaquant/core": "0.1.0",
