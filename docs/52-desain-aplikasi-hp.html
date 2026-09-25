@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NusaQuant — Desain Aplikasi HP (Proposal UX v1)</title>
+<style>
+  :root{
+    --ink:#10231a; --muted:#5f7268; --paper:#f4f9f5; --panel:#ffffff; --line:#dfe9e1;
+    --green-dark:#0e2a1d; --mint:#7ff0b0; --mint-soft:#eaf8ef;
+    --amber:#ffc44d; --amber-soft:#fff6e2;
+    --red:#d64562; --red-soft:#fdeef1;
+    --ungu:#5b3fa8; --ungu-soft:#f1ecfb;
+    --biru:#2f6fd0; --biru-soft:#eaf1fc;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#e9f2ea;color:var(--ink);font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+  .wrap{max-width:1280px;margin:0 auto;padding:28px 18px 60px}
+  header.judul h1{font-size:30px;margin:0 0 6px;letter-spacing:-.5px}
+  header.judul p{margin:0;color:var(--muted);max-width:820px;line-height:1.55}
+  .langkah{display:inline-block;margin-top:10px;background:var(--ungu-soft);color:var(--ungu);border:1px solid #d9cdf2;font-weight:700;font-size:12.5px;padding:5px 12px;border-radius:999px}
+  h2.seksi{margin:46px 0 6px;font-size:21px;letter-spacing:-.3px}
+  p.sub{margin:0 0 18px;color:var(--muted);font-size:14px;line-height:1.5}
+  .baris-hp{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+  figure.hp{margin:0;width:330px}
+  figure.hp .ket{font-size:13px;color:var(--muted);line-height:1.5;margin-top:12px;padding:0 4px}
+  figure.hp .ket b{color:var(--ink)}
+  /* bingkai HP */
+  .ponsel{background:#0b1510;border-radius:38px;padding:10px;box-shadow:0 18px 40px rgba(14,42,29,.22)}
+  .layar{background:var(--paper);border-radius:30px;overflow:hidden;height:640px;display:flex;flex-direction:column;position:relative}
+  .statusbar{display:flex;justify-content:space-between;align-items:center;padding:8px 16px 2px;font-size:11px;font-weight:700;color:#31473b}
+  .appbar{display:flex;align-items:center;gap:8px;padding:8px 14px 10px}
+  .logo{width:30px;height:30px;border-radius:9px;background:var(--green-dark);color:var(--mint);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px}
+  .appbar .nama{font-weight:800;font-size:15px}
+  .appbar .sumber{margin-left:auto;font-size:10px;font-weight:800;color:#0d7a4b;background:var(--mint-soft);border:1px solid #bfe8d1;padding:3px 8px;border-radius:999px}
+  .isi{flex:1;overflow:hidden;padding:2px 12px 0}
+  /* tab bawah */
+  .tabbar{display:flex;background:#ffffff;border-top:1px solid var(--line);padding:7px 6px 12px}
+  .tab{flex:1;text-align:center;font-size:10px;font-weight:700;color:#8ba194}
+  .tab svg{display:block;margin:0 auto 3px}
+  .tab.aktif{color:var(--green-dark)}
+  .tab.aktif .bul{background:var(--mint-soft);border-radius:12px;padding:2px 10px;display:inline-block}
+  /* kartu umum */
+  .kartu{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px 13px;margin-bottom:10px}
+  .badge{display:inline-block;font-size:9.5px;font-weight:800;padding:2px 8px;border-radius:6px}
+  .b-long{background:var(--mint-soft);color:#0d7a4b;border:1px solid #bfe8d1}
+  .b-short{background:var(--red-soft);color:var(--red);border:1px solid #f3cdd6}
+  .b-siap{background:#3a2a06;color:var(--amber);border:1px solid #6b4d0a}
+  .b-beli{background:var(--amber-soft);color:#9a6b00;border:1px solid #ecd9a0}
+  .b-padam{background:#241214;color:#ff9db0;border:1px solid #5c2330}
+  .b-basi{background:#eef1f4;color:#5d6b76;border:1px solid #d4dde4}
+  .b-saham{background:var(--ungu-soft);color:var(--ungu);border:1px solid #d9cdf2}
+  .b-searah{background:var(--biru-soft);color:var(--biru);border:1px solid #c8dcf5}
+  .mono{font-family:ui-monospace,'DM Mono',Menlo,monospace}
+  .angka-besar{font-family:ui-monospace,'DM Mono',Menlo,monospace;font-weight:800}
+  /* kartu siap entri (hero) */
+  .hero{background:linear-gradient(160deg,#0e2a1d 0%,#123a28 70%,#155238 100%);color:#eafff4;border-radius:18px;padding:14px 14px 12px;margin-bottom:10px}
+  .hero .atas{display:flex;align-items:center;gap:7px}
+  .hero .simbol{font-weight:800;font-size:16px;letter-spacing:.3px}
+  .hero .jarak{margin-left:auto;font-size:10px;color:#9fd8bb}
+  .baris-entri{display:flex;align-items:baseline;gap:8px;margin:9px 0 2px}
+  .baris-entri .label{font-size:10px;color:#9fd8bb;font-weight:700}
+  .baris-entri .nilai{font-size:30px;font-weight:800;color:var(--mint);letter-spacing:.5px}
+  .gridst{display:flex;gap:8px;margin-top:8px}
+  .sel{flex:1;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:7px 9px}
+  .sel .s{font-size:9px;color:#9fd8bb;font-weight:700;letter-spacing:.4px}
+  .sel .v{font-size:14.5px;font-weight:800;margin-top:1px}
+  .tombol{display:block;text-align:center;border-radius:13px;padding:11px 0;font-weight:800;font-size:13.5px;margin-top:10px}
+  .t-hijau{background:var(--mint);color:#06281a}
+  .t-garis{border:1px solid rgba(255,255,255,.25);color:#dff7ea;margin-top:7px}
+  .umur{display:flex;justify-content:space-between;font-size:10px;color:#9fd8bb;margin-top:9px}
+  .polder{height:5px;background:rgba(255,255,255,.14);border-radius:99px;margin-top:4px;overflow:hidden}
+  .polder i{display:block;height:100%;width:34%;background:var(--amber);border-radius:99px}
+  /* baris koin papan */
+  .baris-koin{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px 11px;margin-bottom:8px}
+  .baris-koin .nm{font-weight:800;font-size:13.5px}
+  .baris-koin .harga{margin-left:auto;text-align:right}
+  .baris-koin .harga .h{font-size:13.5px;font-weight:800}
+  .baris-koin .harga .d{font-size:9.5px;color:var(--muted)}
+  .pita{height:4px;border-radius:99px;background:linear-gradient(90deg,#e8b4bd 0%,#f3ddab 55%,#bfe8d1 100%);position:relative;margin-top:6px}
+  .pita i{position:absolute;top:-3.5px;width:11px;height:11px;border-radius:99px;background:var(--green-dark);border:2px solid #fff}
+  .mini{font-size:9.5px;color:var(--muted);margin-top:5px}
+  /* chip filter */
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 10px}
+  .chip{font-size:10.5px;font-weight:700;padding:5px 11px;border-radius:999px;background:#fff;border:1px solid var(--line);color:var(--muted)}
+  .chip.on{background:var(--green-dark);color:#fff;border-color:var(--green-dark)}
+  /* ringkasan meja */
+  .meja{display:flex;gap:8px}
+  .meja .kot{flex:1;background:#fff;border:1px solid var(--line);border-radius:14px;padding:9px 10px;text-align:center}
+  .meja .kot .n{font-size:19px;font-weight:800}
+  .meja .kot .l{font-size:9px;color:var(--muted);font-weight:700;letter-spacing:.3px}
+  .notip{display:flex;gap:9px;background:#fff;border:1px solid var(--line);border-left:3px solid var(--amber);border-radius:14px;padding:10px 11px;margin-bottom:8px}
+  .notip.merah{border-left-color:var(--red)}
+  .notip.pucat{border-left-color:#c9d6cd;opacity:.72}
+  .notip .ico{font-size:16px}
+  .notip .jd{font-size:12px;font-weight:800}
+  .notip .isi-n{font-size:10.5px;color:var(--muted);margin-top:2px;line-height:1.45}
+  .jam{font-size:9px;color:#9db3a6;margin-top:4px}
+  /* seksi prinsip & alur */
+  .dua{display:flex;gap:26px;flex-wrap:wrap}
+  .kotak-prinsip{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px 20px;flex:1;min-width:300px}
+  .kotak-prinsip h3{margin:0 0 10px;font-size:15px}
+  .kotak-prinsip ol,.kotak-prinsip ul{margin:0;padding-left:20px;color:#33463c;font-size:13.5px;line-height:1.7}
+  .alur{display:flex;gap:0;flex-wrap:wrap;align-items:stretch}
+  .langkah-alur{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;width:210px;margin:0 10px 10px 0}
+  .langkah-alur .n{display:inline-block;background:var(--green-dark);color:var(--mint);font-weight:800;font-size:11px;border-radius:8px;padding:2px 9px;margin-bottom:6px}
+  .langkah-alur b{display:block;font-size:13px;margin-bottom:3px}
+  .langkah-alur span{font-size:11.5px;color:var(--muted);line-height:1.45;display:block}
+  footer{margin-top:40px;color:var(--muted);font-size:12px;line-height:1.6;border-top:1px solid var(--line);padding-top:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="judul">
+  <h1>NusaQuant — Desain Aplikasi HP</h1>
+  <p>Proposal tampilan &amp; alur pakai (UX) versi 1 untuk PWA di HP. Prinsipnya: <b>papan yang ada di web dipindah ke layar jempol</b> — kartu entri jadi bintang utamanya, sisanya jadi pendukung. Ini baru desain: <b>mesin, garis, dan aturan tidak disentuh sama sekali</b>.</p>
+  <span class="langkah">LANGKAH SEKARANG: review desain dulu → baru dibangun bertahap di aplikasi yang sudah terpasang</span>
+</header>
+
+<h2 class="seksi">1. Lima layar utama</h2>
+<p class="sub">Navigasi bawah 4 tab (jangkauan jempol). Semua angka penting ukurannya besar; kartu SIAP ENTRI selalu paling atas Beranda.</p>
+
+<div class="baris-hp">
+
+  <!-- LAYAR 1: BERANDA -->
+  <figure class="hp">
+    <div class="ponsel"><div class="layar">
+      <div class="statusbar"><span>23:45</span><span>▮▮▮ ⚡27</span></div>
+      <div class="appbar"><div class="logo">N</div><div class="nama">Beranda</div><div class="sumber">FUTURES ✔</div></div>
+      <div class="isi">
+        <div class="hero">
+          <div class="atas">
+            <span class="simbol">BCHUSDT</span>
+            <span class="badge b-short">SHORT</span>
+            <span class="badge b-siap">🎯 SIAP ENTRI</span>
+            <span class="jarak">X 20:00 · C1 20:15 · C2 20:30</span>
+          </div>
+          <div class="baris-entri"><span class="label">ENTRI</span><span class="nilai">341.20</span><span class="label">(SELL)</span></div>
+          <div class="gridst">
+            <div class="sel"><div class="s">SL (EKOR C1)</div><div class="v">348.05</div></div>
+            <div class="sel"><div class="s">TP 2R</div><div class="v">327.50</div></div>
+            <div class="sel"><div class="s">UKURAN</div><div class="v">0.0455</div></div>
+          </div>
+          <div class="umur"><span>Tiket lahir 20:30 WIB</span><span>umur 2/3 candle</span></div>
+          <div class="polder"><i></i></div>
+          <div class="tombol t-hijau">📋 SALIN ORDER — SELL BCHUSDT 341.20 SL 348.05 TP 327.50</div>
+          <div class="tombol t-garis">Lihat chart &amp; garis pintu</div>
+        </div>
+        <div class="mini" style="margin:0 2px 6px;font-weight:800;color:#33463c">🔔 BEL PINTU — nonton (belum sah)</div>
+        <div class="baris-koin"><div><span class="nm">AAOI</span> <span class="badge b-short">SHORT</span> <span class="badge b-saham">SAHAM</span></div><div class="harga"><div class="h">102.79</div><div class="d">X 16:00 · nunggu C1</div></div></div>
+        <div class="baris-koin"><div><span class="nm">RUNE</span> <span class="badge b-long">LONG</span></div><div class="harga"><div class="h">4.512</div><div class="d">X 22:15 · nunggu C1</div></div></div>
+      </div>
+      <div class="tabbar">
+        <div class="tab aktif"><span class="bul">🏠<br>Beranda</span></div>
+        <div class="tab">📊<br>Papan</div>
+        <div class="tab">💼<br>Posisi</div>
+        <div class="tab">📓<br>Meja</div>
+      </div>
+    </div></div>
+    <figcaption class="ket"><b>① BERANDA — "Satu layar, satu keputusan."</b> Kalau ada tiket sah: kartu gelap besar di atas, tombol SALIN sekali jempol. Di bawahnya bel pintu yang masih nonton. Kalau tidak ada tiket, kartu ini hilang dan diganti "Belum ada paket sah — nonton X koin".</figcaption>
+  </figure>
+
+  <!-- LAYAR 2: PAPAN -->
+  <figure class="hp">
+    <div class="ponsel"><div class="layar">
+      <div class="statusbar"><span>23:45</span><span>▮▮▮ ⚡27</span></div>
+      <div class="appbar"><div class="logo">N</div><div class="nama">Papan</div><div class="sumber">262 koin dipantau</div></div>
+      <div class="isi">
+        <div class="chips">
+          <span class="chip on">Semua</span><span class="chip">LONG</span><span class="chip">SHORT</span><span class="chip">Gate searah</span><span class="chip">🎯 Siap</span>
+        </div>
+        <div class="baris-koin">
+          <div style="flex:1">
+            <span class="nm">HOOD</span> <span class="badge b-long">LONG</span> <span class="badge b-saham">SAHAM</span> <span class="badge b-beli">MENYALA</span>
+            <div class="pita"><i style="left:58%"></i></div>
+            <div class="mini">harga di pita pintu–batal · X 21:30 · nunggu C1</div>
+          </div>
+          <div class="harga"><div class="h">119.25</div><div class="d">range 4.6%</div></div>
+        </div>
+        <div class="baris-koin">
+          <div style="flex:1">
+            <span class="nm">RUNE</span> <span class="badge b-long">LONG</span> <span class="badge b-beli">MENYALA</span>
+            <div class="pita"><i style="left:71%"></i></div>
+            <div class="mini">jarak ke pintu 0.4% · bel udah bunyi</div>
+          </div>
+          <div class="harga"><div class="h">4.512</div><div class="d">range 6.1%</div></div>
+        </div>
+        <div class="baris-koin">
+          <div style="flex:1">
+            <span class="nm">STX</span> <span class="badge b-short">SHORT</span> <span class="badge b-padam">💀 PADAM</span>
+            <div class="pita"><i style="left:9%"></i></div>
+            <div class="mini">zona kena BATAL — mati sampai zona baru</div>
+          </div>
+          <div class="harga"><div class="h">0.32580</div><div class="d">range 7.3%</div></div>
+        </div>
+        <div class="baris-koin" style="opacity:.65">
+          <div style="flex:1">
+            <span class="nm">DOGE</span> <span class="badge b-short">SHORT</span> <span class="badge b-basi">DISIMAK</span>
+            <div class="pita"><i style="left:23%"></i></div>
+            <div class="mini">X 16:00 basi · C1 belum sah (doji)</div>
+          </div>
+          <div class="harga"><div class="h">0.09789</div><div class="d">range 4.7%</div></div>
+        </div>
+        <div class="baris-koin" style="opacity:.65">
+          <div style="flex:1">
+            <span class="nm">AAOI</span> <span class="badge b-short">SHORT</span> <span class="badge b-saham">SAHAM</span> <span class="badge b-beli">MENYALA</span>
+            <div class="pita"><i style="left:64%"></i></div>
+            <div class="mini">X 16:00 · C1 belum sah (buntut 1.8×)</div>
+          </div>
+          <div class="harga"><div class="h">102.79</div><div class="d">range 4.0%</div></div>
+        </div>
+      </div>
+      <div class="tabbar">
+        <div class="tab">🏠<br>Beranda</div>
+        <div class="tab aktif"><span class="bul">📊<br>Papan</span></div>
+        <div class="tab">💼<br>Posisi</div>
+        <div class="tab">📓<br>Meja</div>
+      </div>
+    </div></div>
+    <figcaption class="ket"><b>② PAPAN — daftar nonton yang jujur.</b> Setiap koin punya <b>garis pita kecil</b>: titik gelap = posisi harga antara BATAL (kiri) dan PINTU (kanan). Badge konsisten dengan notif: MENYALA = harga di pita, 💀 PADAM = zona mati, abu = nonton. Chip ungu <b>SAHAM</b> mencegah "koin kok nggak ada di list".</figcaption>
+  </figure>
+
+  <!-- LAYAR 3: DETAIL KOIN -->
+  <figure class="hp">
+    <div class="ponsel"><div class="layar">
+      <div class="statusbar"><span>23:45</span><span>▮▮▮ ⚡27</span></div>
+      <div class="appbar"><div class="logo">N</div><div class="nama">RUNEUSDT</div><div class="sumber">FUTURES ✔</div></div>
+      <div class="isi">
+        <div class="chips"><span class="chip">5m</span><span class="chip on">15m</span><span class="chip">1H</span><span class="chip">4H</span></div>
+        <div class="kartu" style="padding:8px 6px 4px">
+          <svg viewBox="0 0 290 190" style="width:100%;display:block">
+            <line x1="8" y1="38" x2="282" y2="38" stroke="#ffc44d" stroke-width="1.6" stroke-dasharray="5 4"/>
+            <text x="10" y="33" font-size="9" font-weight="700" fill="#9a6b00">PINTU 4.435</text>
+            <line x1="8" y1="84" x2="282" y2="84" stroke="#2fae70" stroke-width="1.6" stroke-dasharray="5 4"/>
+            <text x="10" y="79" font-size="9" font-weight="700" fill="#2fae70">MANIS 4.281</text>
+            <line x1="8" y1="148" x2="282" y2="148" stroke="#d64562" stroke-width="1.6" stroke-dasharray="5 4"/>
+            <text x="10" y="143" font-size="9" font-weight="700" fill="#d64562">BATAL 4.052</text>
+            <g>
+              <line x1="30" y1="20" x2="30" y2="52" stroke="#1f7a4d" stroke-width="7" stroke-linecap="round"/>
+              <line x1="58" y1="30" x2="58" y2="66" stroke="#1f7a4d" stroke-width="7" stroke-linecap="round"/>
+              <line x1="86" y1="52" x2="86" y2="112" stroke="#1f7a4d" stroke-width="7" stroke-linecap="round"/>
+              <circle cx="86" cy="104" r="4" fill="#0e2a1d"/>
+              <line x1="114" y1="96" x2="114" y2="150" stroke="#1f7a4d" stroke-width="7" stroke-linecap="round"/>
+              <rect x="106" y="96" width="16" height="34" rx="3" fill="#7ff0b0" stroke="#1f7a4d"/>
+              <line x1="142" y1="70" x2="142" y2="120" stroke="#1f7a4d" stroke-width="7" stroke-linecap="round"/>
+              <rect x="134" y="70" width="16" height="40" rx="3" fill="#7ff0b0" stroke="#1f7a4d"/>
+              <line x1="170" y1="30" x2="170" y2="78" stroke="#1f7a4d" stroke-width="7" stroke-linecap="round"/>
+              <rect x="162" y="30" width="16" height="34" rx="3" fill="#7ff0b0" stroke="#1f7a4d"/>
+              <line x1="198" y1="24" x2="198" y2="60" stroke="#1f7a4d" stroke-width="7" stroke-linecap="round"/>
+              <line x1="226" y1="18" x2="226" y2="52" stroke="#1f7a4d" stroke-width="7" stroke-lincap="round"/>
+              <line x1="254" y1="22" x2="254" y2="58" stroke="#1f7a4d" stroke-width="7" stroke-linecap="round"/>
+            </g>
+            <text x="80" y="172" font-size="10" font-weight="800" fill="#0e2a1d">X</text>
+            <text x="137" y="176" font-size="10" font-weight="800" fill="#0d7a4b">1</text>
+            <text x="165" y="24" font-size="10" font-weight="800" fill="#0d7a4b">2 → ENTRI</text>
+          </svg>
+        </div>
+        <div class="kartu" style="border-left:3px solid var(--amber)">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <span class="badge b-siap">🎯 TIKET SAH</span><span class="badge b-searah">Gate 1H HIJAU · MA99 ✔</span>
+          </div>
+          <div class="mini" style="font-size:10.5px;margin-top:7px">Entri <b class="mono">4.512</b> · SL <b class="mono">4.398</b> (ekor C1) · TP <b class="mono">4.740</b> · ukuran <b class="mono">2.41</b> coin · risiko 0.31</div>
+        </div>
+        <div class="tombol t-hijau" style="border-radius:13px">📋 SALIN ORDER — BUY RUNEUSDT 4.512 SL 4.398 TP 4.740</div>
+      </div>
+      <div class="tabbar">
+        <div class="tab">🏠<br>Beranda</div>
+        <div class="tab aktif"><span class="bul">📊<br>Papan</span></div>
+        <div class="tab">💼<br>Posisi</div>
+        <div class="tab">📓<br>Meja</div>
+      </div>
+    </div></div>
+    <figcaption class="ket"><b>③ DETAIL KOIN — chart kelas belajar.</b> Tiga garis selalu digambar otomatis (amber pintu, hijau manis, merah batal) + penanda <b>X · 1 · 2</b> di candle aslinya. Kartu tiket pakai kata yang sama dengan notif Telegram — nggak ada istilah baru yang harus dihafal lagi.</figcaption>
+  </figure>
+
+  <!-- LAYAR 4: POSISIKU -->
+  <figure class="hp">
+    <div class="ponsel"><div class="layar">
+      <div class="statusbar"><span>23:45</span><span>▮▮▮ ⚡27</span></div>
+      <div class="appbar"><div class="logo">N</div><div class="nama">Posisiku</div><div class="sumber">PAPER · 0.31/trade</div></div>
+      <div class="isi">
+        <div class="meja" style="margin-bottom:10px">
+          <div class="kot"><div class="n" style="color:#0d7a4b">+2</div><div class="l">MENANG</div></div>
+          <div class="kot"><div class="n" style="color:var(--red)">1</div><div class="l">KALAH</div></div>
+          <div class="kot"><div class="n">+0.93R</div><div class="l">HARI INI</div></div>
+          <div class="kot"><div class="n">7<small style="font-size:11px;color:var(--muted)">/20</small></div><div class="l">MEJA</div></div>
+        </div>
+        <div class="kartu" style="border-left:3px solid #0d7a4b">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <b style="font-size:14px">RUNEUSDT</b><span class="badge b-long">LONG</span><span class="badge" style="background:#eef7f0;color:#0d7a4b;border:1px solid #cfe9da">BERJALAN 1j 12m</span>
+          </div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-top:7px">
+            <span class="angka-besar" style="font-size:26px;color:#0d7a4b">+0.41R</span>
+            <span class="mini">+0.13 USDT · harga 4.566</span>
+          </div>
+          <div class="mini mono">entry 4.512 · SL 4.398 · TP 4.740 · sisa jarak TP 0.9R</div>
+          <div class="pita"><i style="left:55%"></i></div>
+          <div class="mini">◀ SL &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; entry &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; TP ▶</div>
+        </div>
+        <div class="kartu" style="border-left:3px solid var(--red)">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <b style="font-size:14px">AAOI (SAHAM)</b><span class="badge b-short">SHORT</span><span class="badge" style="background:#fdf3f4;color:var(--red);border:1px solid #f3cdd6">BERJALAN 26m</span>
+          </div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-top:7px">
+            <span class="angka-besar" style="font-size:26px;color:var(--red)">−0.18R</span>
+            <span class="mini">−0.06 USDT · harga 103.10</span>
+          </div>
+          <div class="pita"><i style="left:41%"></i></div>
+        </div>
+        <div class="mini" style="text-align:center;margin-top:8px">Riwayat 20 trade disiplin → lihat tab <b>Meja</b></div>
+      </div>
+      <div class="tabbar">
+        <div class="tab">🏠<br>Beranda</div>
+        <div class="tab">📊<br>Papan</div>
+        <div class="tab aktif"><span class="bul">💼<br>Posisi</span></div>
+        <div class="tab">📓<br>Meja</div>
+      </div>
+    </div></div>
+    <figcaption class="ket"><b>④ POSISIKU — modal &amp; disiplin di satu pandangan.</b> P/L pakai satuan R (sesuai jurnal), bukan cuma USDT. Progress bar menunjukkan posisi harga antara SL dan TP. Meja 20-trade selalu kelihatan supaya keputusan lanjutan berbasis data, bukan perasaan.</figcaption>
+  </figure>
+
+  <!-- LAYAR 5: MEJA -->
+  <figure class="hp">
+    <div class="ponsel"><div class="layar">
+      <div class="statusbar"><span>23:45</span><span>▮▮▮ ⚡27</span></div>
+      <div class="appbar"><div class="logo">N</div><div class="nama">Meja (Jurnal)</div><div class="sumber">ATURAN ASLI</div></div>
+      <div class="isi">
+        <div class="kartu" style="text-align:center">
+          <div class="mini" style="letter-spacing:.6px;font-weight:800">PROGRES 20 TRADE DISIPLIN</div>
+          <div class="angka-besar" style="font-size:38px;margin:4px 0">7<span style="font-size:20px;color:var(--muted)">/20</span></div>
+          <div class="pita" style="background:#e4ede6"><i style="left:35%"></i></div>
+          <div class="mini">Total <b style="color:#0d7a4b">+0.93R</b> · menang 67% · PF 2.1 · keputusan setelah 20: di tangan pemilik</div>
+        </div>
+        <div class="notip"><div class="ico">✅</div><div><div class="jd">TP — RUNEUSDT LONG +2R</div><div class="isi-n">Entry 4.512 → TP 4.740 · 2j 40m · mengikuti pola X 20:00 → C1 → C2 ✔</div><div class="jam">hari ini 22:14 WIB</div></div></div>
+        <div class="notip merah"><div class="ico">❌</div><div><div class="jd">SL — BCHUSDT SHORT −1R</div><div class="isi-n">Entry 341.20 → SL 348.05 · retest pintu gagal · 38m</div><div class="jam">hari ini 21:02 WIB</div></div></div>
+        <div class="notip pucat"><div class="ico">🗑</div><div><div class="jd">VOID-REGRESI — 2 posisi lama</div><div class="isi-n">Ditutup netral (PnL 0) karena aturan mesin berganti — skor mulai dari nol yang jujur</div><div class="jam">25/9 20:10 WIB</div></div></div>
+      </div>
+      <div class="tabbar">
+        <div class="tab">🏠<br>Beranda</div>
+        <div class="tab">📊<br>Papan</div>
+        <div class="tab">💼<br>Posisi</div>
+        <div class="tab aktif"><span class="bul">📓<br>Meja</span></div>
+      </div>
+    </div></div>
+    <figcaption class="ket"><b>⑤ MEJA — hakim 20 trade.</b> Semua hasil dilaporkan mentah (menang, kalah, void). Ini versi sentuh dari buku aturan murid: kalau 20 trade membuktikan rugi terus, datanya ada di sini — bukan di perasaan.</figcaption>
+  </figure>
+
+</div>
+
+<h2 class="seksi">2. Alur utama pemakaian (dari notif sampai jurnal)</h2>
+<div class="alur">
+  <div class="langkah-alur"><span class="n">1</span><b>Notif masuk</b><span>Telegram: "🎯 SIAP ENTRI — RUNEUSDT LONG". Kartu berisi semua angka + label FUTURES/SAHAM.</span></div>
+  <div class="langkah-alur"><span class="n">2</span><b>Buka kartu di app</b><span>Notif menautkan langsung ke layar detail: garis pintu-manis-batal + X·1·2 tergambar.</span></div>
+  <div class="langkah-alur"><span class="n">3</span><b>Cek 4 pagar</b><span>SIAP · gate searah · bukan PADAM · belum nyangkut — semua kelihatan sebagai badge, tanpa baca angka teknis.</span></div>
+  <div class="langkah-alur"><span class="n">4</span><b>SALIN ORDER</b><span>Satu tombol → tempel di Binance futures (manual, uang sendiri di luar app). Stop dipasang SEBELUM entry.</span></div>
+  <div class="langkah-alur"><span class="n">5</span><b>Posisiku mengawasi</b><span>Paper twin menghitung R berjalan; meja mencatat hasilnya ke skor 20 trade.</span></div>
+</div>
+
+<h2 class="seksi">3. Prinsip desain yang dipegang</h2>
+<div class="dua">
+  <div class="kotak-prinsip">
+    <h3>🎨 Bahasa visual = bahasa teknik kita</h3>
+    <ul>
+      <li><b>Amber</b> = garis pintu · <b>hijau</b> = manis / LONG · <b>merah</b> = batal / SHORT.</li>
+      <li>Badge yang sama persis di web, notif, dan app: <b>SIAP ENTRI / MENYALA / PADAM / BASI</b> — sekali belajar, tiga tempat sama.</li>
+      <li>Gaya terang kehijauan (seperti sekarang) supaya nyambung dengan papan yang sudah dikenal; kartu entri sengaja gelap = satu-satunya yang "menyala".</li>
+    </ul>
+  </div>
+  <div class="kotak-prinsip">
+    <h3>👍 Aturan jempol (mobile UX)</h3>
+    <ul>
+      <li>Semua tombol penting di <b>sepertiga bawah layar</b> — dijangkau jempol sambil pegang kopi.</li>
+      <li>Keputusan sekali lihat: <b>ENTRI paling besar</b> di kartu; SL/TP/ukuran jadi tiga kolom kecil di bawahnya.</li>
+      <li>Angka pakai <b>font mono</b> supaya desimal koin tidak tertukar; salinan order selalu format persis "BUY/SELL KOIN entry SL TP".</li>
+      <li>Umur tiket selalu tampil (2/3 candle) — mengingatkan tiket basi TANPA harus dihafal.</li>
+    </ul>
+  </div>
+  <div class="kotak-prinsip">
+    <h3>🛡 Batas yang sama, tetap dijaga</h3>
+    <ul>
+      <li>Tidak ada tombol order sungguhan — app tetap <b>melihat &amp; mengingatkan</b>, eksekusi tetap manual di Binance.</li>
+      <li>Pengingat 1% risiko · maks 2 trade/hari · stop sebelum entry tampil di kartu, bukan disembunyikan di menu.</li>
+      <li>Sumber data dipajang (FUTURES ✔ / SPOT ⚠) di setiap layar berangka.</li>
+    </ul>
+  </div>
+</div>
+
+<h2 class="seksi">4. Rencana penerapan (bertahap, aman untuk kode yang jalan)</h2>
+<div class="dua">
+  <div class="kotak-prinsip">
+    <ol>
+      <li><b>Tahap A — tulang punggung app HP:</b> tab bawah + Beranda + kartu entri. Halaman lama tetap bisa diakses (tidak ada yang rusak).</li>
+      <li><b>Tahap B — Papan sentuh:</b> filter chip + garis pita posisi harga di kartu koin.</li>
+      <li><b>Tahap C — Detail koin:</b> chart dengan garis otomatis + penanda X·1·2 + tombol salin.</li>
+      <li><b>Tahap D — Posisi &amp; Meja:</b> P/L berjalan satuan R + skor 20 trade.</li>
+      <li>Semua tahap <b>hanya lapisan tampilan</b> — mesin notif, garis, dan aturan tidak disentuh, jadi tidak ada risiko ke polling data atau tiket.</li>
+    </ol>
+  </div>
+  <div class="kotak-prinsip">
+    <h3>❓ Yang perlu keputusan pemilik sebelum Tahap A</h3>
+    <ul>
+      <li>Bahasa tampilan: <b>terang kehijauan</b> (contoh di atas) atau <b>gelap</b> untuk lihat chart malam hari?</li>
+      <li>Beranda tanpa tiket: mau tampilkan "bel pintu nonton" (contoh) atau kosong saja biar tenang?</li>
+      <li>Perp saham/komoditas (ARM, HOOD, NATGAS…): <b>tampilkan</b> di papan dengan chip ungu (contoh) atau bisa juga <b>disembunyikan</b> sekalian?</li>
+      <li>Urutan tab: Beranda · Papan · Posisi · Meja — sudah pas atau mau ditukar?</li>
+    </ul>
+  </div>
+</div>
+
+<footer>
+  Dokumen desain — NusaQuant Futures Lab · 25 September 2026 · lanjutan docs/49 (gambar teknik) &amp; docs/51 (audit entri).
+  Mockup ini statis: tidak mengambil data, tidak mengubah mesin, aman dibuka di mana saja.
+</footer>
+
+</div>
+</body>
+</html>
