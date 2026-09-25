@@ -2,6 +2,7 @@
  * Sumber data publik Binance untuk halaman Nominasi (server-side).
  * Host futures asli (fapi.binance.com) mengembalikan HTTP 451 untuk IP server sejak
  * pertengahan September 2026 → pakai mirror publik, dengan cadangan api.binance.com.
+ * Logika zona/tiket berasal dari @nusaquant/core (satu sumber kebenaran dengan worker).
  */
 
 const BASES = [
@@ -9,20 +10,19 @@ const BASES = [
   'https://api.binance.com',
 ];
 
-export const RATIO = { pintu: 0.705, manis: 0.786, batal: 0.886 } as const;
-export const MIN_RANGE_PCT = 3;
-export const MIN_QUOTE_VOLUME = 5_000_000;
-export const STALE_CANDLE_MINUTES = 45;
-export const TOUCH_EXPIRY_CANDLES = 12;
-
 const EXCLUDED = /(USDC|FDUSD|TUSD|BUSD|DAI|EUR|TRY|BRL|AEUR|USD1|XUSD|EURI)$/;
 const LEVERAGED = /(UP|DOWN|BULL|BEAR)USDT$/;
 
-export type Candle = { time: number; open: number; high: number; low: number; close: number; volume: number };
+export type Candle = {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
 export type Ticker = { symbol: string; last: number; high: number; low: number; quoteVolume: number };
-export type Zone = { pintu: number; manis: number; batal: number };
-export type Zones = { high: number; low: number; range: number; rangePct: number; long: Zone; short: Zone };
-export type Gate = 'HIJAU' | 'MERAH' | 'KUNING';
 
 async function requestJson(path: string, params: Record<string, string | number> = {}, noStore = true): Promise<unknown> {
   let lastError: unknown = new Error('Tidak ada sumber data yang dicoba.');
@@ -45,7 +45,7 @@ async function requestJson(path: string, params: Record<string, string | number>
 
 function toNumber(value: unknown): number {
   const n = Number(value);
-  return Number.isFinite(n) ? n : NaN;
+  return Number.isFinite(n) ? n : Number.NaN;
 }
 
 export async function fetchTickers(): Promise<Ticker[]> {
@@ -55,7 +55,10 @@ export async function fetchTickers(): Promise<Ticker[]> {
   for (const row of payload) {
     const symbol = String(row.symbol ?? '');
     if (!symbol.endsWith('USDT') || EXCLUDED.test(symbol) || LEVERAGED.test(symbol)) continue;
-    const last = toNumber(row.lastPrice), high = toNumber(row.highPrice), low = toNumber(row.lowPrice), quoteVolume = toNumber(row.quoteVolume);
+    const last = toNumber(row.lastPrice);
+    const high = toNumber(row.highPrice);
+    const low = toNumber(row.lowPrice);
+    const quoteVolume = toNumber(row.quoteVolume);
     if (!(last > 0) || !(high > 0) || !(low >= 0) || !(quoteVolume > 0)) continue;
     rows.push({ symbol, last, high, low, quoteVolume });
   }
@@ -82,51 +85,23 @@ export async function fetchKlines(symbol: string, interval: string, limit = 200)
       time: Number(row[0]), open: Number(row[1]), high: Number(row[2]),
       low: Number(row[3]), close: Number(row[4]), volume: Number(row[5]),
     };
-  }).filter((c) => Number.isFinite(c.time) && Number.isFinite(c.close) && c.close > 0);
+  }).filter((candle) => Number.isFinite(candle.time) && Number.isFinite(candle.close) && candle.close > 0);
 }
 
-/** Zona pintu–manis–batal dari anchor High/Low 24 jam. Long dari High (turun), short dari Low (naik) = cermin. */
-export function computeZones(ticker: Ticker): Zones | null {
-  const { high, low, last } = ticker;
-  const range = high - low;
-  if (!(range > 0) || !(last > 0)) return null;
-  return {
-    high, low, range,
-    rangePct: (range / last) * 100,
-    long: {
-      pintu: high - range * RATIO.pintu,
-      manis: high - range * RATIO.manis,
-      batal: high - range * RATIO.batal,
-    },
-    short: {
-      pintu: low + range * RATIO.pintu,
-      manis: low + range * RATIO.manis,
-      batal: low + range * RATIO.batal,
-    },
-  };
-}
+export {
+  RATIO, MIN_RANGE_PCT, MIN_QUOTE_VOLUME, STALE_CANDLE_MINUTES, TOUCH_EXPIRY_CANDLES, RISK_USDT, TARGET_R,
+  zoneOf, computeZones, smaSeries, gateFromCandles, bucketOf, distanceToPintu, detectTouchAge, detectSetup, computeTicket,
+} from '@nusaquant/core';
+export type {
+  Side, Gate, Status, Bucket, Zone, Zones, TickerLike, SetupMarkers, Ticket,
+} from '@nusaquant/core';
 
-export function sma(values: number[], period: number): number {
-  if (values.length < period) return NaN;
-  let sum = 0;
-  for (let i = values.length - period; i < values.length; i += 1) sum += values[i];
-  return sum / period;
-}
-
-export function gateFromCandles(h1: Candle[]): { gate: Gate; close: number; ma25: number; ma99: number } {
-  const closes = h1.map((c) => c.close);
-  const ma25 = sma(closes, 25), ma99 = sma(closes, 99), close = closes.at(-1) ?? NaN;
-  if (!Number.isFinite(ma25) || !Number.isFinite(ma99) || !Number.isFinite(close)) {
-    return { gate: 'KUNING', close, ma25, ma99 };
-  }
-  if (close > ma99 && ma25 > ma99) return { gate: 'HIJAU', close, ma25, ma99 };
-  if (close < ma99 && ma25 < ma99) return { gate: 'MERAH', close, ma25, ma99 };
-  return { gate: 'KUNING', close, ma25, ma99 };
-}
-
-export type Bucket = '<1 jam' | '1-2 jam' | '2-3 jam' | '>3 jam';
-export type Side = 'LONG' | 'SHORT';
-export type Status = 'MENYALA' | 'SIMAK' | 'DISIMAK';
+// dipakai internal berkas ini juga
+import {
+  MIN_QUOTE_VOLUME, MIN_RANGE_PCT, STALE_CANDLE_MINUTES, TOUCH_EXPIRY_CANDLES,
+  computeZones, gateFromCandles, smaSeries, bucketOf, distanceToPintu, detectTouchAge, detectSetup, computeTicket,
+} from '@nusaquant/core';
+import type { Side, Gate, Status, Bucket, Zones, SetupMarkers, Ticket } from '@nusaquant/core';
 
 export type BoardRow = {
   symbol: string;
@@ -147,34 +122,6 @@ export type BoardRow = {
   setup: { x: number | null; candle1: number | null; candle2: number | null; valid: boolean; note: string | null };
   ticket: Ticket | null;
 };
-
-export function bucketOf(minutes: number | null): Bucket | null {
-  if (minutes === null) return null;
-  if (minutes < 60) return '<1 jam';
-  if (minutes < 120) return '1-2 jam';
-  if (minutes < 180) return '2-3 jam';
-  return '>3 jam';
-}
-
-/** Jarak ke pintu: negatif = harga sudah di dalam pita (bel sudah berbunyi). */
-export function zoneOf(zones: Zones, side: Side): Zone {
-  return side === 'LONG' ? zones.long : zones.short;
-}
-
-export function distanceToPintu(zones: Zones, side: Side, last: number): number {
-  const pintu = zoneOf(zones, side).pintu;
-  return side === 'LONG' ? ((last - pintu) / last) * 100 : ((pintu - last) / last) * 100;
-}
-
-export function detectTouchAge(candles15m: Candle[], zones: Zones, side: Side, now = Date.now()): number | null {
-  const pintu = zoneOf(zones, side).pintu;
-  for (let i = candles15m.length - 1; i >= 0; i -= 1) {
-    const candle = candles15m[i];
-    const touched = side === 'LONG' ? candle.low <= pintu : candle.high >= pintu;
-    if (touched) return (now - (candle.time + 900_000)) / 60_000;
-  }
-  return null;
-}
 
 export type Funnel = { scanned: number; liquid: number; rangeOk: number; board: number; staleDropped: number };
 
@@ -270,170 +217,6 @@ export async function scanBoard(limit = 40): Promise<Board> {
 const STALE_CANDLE_DROP_LIMIT = STALE_CANDLE_MINUTES + 15;
 
 /** Deteksi X / candle 1 / candle 2 sesuai aturan kita (dua arah, cermin). */
-export type SetupMarkers = {
-  side: Side;
-  x: number | null;
-  candle1: number | null;
-  candle2: number | null;
-  staleBars: number | null;
-  valid: boolean;
-  notes: string[];
-  /** Angka tiket — terisi hanya kalau paket lengkap (X → candle 1 → candle 2). */
-  entry: number | null;
-  stop: number | null;
-  riskDistance: number | null;
-};
-
-function bodyOf(c: Candle): number { return Math.abs(c.close - c.open); }
-
-export function detectSetup(candles: Candle[], zones: Zones, side: Side): SetupMarkers {
-  const notes: string[] = [];
-  const zone = zoneOf(zones, side);
-  const bars = candles.slice(-TOUCH_EXPIRY_CANDLES * 4);
-  let xIndex: number | null = null;
-  for (let i = bars.length - 1; i >= 1; i -= 1) {
-    const c = bars[i];
-    const touched = side === 'LONG' ? c.low <= zone.pintu : c.high >= zone.pintu;
-    const previousOutside = side === 'LONG' ? bars[i - 1].low > zone.pintu : bars[i - 1].high < zone.pintu;
-    if (touched && previousOutside) { xIndex = i; break; }
-  }
-  if (xIndex === null) {
-    notes.push('Belum ada X: harga belum menusuk garis pintu dari luar.');
-    return { side, x: null, candle1: null, candle2: null, staleBars: null, valid: false, notes, entry: null, stop: null, riskDistance: null };
-  }
-  const x = bars[xIndex];
-  let c1Index: number | null = null;
-  let c1InvalidReason: string | null = null;
-  for (let i = xIndex; i < Math.min(bars.length, xIndex + TOUCH_EXPIRY_CANDLES + 1); i += 1) {
-    const c = bars[i];
-    const inBand = side === 'LONG'
-      ? c.low <= zone.pintu && c.low >= zone.batal
-      : c.high >= zone.pintu && c.high <= zone.batal;
-    const body = bodyOf(c);
-    const range = c.high - c.low;
-    const wick = side === 'LONG' ? Math.min(c.open, c.close) - c.low : c.high - Math.max(c.open, c.close);
-    const wickRatio = body > 0 ? wick / body : Infinity;
-    const closeHalfOk = side === 'LONG'
-      ? c.close >= c.low + range * 0.5
-      : c.close <= c.high - range * 0.5;
-    const visibleBody = range > 0 && body / range >= 0.08;
-    if (!inBand) { c1InvalidReason = 'tidak ada candle yang low-nya (high-nya) jatuh di dalam pita pintu–batal'; continue; }
-    if (wickRatio < 2) { c1InvalidReason = `buntut cuma ${Number.isFinite(wickRatio) ? wickRatio.toFixed(2) : '∞'}× badan (butuh ≥2×) — contoh ONT 17:00 = 1,89×`; continue; }
-    if (!visibleBody) { c1InvalidReason = 'badan nyaris nol (doji) — close tak bisa dibaca di paruh atas/bawah'; continue; }
-    if (!closeHalfOk) { c1InvalidReason = 'close tidak di paruh atas (long) / bawah (short) — belum ada penolakan'; continue; }
-    c1Index = i;
-    break;
-  }
-  if (c1Index === null) {
-    notes.push(`X ada (${new Date(x.time).toISOString().slice(11, 16)} UTC) tapi candle 1 belum sah: ${c1InvalidReason ?? 'belum muncul'}.`);
-    return { side, x: x.time, candle1: null, candle2: null, staleBars: bars.length - 1 - xIndex, valid: false, notes, entry: null, stop: null, riskDistance: null };
-  }
-  const c1 = bars[c1Index];
-  let c2Index: number | null = null;
-  for (let i = c1Index + 1; i <= Math.min(bars.length - 1, c1Index + 3); i += 1) {
-    const c = bars[i];
-    const broke = side === 'LONG' ? c.close > c1.high : c.close < c1.low;
-    if (broke) { c2Index = i; break; }
-  }
-  const staleBars = bars.length - 1 - xIndex;
-  if (c2Index === null) {
-    notes.push(`Candle 1 SAH (buntut ${(Math.abs((side === 'LONG' ? Math.min(c1.open, c1.close) - c1.low : c1.high - Math.max(c1.open, c1.close))) / Math.max(bodyOf(c1), 1e-12)).toFixed(2)}× badan). Candle 2 belum lahir: tunggu close di ${side === 'LONG' ? 'atas puncak' : 'bawah dasar'} candle 1 (maks 3 candle).`);
-    if (staleBars > TOUCH_EXPIRY_CANDLES) notes.push(`Sudah ${staleBars} candle sejak X → melewati batas ${TOUCH_EXPIRY_CANDLES} candle (kedaluwarsa).`);
-    return { side, x: x.time, candle1: c1.time, candle2: null, staleBars, valid: false, notes, entry: null, stop: null, riskDistance: null };
-  }
-  const c2 = bars[c2Index];
-  const entry = c2.close;
-  const stop = side === 'LONG' ? c1.low : c1.high;
-  const riskDistance = Math.abs(entry - stop);
-  notes.push(`Paket lengkap: X → candle 1 → candle 2 (close ${side === 'LONG' ? 'di atas puncak' : 'di bawah dasar'} candle 1). Entry ${entry}, stop ${stop}.`);
-  return { side, x: x.time, candle1: c1.time, candle2: c2.time, staleBars, valid: true, notes, entry, stop, riskDistance };
-}
-
-export type Ticket = {
-  side: Side;
-  entry: number;
-  stop: number;
-  target: number;
-  riskDistance: number;
-  riskPct: number;
-  sizeCoin: number;
-  riskUsdt: number;
-  rewardUsdt: number;
-  rr: number;
-  stopGeometryOk: boolean;
-  stopVsBatal: 'aman' | 'peringatan';
-  entryAgeBars: number | null;
-  priceNow: number;
-  distanceNowPct: number;
-  chaseRisk: boolean;
-  actionable: boolean;
-  warnings: string[];
-};
-
-export const RISK_USDT = 0.31; // 1% dari modal latihan 31 USDT
-export const TARGET_R = 2;
-/** Kalau harga sudah berjalan > 0,5R dari entry → jangan dikejar (tiket tidak bisa dieksekusi lagi). */
-const CHASE_LIMIT_R = 0.5;
-
-/**
- * Tiket eksekusi otomatis dari aturan kita:
- * entry = close candle 2 · stop = ujung buntut candle 1 · target = entry ± 2R
- * ukuran coin = 1R ÷ (jarak entry→stop), 1R = 0,31 USDT
- */
-export function computeTicket(candles: Candle[], zones: Zones, side: Side, priceNow: number): Ticket | null {
-  const setup = detectSetup(candles, zones, side);
-  if (!setup.valid || setup.entry === null || setup.stop === null || setup.riskDistance === null || setup.riskDistance <= 0) {
-    return null;
-  }
-  const { entry, stop, riskDistance } = setup;
-  const target = side === 'LONG' ? entry + TARGET_R * riskDistance : entry - TARGET_R * riskDistance;
-  const zone = zoneOf(zones, side);
-  const warnings: string[] = [];
-
-  const stopGeometryOk = side === 'LONG' ? stop < entry : stop > entry;
-  if (!stopGeometryOk) warnings.push('geometri stop tidak wajar — periksa ulang candle 1');
-
-  // Untuk long: stop (= buntut candle 1) seharusnya masih di atas garis batal; kalau di bawah, zona sudah mati sebelum stop kena.
-  const stopVsBatal: 'aman' | 'peringatan' = side === 'LONG'
-    ? (stop >= zone.batal ? 'aman' : 'peringatan')
-    : (stop <= zone.batal ? 'aman' : 'peringatan');
-  if (stopVsBatal === 'peringatan') warnings.push('stop berada di luar garis batal — setup lemah, zona sudah mati sebelum stop kena');
-
-  const currentCandleTime = candles.at(-1)?.time ?? null;
-  const entryAgeBars = setup.candle2 !== null && currentCandleTime !== null
-    ? Math.round((currentCandleTime - setup.candle2) / (candles.length > 1 ? Math.max(1, candles[1].time - candles[0].time) : 900_000))
-    : null;
-  if (entryAgeBars !== null && entryAgeBars > 3) warnings.push(`candle 2 sudah ${entryAgeBars} candle lalu — tiket mendingan dianggap basi`);
-
-  const distanceNowPct = ((priceNow - entry) / entry) * 100;
-  const travelledR = Math.abs(priceNow - entry) / riskDistance;
-  const chaseRisk = travelledR > CHASE_LIMIT_R;
-  if (chaseRisk) {
-    warnings.push(`harga sudah berjalan ${travelledR.toFixed(1)}R dari entry — jangan dikejar, tunggu setup baru (aturan anti-nyangkut)`);
-  }
-
-  return {
-    side,
-    entry,
-    stop,
-    target,
-    riskDistance,
-    riskPct: (riskDistance / entry) * 100,
-    sizeCoin: RISK_USDT / riskDistance,
-    riskUsdt: RISK_USDT,
-    rewardUsdt: RISK_USDT * TARGET_R,
-    rr: TARGET_R,
-    stopGeometryOk,
-    stopVsBatal,
-    entryAgeBars,
-    priceNow,
-    distanceNowPct,
-    chaseRisk,
-    actionable: stopGeometryOk && !chaseRisk && stopVsBatal === 'aman',
-    warnings,
-  };
-}
-
 export type CoinDetail = {
   symbol: string;
   interval: string;
@@ -463,7 +246,7 @@ export async function coinDetail(symbol: string, interval: string): Promise<Coin
   const zones = computeZones(ticker);
   if (!zones) throw new Error(`Data harga ${upper} tidak lengkap.`);
   const closes = candles.map((c) => c.close);
-  const ma = (period: number) => closes.map((_, index) => (index + 1 < period ? NaN : sma(closes.slice(0, index + 1), period)));
+  const ma = (period: number) => smaSeries(closes, period);
   const gateInfo = gateFromCandles(h1);
   const newest = candles.at(-1)?.time ?? 0;
   const intervalMs = interval === '5m' ? 300_000 : interval === '15m' ? 900_000 : interval === '4h' ? 14_400_000 : 3_600_000;

@@ -162,6 +162,22 @@ export class BinancePublicMarketDataClient {
     return assertPositive(Number(payload.markPrice ?? payload.price), 'mark price');
   }
 
+  async get24hTickerDetails(): Promise<Array<{ symbol: string; last: number; high: number; low: number; quoteVolume: number }>> {
+    const payload = await this.fetchJson((paths) => paths.tickers, {}) as Array<Record<string, unknown>>;
+    if (!Array.isArray(payload)) throw new Error('Binance ticker payload bukan array.');
+    const rows: Array<{ symbol: string; last: number; high: number; low: number; quoteVolume: number }> = [];
+    for (const row of payload) {
+      const symbol = typeof row.symbol === 'string' ? row.symbol : '';
+      const last = Number(row.lastPrice);
+      const high = Number(row.highPrice);
+      const low = Number(row.lowPrice);
+      const quoteVolume = Number(row.quoteVolume);
+      if (!symbol || !(last > 0) || !(high > 0) || !(low >= 0) || !(quoteVolume > 0)) continue;
+      rows.push({ symbol, last, high, low, quoteVolume });
+    }
+    return rows;
+  }
+
   async get24hTickers(): Promise<Array<{ symbol: string; quoteVolume: number }>> {
     const payload = await this.fetchJson((paths) => paths.tickers, {}) as Array<{ symbol?: string; quoteVolume?: string }>;
     if (!Array.isArray(payload)) throw new Error('Binance ticker payload bukan array.');
