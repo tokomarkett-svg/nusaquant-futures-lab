@@ -85,7 +85,7 @@ export default function BerandaHp() {
       <div style={{ fontSize: 12, fontWeight: 800, color: '#33463c', margin: '10px 2px 6px' }}>🔔 BEL PINTU — nonton (belum sah)</div>
       {bel.length === 0 && <div style={{ fontSize: 12, color: WARNA.muted, margin: '0 2px' }}>Tidak ada X yang sedang menunggu.</div>}
       {bel.map((row) => (
-        <Link key={row.symbol} href={`/nominasi/${row.symbol}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+        <Link key={row.symbol} href={`/hp/koin/${row.symbol}`} style={{ textDecoration: 'none', color: 'inherit' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--line)', borderRadius: 14, padding: '10px 11px', marginBottom: 8 }}>
             <span style={{ fontWeight: 800, fontSize: 13.5 }}>{row.symbol.replace('USDT', '')}</span>
             <span style={badgeSisi(row).style}>{badgeSisi(row).text}</span>
@@ -158,6 +158,13 @@ function KartuSiap({ row, tersalin, padaSalin }: { row: BoardRow; tersalin: bool
       }}>
         {tersalin ? '✅ TERSALIN — tempel di Binance' : '📋 SALIN ORDER'}
       </button>
+      <Link href={`/hp/koin/${row.symbol}`} style={{
+        display: 'block', textAlign: 'center', textDecoration: 'none', cursor: 'pointer',
+        borderRadius: 13, padding: '10px 0', fontWeight: 800, fontSize: 12.5, marginTop: 7,
+        border: '1px solid rgba(255,255,255,.25)', color: '#dff7ea',
+      }}>
+        📈 Lihat chart & garis pintu
+      </Link>
       <div style={{ textAlign: 'center', fontSize: 9.5, color: '#9fd8bb', marginTop: 7 }}>
         1% risiko · maks 2 trade/hari · stop dipasang SEBELUM entry
       </div>

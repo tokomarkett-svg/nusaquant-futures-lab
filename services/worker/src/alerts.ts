@@ -85,7 +85,7 @@ export function buildBellText(candidate: AlertCandidate): string {
 export function buildTicketText(candidate: AlertCandidate, ticket: Ticket, papanUrl?: string): string {
   const digits = digitsFor(ticket.entry);
   const format = (value: number) => value.toFixed(digits);
-  const tautanChart = papanUrl ? `\n🔎 Chart live: ${papanUrl}/nominasi/${candidate.symbol}` : '';
+  const tautanChart = papanUrl ? `\n🔎 Chart live: ${papanUrl}/hp/koin/${candidate.symbol}` : '';
   const garisText = candidate.garis
     ? `📏 Garis pas bot: pintu ${format(candidate.garis.pintu)} · manis ${format(candidate.garis.manis)} · batal ${format(candidate.garis.batal)}`
     : '';

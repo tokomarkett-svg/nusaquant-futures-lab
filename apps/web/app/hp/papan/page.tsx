@@ -75,7 +75,7 @@ export default function PapanHp() {
       {tampil.map((row) => {
         const status = badgeStatus(row);
         return (
-          <Link key={row.symbol} href={`/nominasi/${row.symbol}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+          <Link key={row.symbol} href={`/hp/koin/${row.symbol}`} style={{ textDecoration: 'none', color: 'inherit' }}>
             <div style={{
               background: '#fff', border: '1px solid var(--line)', borderRadius: 14, padding: '10px 11px', marginBottom: 8,
               borderLeft: `3px solid ${row.status === 'MENYALA' ? '#d29125' : row.status === 'PADAM' ? '#5c2330' : '#dce6df'}`,

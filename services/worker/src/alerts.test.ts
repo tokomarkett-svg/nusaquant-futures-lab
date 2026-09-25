@@ -49,7 +49,7 @@ test('tiket siap: pesannya memuat entry, stop, target, ukuran, dan pengingat ris
   assert.doesNotMatch(text, /JANGAN EKSEKUSI/);
 
   const denganTautan = buildTicketText(candidateTicket, ticket, 'https://papan.example.app');
-  assert.match(denganTautan, /https:\/\/papan\.example\.app\/nominasi\/RUNEUSDT/);
+  assert.match(denganTautan, /https:\/\/papan\.example\.app\/hp\/koin\/RUNEUSDT/);
   assert.match(text, /pintu 100\.50/);
   assert.match(text, /batal 99\.60/);
   assert.match(text, /Lahir \d{2}:\d{2} WIB/);

@@ -1,12 +1,13 @@
 'use client';
 
 /**
- * POSISI (mode HP) — posisi paper meja yang sedang berjalan + ringkasan hari.
- * Data: /api/meja (sumber yang sama dengan halaman POSISIKU & pesan Telegram meja).
+ * POSISI (mode HP) — Tahap D docs/52: posisi paper meja + P/L BERJALAN satuan R.
+ * Harga live dari /api/harga (semua pair USDT, satu request) — segar tiap 5 detik.
+ * R = (harga − entry) ÷ jarak risiko, arah menyesuaikan LONG/SHORT. Data posisi: /api/meja.
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { WARNA, fmt, salinTeks, umur } from '../bahan';
+import { WARNA, digitsFor, fmt, salinTeks, umur } from '../bahan';
 
 type Posisi = {
   symbol: string; side: 'LONG' | 'SHORT'; entry: number; stop: number; target: number;
@@ -20,10 +21,11 @@ type DataMeja = { ok: boolean; error?: string; open: Posisi[]; today: Ringkasan 
 
 export default function PosisiHp() {
   const [data, setData] = useState<DataMeja | null>(null);
+  const [harga, setHarga] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
   const [tersalin, setTersalin] = useState<string | null>(null);
 
-  const muat = useCallback(async () => {
+  const muatMeja = useCallback(async () => {
     try {
       const r = await fetch('/api/meja', { cache: 'no-store' });
       const p = await r.json();
@@ -35,17 +37,29 @@ export default function PosisiHp() {
     }
   }, []);
 
+  const muatHarga = useCallback(async () => {
+    try {
+      const r = await fetch('/api/harga', { cache: 'no-store' });
+      const p = await r.json();
+      if (p.ok) setHarga(p.prices as Record<string, number>);
+    } catch {
+      /* tick gagal = pertahankan harga terakhir */
+    }
+  }, []);
+
   useEffect(() => {
-    void muat();
-    const timer = setInterval(() => void muat(), 15_000);
-    return () => clearInterval(timer);
-  }, [muat]);
+    void muatMeja();
+    void muatHarga();
+    const a = setInterval(() => void muatMeja(), 15_000);
+    const b = setInterval(() => void muatHarga(), 5_000);
+    return () => { clearInterval(a); clearInterval(b); };
+  }, [muatMeja, muatHarga]);
 
   const open = data?.open ?? [];
   const today = data?.today;
 
   const salin = async (p: Posisi) => {
-    const d = p.entry >= 100 ? 2 : p.entry >= 1 ? 4 : 5;
+    const d = digitsFor(p.entry);
     const teks = `${p.side === 'LONG' ? 'BUY' : 'SELL'} ${p.symbol} ${p.entry.toFixed(d)} SL ${p.stop.toFixed(d)} TP ${p.target.toFixed(d)}`;
     if (await salinTeks(teks)) {
       setTersalin(p.symbol);
@@ -86,9 +100,13 @@ export default function PosisiHp() {
 
       {open.map((p) => {
         const long = p.side === 'LONG';
-        const d = p.entry >= 100 ? 2 : p.entry >= 1 ? 4 : 5;
-        // posisi harga tak live di API meja — pakai posisi entry di pita SL..TP sebagai gambaran
-        const pct = Math.max(0, Math.min(100, ((p.entry - p.stop) / Math.max(1e-12, p.target - p.stop)) * 100));
+        const d = digitsFor(p.entry);
+        const kini = harga[p.symbol];
+        const risiko = Math.abs(p.entry - p.stop);
+        const r = kini && risiko > 0 ? (long ? (kini - p.entry) / risiko : (p.entry - kini) / risiko) : null;
+        const pct = kini
+          ? Math.max(0, Math.min(100, (long ? (kini - p.stop) / (p.target - p.stop) : (p.stop - kini) / (p.stop - p.target)) * 100))
+          : Math.max(0, Math.min(100, (long ? (p.entry - p.stop) / (p.target - p.stop) : (p.stop - p.entry) / (p.stop - p.target)) * 100));
         return (
           <div key={p.symbol} style={{ background: '#fff', border: '1px solid var(--line)', borderLeft: `3px solid ${long ? '#0d7a4b' : WARNA.red}`, borderRadius: 14, padding: '11px 12px', marginBottom: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
@@ -96,13 +114,24 @@ export default function PosisiHp() {
               <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 6, background: long ? WARNA.mintSoft : WARNA.redSoft, color: long ? WARNA.greenDark : WARNA.red, border: `1px solid ${long ? '#bfe8d1' : '#f3cdd6'}` }}>{p.side}</span>
               <span style={{ marginLeft: 'auto', fontSize: 11, color: WARNA.muted }}>umur {umur(p.openedAt)}</span>
             </div>
-            <div style={{ display: 'flex', gap: 10, margin: '8px 0 2px', fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 6 }}>
+              <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 26, fontWeight: 800, color: r === null ? WARNA.muted : r >= 0 ? '#0d7a4b' : WARNA.red }}>
+                {r === null ? '—' : `${r >= 0 ? '+' : ''}${r.toFixed(2)}R`}
+              </span>
+              <span style={{ fontSize: 11, color: WARNA.muted }}>
+                {r !== null && kini ? `${r >= 0 ? '+' : ''}${(r * 0.31).toFixed(2)} USDT paper · harga ${fmt(kini)}` : 'menunggu harga live…'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 10, margin: '7px 0 2px', fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>
               <span>Entry <b>{p.entry.toFixed(d)}</b></span>
               <span style={{ color: WARNA.red }}>SL <b>{p.stop.toFixed(d)}</b></span>
               <span style={{ color: '#0d7a4b' }}>TP <b>{p.target.toFixed(d)}</b></span>
             </div>
             <div style={{ height: 4, borderRadius: 99, background: 'linear-gradient(90deg,#e8b4bd,#f3ddab,#bfe8d1)', position: 'relative', marginTop: 6 }}>
-              <i style={{ position: 'absolute', top: -3.5, left: `calc(${pct}% - 5px)`, width: 11, height: 11, borderRadius: 99, background: WARNA.gelap, border: '2px solid #fff' }} />
+              <i style={{ position: 'absolute', top: -3.5, left: `calc(${pct}% - 5px)`, width: 11, height: 11, borderRadius: 99, background: WARNA.gelap, border: '2px solid #fff', transition: 'left .4s' }} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8.5, color: WARNA.muted, marginTop: 3 }}>
+              <span>SL</span><span>ENTRY</span><span>TP</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
               <span style={{ fontSize: 9.5, color: WARNA.muted }}>📦 {p.sizeCoin.toLocaleString('id-ID', { maximumFractionDigits: 4 })} koin{p.processScore ? ` · skor ${p.processScore}/6` : ''}</span>
