@@ -8,6 +8,7 @@
  * menjadi membaca PASAR YANG SAMA: futures.
  */
 import http from 'node:http';
+import zlib from 'node:zlib';
 import { bukaDemo, tutupDemo, tokenSah } from './exec-demo.ts';
 import { sendTelegram, scanAlertCandidates } from './alerts.ts';
 import { BinancePublicMarketDataClient, DEFAULT_BINANCE_BASE_URL } from './market-data.ts';
@@ -104,6 +105,54 @@ export function createDataProxyHandler(upstreamBase = process.env.WORKER_UPSTREA
       } catch (error) {
         return balasJson(502, { ok: false, error: error instanceof Error ? error.message : 'gagal kirim telegram.' });
       }
+    }
+    if (route === '/manifest.webmanifest' && req.method === 'GET') {
+      res.statusCode = 200;
+      res.setHeader('content-type', 'application/manifest+json');
+      res.end(JSON.stringify({
+        name: 'NusaQuant — Papan Darurat',
+        short_name: 'NusaQuant',
+        description: 'Papan pintu-manis-batal futures via Railway — kebal blokir provider.',
+        start_url: '/papan',
+        scope: '/',
+        display: 'standalone',
+        background_color: '#f6faf7',
+        theme_color: '#0e2a1d',
+        icons: [{ src: '/papan-icon.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' }],
+      }));
+      return;
+    }
+    if (route === '/papan-icon.png' && req.method === 'GET') {
+      // Ikon 512px: latar hijau, candle putih, garis pintu, panah kuning — dibuat murni dari kode PNG.
+      const U = 512;
+      const px: number[][] = [];
+      const putih = [234, 255, 243]; const garis = [127, 240, 176]; const kuning = [255, 214, 102]; const gelap = [14, 42, 29];
+      for (let y = 0; y < U; y++) {
+        const t = y / U;
+        const dasar = gelap.map((c, i) => Math.round(c + (24 + 40 * t - c) * (y / U)));
+        for (let x = 0; x < U; x++) px.push(dasar);
+      }
+      const set = (x: number, y: number, c: number[]) => {
+        if (x < 0 || y < 0 || x >= U || y >= U) return;
+        const i = (y * U + x) * 3; px[i] = c[0]; px[i + 1] = c[1]; px[i + 2] = c[2];
+      };
+      for (let x = 72; x < 440; x++) for (let y = 352; y < 360; y++) set(x, y, garis);
+      for (let x = 200; x < 264; x++) for (let y = 150; y < 320; y++) set(x, y, putih);
+      for (let y = 90; y < 380; y++) for (let x = 227; x < 237; x++) set(x, y, garis);
+      for (let x = 300; x < 392; x++) { const y = Math.round(300 - (x - 300) * 0.9); for (let d = 0; d < 8; d++) set(x, y + d, kuning); }
+      for (let x = 340; x < 392; x++) for (let y = 108; y < 150; y++) set(x, y, kuning);
+      const header = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+      const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(U, 0); ihdr.writeUInt32BE(U, 4); ihdr[8] = 8; ihdr[9] = 2;
+      const raw = Buffer.alloc(U * (U * 3 + 1));
+      for (let y = 0; y < U; y++) { raw[y * (U * 3 + 1)] = 0; px.slice(y * U * 3, (y + 1) * U * 3).forEach((v, i) => { raw[y * (U * 3 + 1) + 1 + i] = v; }); }
+      const idat = zlib.deflateSync(raw);
+      const crcTable = [...Array(256)].map((_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+      const crc = (b: Buffer) => { let c = 0xFFFFFFFF; for (const byte of b) c = crcTable[(c ^ byte) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+      const chunk = (tipe: string, data: Buffer) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const t = Buffer.from(tipe); const crcV = Buffer.alloc(4); crcV.writeUInt32BE(crc(Buffer.concat([t, data]))); return Buffer.concat([len, t, data, crcV]); };
+      res.statusCode = 200;
+      res.setHeader('content-type', 'image/png');
+      res.end(Buffer.concat([header, chunk('IHDR', ihdr), chunk('IDAT', idat), chunk('IEND', Buffer.alloc(0))]));
+      return;
     }
     if (route === '/papan' && req.method === 'GET') {
       res.statusCode = 200;
