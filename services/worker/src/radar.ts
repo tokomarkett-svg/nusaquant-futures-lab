@@ -95,7 +95,9 @@ export async function scanRadarOnce(client: BinancePublicMarketDataClient, unive
   const readings: RadarReading[] = [];
   for (const symbol of universe) {
     try {
-      const klines = await client.getKlines({ symbol, interval: '1d', limit: 60 });
+      // closedOnly: false — radar butuh candle harian yang SEDANG berjalan (hari ini),
+      // bukan hanya yang sudah tertutup. Tanpa ini computeRadar selalu menolak (scanned: 0).
+      const klines = await client.getKlines({ symbol, interval: '1d', limit: 60, closedOnly: false });
       const reading = computeRadar(symbol, klines, now);
       if (reading) readings.push(reading);
     } catch {

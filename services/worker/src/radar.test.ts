@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Candle } from '@nusaquant/core';
-import { computeRadar, RADAR_UNIVERSE_FALLBACK } from './radar.ts';
+import { computeRadar, scanRadarOnce, RADAR_UNIVERSE_FALLBACK } from './radar.ts';
 
 const day = 86_400_000;
 
@@ -50,4 +50,18 @@ test('radar menolak sample harian yang kurang', () => {
 test('universe fallback berjumlah 80 simbol unik', () => {
   assert.equal(RADAR_UNIVERSE_FALLBACK.length, 80);
   assert.equal(new Set(RADAR_UNIVERSE_FALLBACK).size, 80);
+});
+
+test('scanRadarOnce meminta candle harian termasuk hari berjalan (closedOnly: false)', async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const fakeClient = {
+    getKlines: async (args: Record<string, unknown>) => {
+      calls.push(args);
+      return [];
+    },
+  } as unknown as Parameters<typeof scanRadarOnce>[0];
+  await scanRadarOnce(fakeClient, ['BTCUSDT']);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].interval, '1d');
+  assert.equal(calls[0].closedOnly, false, 'tanpa candle hari berjalan computeRadar selalu null');
 });
