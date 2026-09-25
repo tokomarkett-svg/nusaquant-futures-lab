@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildBellText, buildStartupText, buildTicketText, collectAlertsForCandidate, createAlertStore, describeTelegramConfig, explainTelegramError, sendTelegram, type AlertCandidate } from './alerts.ts';
+import { buildBellText, buildStartupText, buildTicketText, collectAlertsForCandidate, createAlertStore, describeTelegramConfig, discoverChatFromUpdates, explainTelegramError, sendTelegram, type AlertCandidate } from './alerts.ts';
 import type { SetupMarkers, Ticket } from '@nusaquant/core';
 
 const setupNoC1: SetupMarkers = {
@@ -131,4 +131,35 @@ test('dengan token, pesan dikirim ke endpoint Bot API resmi', async () => {
   assert.match(seenUrl, /^https:\/\/api\.telegram\.org\/bottoken-uji\/sendMessage$/);
   assert.match(seenBody, /"chat_id":"12345"/);
   assert.match(seenBody, /"parse_mode":"HTML"/);
+});
+
+test('penemu chat id: memakai chat pribadi terakhir yang menyapa bot', async () => {
+  const updates = {
+    ok: true,
+    result: [
+      { update_id: 1, message: { chat: { id: 111111111, type: 'private', first_name: 'Lama' } } },
+      { update_id: 2, message: { chat: { id: -100222222, type: 'group', title: 'Grup' } } },
+      { update_id: 3, message: { chat: { id: 333333333, type: 'private', first_name: 'Bri', username: 'bri' } } },
+    ],
+  };
+  const found = await discoverChatFromUpdates({
+    token: 'token-uji',
+    fetchImpl: (async () => ({ ok: true, status: 200, json: async () => updates }) as unknown as Response) as typeof fetch,
+  });
+  assert.deepEqual(found, { chatId: '333333333', label: 'Bri' });
+});
+
+test('penemu chat id: mengabaikan grup & aman saat belum ada percakapan', async () => {
+  const onlyGroup = { ok: true, result: [{ update_id: 1, message: { chat: { id: -100999, type: 'group' } } }] };
+  const groupResult = await discoverChatFromUpdates({
+    token: 'token-uji',
+    fetchImpl: (async () => ({ ok: true, status: 200, json: async () => onlyGroup }) as unknown as Response) as typeof fetch,
+  });
+  assert.equal(groupResult, null);
+
+  const empty = await discoverChatFromUpdates({
+    token: 'token-uji',
+    fetchImpl: (async () => ({ ok: true, status: 200, json: async () => ({ ok: true, result: [] }) }) as unknown as Response) as typeof fetch,
+  });
+  assert.equal(empty, null);
 });

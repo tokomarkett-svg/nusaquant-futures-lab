@@ -140,6 +140,35 @@ export function explainTelegramError(status: number, body: string): string {
   return `Telegram menolak (HTTP ${status}): ${body.slice(0, 160)}`;
 }
 
+export type BotUpdate = {
+  update_id?: number;
+  message?: { chat?: { id?: number; type?: string; username?: string; first_name?: string; title?: string } };
+};
+
+/**
+ * Temukan chat id dari percakapan NYATA dengan bot (lewat getUpdates).
+ * Jauh lebih pasti daripada menempel angka manual — yang menyapa bot itulah alamat yang benar.
+ */
+export async function discoverChatFromUpdates(
+  options: { token?: string; fetchImpl?: typeof fetch } = {},
+): Promise<{ chatId: string; label: string } | null> {
+  const token = options.token ?? process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return null;
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const response = await fetchImpl(`https://api.telegram.org/bot${token}/getUpdates?timeout=0`);
+  if (!response.ok) return null;
+  const payload = await response.json() as { ok?: boolean; result?: BotUpdate[] };
+  if (!payload.ok || !Array.isArray(payload.result)) return null;
+  for (let index = payload.result.length - 1; index >= 0; index -= 1) {
+    const chat = payload.result[index]?.message?.chat;
+    if (!chat || typeof chat.id !== 'number') continue;
+    if (chat.type && chat.type !== 'private') continue; // abaikan grup/channel
+    const label = chat.first_name ?? chat.username ?? chat.title ?? 'chat pribadi';
+    return { chatId: String(chat.id), label: String(label) };
+  }
+  return null;
+}
+
 export async function sendTelegram(text: string, options: { token?: string; chatId?: string; fetchImpl?: typeof fetch } = {}): Promise<boolean> {
   const token = options.token ?? process.env.TELEGRAM_BOT_TOKEN;
   const chatId = options.chatId ?? process.env.TELEGRAM_CHAT_ID;
@@ -226,7 +255,11 @@ export async function scanAlertCandidates(client: BinancePublicMarketDataClient,
   return rows;
 }
 
-export async function runAlertCycle(store: ReturnType<typeof createAlertStore>, client?: BinancePublicMarketDataClient): Promise<{ scanned: number; sent: number; messages: AlertMessage[] }> {
+export async function runAlertCycle(
+  store: ReturnType<typeof createAlertStore>,
+  client?: BinancePublicMarketDataClient,
+  options: { chatId?: string } = {},
+): Promise<{ scanned: number; sent: number; messages: AlertMessage[] }> {
   const market = client ?? new BinancePublicMarketDataClient({ baseUrl: process.env.BINANCE_BASE_URL ?? DEFAULT_BINANCE_BASE_URL });
   const rows = await scanAlertCandidates(market);
   const messages: AlertMessage[] = [];
@@ -237,7 +270,7 @@ export async function runAlertCycle(store: ReturnType<typeof createAlertStore>, 
   let sent = 0;
   for (const message of messages) {
     try {
-      await sendTelegram(message.text);
+      await sendTelegram(message.text, { chatId: options.chatId });
       store.add(message.key);
       sent += 1;
     } catch (error) {
@@ -266,8 +299,30 @@ export async function watchAlerts(): Promise<void> {
   const store = createAlertStore();
   const pollMs = Math.max(Number(process.env.ALERT_POLL_MS ?? 120_000), 60_000);
   const config = describeTelegramConfig();
-  const hasToken = Boolean(config.tokenPresent && config.chatIdPresent);
-  console.log(JSON.stringify({ alerts: true, watch: true, pollMs, hasToken, config, at: new Date().toISOString() }));
+  const maskId = (value: string) => (value.length <= 4 ? '****' : `${value.slice(0, 2)}…${value.slice(-2)} (${value.length} digit)`);
+  let effectiveChatId = (process.env.TELEGRAM_CHAT_ID ?? '').trim();
+
+  // Deteksi alamat yang benar dari percakapan nyata — menutup semua kasus salah tempel.
+  if (config.tokenPresent) {
+    try {
+      const discovered = await discoverChatFromUpdates();
+      if (discovered) {
+        if (effectiveChatId && discovered.chatId !== effectiveChatId) {
+          console.warn(`[alerts] chat id di Railway (${maskId(effectiveChatId)}) BEDA dengan chat yang menyapa bot (${maskId(discovered.chatId)} · ${discovered.label}). Memakai yang menyapa bot.`);
+        } else if (!effectiveChatId) {
+          console.warn(`[alerts] TELEGRAM_CHAT_ID kosong — memakai chat yang menyapa bot: ${maskId(discovered.chatId)} · ${discovered.label}`);
+        }
+        effectiveChatId = discovered.chatId;
+      } else if (!effectiveChatId) {
+        console.warn('[alerts] belum ada percakapan dengan bot. Kirim pesan apa saja ke bot-mu di Telegram supaya alamatnya terdeteksi otomatis.');
+      }
+    } catch (error) {
+      console.error('[alerts] gagal mendeteksi chat id:', error instanceof Error ? error.message : error);
+    }
+  }
+
+  const hasToken = Boolean(config.tokenPresent && effectiveChatId);
+  console.log(JSON.stringify({ alerts: true, watch: true, pollMs, hasToken, chatIdMasked: effectiveChatId ? maskId(effectiveChatId) : null, config, at: new Date().toISOString() }));
   if (!hasToken) {
     console.warn('[alerts] token/chat id belum lengkap → mode DRY RUN (pesan hanya ditulis di log). Pesan sapa akan dicoba lagi setiap siklus setelah variabel diisi.');
   }
@@ -277,7 +332,7 @@ export async function watchAlerts(): Promise<void> {
       // Pesan sapa dicoba tiap siklus sampai berhasil — supaya perbaikan variabel langsung terbukti tanpa redeploy.
       if (!startupSent && hasToken) {
         try {
-          await sendTelegram(buildStartupText());
+          await sendTelegram(buildStartupText(), { chatId: effectiveChatId });
           startupSent = true;
           console.log(JSON.stringify({ alerts: true, startupMessage: 'sent', at: new Date().toISOString() }));
         } catch (error) {
@@ -285,7 +340,7 @@ export async function watchAlerts(): Promise<void> {
           console.error('[alerts] diagnosa:', JSON.stringify(describeTelegramConfig()));
         }
       }
-      const result = await runAlertCycle(store);
+      const result = await runAlertCycle(store, undefined, { chatId: effectiveChatId });
       console.log(JSON.stringify({ alerts: true, scanned: result.scanned, sent: result.sent, seen: store.size(), startupSent, at: new Date().toISOString() }));
     } catch (error) {
       console.error('[alerts]', error instanceof Error ? error.message : error);
