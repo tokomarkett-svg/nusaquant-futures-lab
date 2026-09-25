@@ -14,7 +14,7 @@ let sedangAmbil: Promise<Set<string>> | null = null;
 async function ambilDaftar(): Promise<Set<string>> {
   const response = await fetch(new URL('/fapi/v1/exchangeInfo', TESTNET_BASE), {
     cache: 'no-store',
-    signal: AbortSignal.timeout(12_000),
+    signal: AbortSignal.timeout(6_000),
   });
   if (!response.ok) throw new Error(`exchangeInfo testnet HTTP ${response.status}`);
   const payload = await response.json() as { symbols?: Array<{ symbol?: string; status?: string }> };
