@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1560" font-family="Arial, Helvetica, sans-serif">
+  <defs>
+    <marker id="panahHijau" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#26a69a"/></marker>
+    <marker id="panahMerah" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#ef5350"/></marker>
+  </defs>
+  <rect x="0" y="0" width="900" height="1560" fill="#0e1520"/>
+
+  <!-- ================= PANEL LONG ================= -->
+  <text x="40" y="44" fill="#ffffff" font-size="23" font-weight="bold">CARA BOT MEMBACA: PINTU · MANIS · BATAL (LONG)</text>
+  <text x="40" y="72" fill="#9aa4b2" font-size="15">Contoh angka biar gampang dihitung: High 100 · Low 90 · range = 100 − 90 = 10</text>
+
+  <rect x="40" y="88" width="820" height="56" rx="10" fill="#10241a" stroke="#26a69a"/>
+  <text x="56" y="112" fill="#8ef0c8" font-size="15" font-weight="bold">LANGKAH 1 — ARAH HARI DULU:</text>
+  <text x="56" y="133" fill="#cfeee0" font-size="14">harga sekarang di ATAS open hari ini (hari NAIK) → hanya boleh LONG. Kalau hari TURUN → pakai panel SHORT di bawah.</text>
+
+  <!-- garis-garis harga -->
+  <rect x="80" y="562" width="780" height="91" fill="#f7a600" opacity="0.08"/>
+  <line x1="80" y1="210" x2="860" y2="210" stroke="#5a6572" stroke-dasharray="7 6"/>
+  <text x="862" y="214" fill="#8b96a5" font-size="13">High 100</text>
+  <line x1="80" y1="710" x2="860" y2="710" stroke="#5a6572" stroke-dasharray="7 6"/>
+  <text x="862" y="714" fill="#8b96a5" font-size="13">Low 90</text>
+
+  <line x1="80" y1="562" x2="860" y2="562" stroke="#f7a600" stroke-width="2.5"/>
+  <text x="84" y="552" fill="#f7a600" font-size="15" font-weight="bold">PINTU 92.95  (range × 0.705)</text>
+  <line x1="80" y1="603" x2="860" y2="603" stroke="#ffd868" stroke-width="2"/>
+  <text x="84" y="594" fill="#ffd868" font-size="14">MANIS 92.14 (× 0.786)</text>
+  <line x1="80" y1="653" x2="860" y2="653" stroke="#ef5350" stroke-width="2.5"/>
+  <text x="84" y="676" fill="#ef5350" font-size="15" font-weight="bold">BATAL 91.14 (× 0.886) — close DI BAWAH garis ini = zona long MATI</text>
+
+  <line x1="600" y1="630" x2="860" y2="630" stroke="#ef5350" stroke-width="2" stroke-dasharray="6 5"/>
+  <text x="604" y="622" fill="#ff8f8f" font-size="14" font-weight="bold">SL = ekor C1 · 91.60 (risiko 0.31)</text>
+  <line x1="700" y1="240" x2="860" y2="240" stroke="#26a69a" stroke-width="2" stroke-dasharray="6 5"/>
+  <text x="704" y="232" fill="#7ee2cf" font-size="14" font-weight="bold">TP 2R = 99.40</text>
+
+  <!-- candle 1..3: turun dari luar pita -->
+  <line x1="120" y1="245" x2="120" y2="290" stroke="#ef5350"/><rect x="102" y="255" width="36" height="30" fill="#ef5350"/>
+  <line x1="220" y1="275" x2="220" y2="335" stroke="#ef5350"/><rect x="202" y="285" width="36" height="40" fill="#ef5350"/>
+  <line x1="320" y1="315" x2="320" y2="380" stroke="#ef5350"/><rect x="302" y="325" width="36" height="45" fill="#ef5350"/>
+  <!-- X -->
+  <line x1="420" y1="360" x2="420" y2="600" stroke="#ef5350"/><rect x="402" y="370" width="36" height="35" fill="#ef5350"/>
+  <circle cx="420" cy="338" r="12" fill="#f7a600"/><text x="420" y="343" fill="#132742" font-size="14" font-weight="bold" text-anchor="middle">1</text>
+  <!-- CANDLE 1: hammer -->
+  <line x1="530" y1="570" x2="530" y2="650" stroke="#26a69a"/><rect x="512" y="580" width="36" height="20" fill="#26a69a"/>
+  <circle cx="530" cy="546" r="12" fill="#f7a600"/><text x="530" y="551" fill="#132742" font-size="14" font-weight="bold" text-anchor="middle">2</text>
+  <!-- CANDLE 2: breakout -->
+  <line x1="650" y1="430" x2="650" y2="590" stroke="#26a69a"/><rect x="632" y="440" width="36" height="142" fill="#26a69a"/>
+  <circle cx="650" cy="404" r="12" fill="#f7a600"/><text x="650" y="409" fill="#132742" font-size="14" font-weight="bold" text-anchor="middle">3</text>
+  <rect x="676" y="390" width="150" height="28" rx="8" fill="#26a69a"/>
+  <text x="751" y="409" fill="#04120d" font-size="15" font-weight="bold" text-anchor="middle">ENTRI 94.20</text>
+  <line x1="751" y1="418" x2="800" y2="248" stroke="#26a69a" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#panahHijau)"/>
+
+  <!-- catatan bernomor -->
+  <text x="40" y="780" fill="#cfd8e3" font-size="15">① X = candle yang LOW-nya menusuk PINTU dari luar (92.60 di bawah 92.95) — belum entry, cuma bel berbunyi.</text>
+  <text x="40" y="812" fill="#cfd8e3" font-size="15">② CANDLE 1 = buntut jatuh di PITA pintu–batal · buntut ≥ 2× badan (contoh 2,5×) · close paruh ATAS.</text>
+  <text x="40" y="844" fill="#cfd8e3" font-size="15">③ CANDLE 2 = close MENEMBUS puncak C1 (94.20 &gt; 93.20) → ENTRI tepat di harga close candle 2.</text>
+  <text x="40" y="876" fill="#7ee2cf" font-size="15">Stop di ekor candle 1 (91.60) · target 2R (99.40) · kalau rugi cuma 0.31 — selesai, cari setup baru.</text>
+  <text x="40" y="908" fill="#ff8f8f" font-size="15">Membatalkan diri: candle TERTUTUP di bawah BATAL (91.14) → jangan entry, tunggu zona baru besok.</text>
+  <text x="40" y="946" fill="#8b96a5" font-size="14">Waktu nyata MINA 25/9: pintu 0.14223 · manis 0.14095 · batal 0.13938 · X 19:00 · C1 19:15 · C2 19:30 entry 0.14302.</text>
+
+  <!-- ================= PANEL SHORT ================= -->
+  <line x1="0" y1="990" x2="900" y2="990" stroke="#233043" stroke-width="2"/>
+  <text x="40" y="1032" fill="#ffffff" font-size="21" font-weight="bold">CERMIN SHORT — persis kebalikannya</text>
+  <rect x="40" y="1044" width="820" height="40" rx="10" fill="#241416" stroke="#ef5350"/>
+  <text x="56" y="1070" fill="#ffc9c9" font-size="14">LANGKAH 1 sisi short: harga sekarang di BAWAH open hari ini (hari TURUN) → hanya boleh SHORT.</text>
+
+  <rect x="80" y="1136" width="780" height="72" fill="#ef5350" opacity="0.08"/>
+  <line x1="80" y1="1090" x2="860" y2="1090" stroke="#5a6572" stroke-dasharray="7 6"/>
+  <text x="862" y="1094" fill="#8b96a5" font-size="13">High 100</text>
+  <line x1="80" y1="1490" x2="860" y2="1490" stroke="#5a6572" stroke-dasharray="7 6"/>
+  <text x="862" y="1494" fill="#8b96a5" font-size="13">Low 90</text>
+
+  <line x1="80" y1="1208" x2="860" y2="1208" stroke="#f7a600" stroke-width="2.5"/>
+  <text x="84" y="1228" fill="#f7a600" font-size="15" font-weight="bold">PINTU 97.05 (Low + range × 0.705)</text>
+  <line x1="80" y1="1176" x2="860" y2="1176" stroke="#ffd868" stroke-width="2"/>
+  <text x="84" y="1170" fill="#ffd868" font-size="14">MANIS 97.86 (× 0.786)</text>
+  <line x1="80" y1="1136" x2="860" y2="1136" stroke="#ef5350" stroke-width="2.5"/>
+  <text x="84" y="1128" fill="#ef5350" font-size="14" font-weight="bold">BATAL 98.86 (× 0.886) — close DI ATAS garis ini = zona short MATI</text>
+
+  <line x1="600" y1="1154" x2="860" y2="1154" stroke="#ef5350" stroke-width="2" stroke-dasharray="6 5"/>
+  <text x="604" y="1148" fill="#ff8f8f" font-size="14" font-weight="bold">SL = ekor atas C1 · 98.40</text>
+  <line x1="720" y1="1454" x2="860" y2="1454" stroke="#26a69a" stroke-width="2" stroke-dasharray="6 5"/>
+  <text x="724" y="1446" fill="#7ee2cf" font-size="14" font-weight="bold">TP 2R = 90.90</text>
+
+  <!-- candle naik dari bawah -->
+  <line x1="150" y1="1386" x2="150" y2="1442" stroke="#26a69a"/><rect x="132" y="1394" width="36" height="36" fill="#26a69a"/>
+  <line x1="270" y1="1330" x2="270" y2="1406" stroke="#26a69a"/><rect x="252" y="1338" width="36" height="56" fill="#26a69a"/>
+  <line x1="390" y1="1258" x2="390" y2="1348" stroke="#26a69a"/><rect x="372" y="1266" width="36" height="72" fill="#26a69a"/>
+  <!-- X menusuk pintu dari bawah -->
+  <line x1="510" y1="1194" x2="510" y2="1274" stroke="#26a69a"/><rect x="492" y="1214" width="36" height="52" fill="#26a69a"/>
+  <circle cx="510" cy="1172" r="12" fill="#f7a600"/><text x="510" y="1177" fill="#132742" font-size="14" font-weight="bold" text-anchor="middle">1</text>
+  <!-- C1: inverted hammer -->
+  <line x1="640" y1="1154" x2="640" y2="1214" stroke="#ef5350"/><rect x="622" y="1190" width="36" height="16" fill="#ef5350"/>
+  <circle cx="640" cy="1122" r="12" fill="#f7a600"/><text x="640" y="1127" fill="#132742" font-size="14" font-weight="bold" text-anchor="middle">2</text>
+  <!-- C2: breakdown -->
+  <line x1="770" y1="1206" x2="770" y2="1262" stroke="#ef5350"/><rect x="752" y="1210" width="36" height="44" fill="#ef5350"/>
+  <circle cx="770" cy="1186" r="12" fill="#f7a600"/><text x="770" y="1191" fill="#132742" font-size="14" font-weight="bold" text-anchor="middle">3</text>
+  <rect x="688" y="1272" width="164" height="28" rx="8" fill="#ef5350"/>
+  <text x="770" y="1291" fill="#1a0505" font-size="15" font-weight="bold" text-anchor="middle">ENTRI SELL 95.90</text>
+  <line x1="770" y1="1300" x2="770" y2="1444" stroke="#ef5350" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#panahMerah)"/>
+
+  <text x="40" y="1516" fill="#cfd8e3" font-size="15">Cermin sempurna: X = HIGH menusuk pintu dari bawah · C1 buntut di pita, close paruh BAWAH · C2 close di BAWAH dasar C1.</text>
+  <text x="40" y="1544" fill="#8b96a5" font-size="14">Syarat sama: likuid ≥5jt · range ≥3% · data segar · gate 1H searah · stop ekor C1 · TP 2R · risiko 0.31.</text>
+</svg>
