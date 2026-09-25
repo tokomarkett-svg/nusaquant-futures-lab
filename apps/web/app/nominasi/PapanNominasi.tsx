@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Pembaruan from './Pembaruan';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { Board, BoardRow, Status } from '../../lib/binance';
@@ -162,6 +163,7 @@ export default function PapanNominasi() {
         ))}
       </div>
 
+      <Pembaruan />
       <SiapEntri rows={board?.rows ?? []} prices={prices} />
 
       {error && <section className="panel" style={{ padding: 16, borderRadius: 18, color: 'var(--red)' }}>Gagal memindai: {error}</section>}
