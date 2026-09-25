@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { Board, BoardRow, Status } from '../../lib/binance';
 import SiapEntri from './SiapEntri';
 
@@ -31,6 +32,8 @@ function priceDigits(price: number) {
 export default function PapanNominasi() {
   const [board, setBoard] = useState<Board | null>(null);
   const [prices, setPrices] = useState<Record<string, number>>({});
+  const [cari, setCari] = useState('');
+  const router = useRouter();
   const [previous, setPrevious] = useState<Record<string, number>>({});
   const [filter, setFilter] = useState<Filter>('SEMUA');
   const [error, setError] = useState<string | null>(null);
@@ -122,6 +125,23 @@ export default function PapanNominasi() {
           </div>
         )}
       </section>
+
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          const bersih = cari.trim().toUpperCase().replace(/USDT$/, '');
+          if (bersih) router.push(`/nominasi/${bersih}USDT`);
+        }}
+        style={{ display: 'flex', gap: 8 }}
+      >
+        <input
+          value={cari}
+          onChange={(event) => setCari(event.target.value)}
+          placeholder="🔍 Cek koin dari notif… (ketik CYS)"
+          style={{ flex: 1, minWidth: 0, border: '1px solid #d7e5dc', borderRadius: 10, padding: '9px 12px', fontSize: 13, background: 'white' }}
+        />
+        <button type="submit" className="control-btn" style={{ fontWeight: 800, background: 'var(--green-dark)', color: 'white', borderColor: 'var(--green-dark)' }}>CEK KOIN</button>
+      </form>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {(['SEMUA', 'LONG', 'SHORT', 'SEARAH', 'TIKET'] as Filter[]).map((item) => (
