@@ -48,17 +48,19 @@ export async function ingestSymbol({
   intervals = ['15m', '1h'],
   // 1000 candle 15m ≈ 10,4 hari — menutup celah ingest saat data sempat stale.
   limit = 1000,
+  market,
 }: {
   symbol: string;
   intervals?: string[];
   limit?: number;
+  market?: BinancePublicMarketDataClient;
 }): Promise<Record<string, number>> {
   const client = createWorkerSupabaseClient();
-  const market = new BinancePublicMarketDataClient({ baseUrl: process.env.BINANCE_BASE_URL ?? DEFAULT_BINANCE_BASE_URL });
+  const source = market ?? new BinancePublicMarketDataClient({ baseUrl: process.env.BINANCE_BASE_URL ?? DEFAULT_BINANCE_BASE_URL });
   const counts: Record<string, number> = {};
 
   for (const interval of intervals) {
-    const candles = await market.getKlines({ symbol, interval, limit, closedOnly: true });
+    const candles = await source.getKlines({ symbol, interval, limit, closedOnly: true });
     const rows = toMarketCandleRows(symbol, interval, candles);
     let result = await client.from('market_candles').upsert(rows, {
       onConflict: 'symbol,interval,open_time',
@@ -80,11 +82,12 @@ export async function ingestSymbol({
 async function main(): Promise<void> {
   const symbols = (process.env.SYMBOLS ?? 'BTCUSDT,ETHUSDT').split(',').map((symbol) => symbol.trim()).filter(Boolean);
   const intervals = (process.env.INGEST_INTERVALS ?? '15m,1h').split(',').map((interval) => interval.trim()).filter(Boolean);
-  const configuredLimit = Number(process.env.INGEST_KLINE_LIMIT ?? 500);
-  const limit = Number.isFinite(configuredLimit) && configuredLimit >= 1 && configuredLimit <= 1500 ? configuredLimit : 500;
+  const configuredLimit = Number(process.env.INGEST_KLINE_LIMIT ?? 1000);
+  const limit = Number.isFinite(configuredLimit) && configuredLimit >= 1 && configuredLimit <= 1500 ? configuredLimit : 1000;
+  const market = new BinancePublicMarketDataClient({ baseUrl: process.env.BINANCE_BASE_URL ?? DEFAULT_BINANCE_BASE_URL });
   const result: Record<string, Record<string, number>> = {};
-  for (const symbol of symbols) result[symbol] = await ingestSymbol({ symbol, intervals, limit });
-  console.log(JSON.stringify({ ok: true, result, at: new Date().toISOString() }));
+  for (const symbol of symbols) result[symbol] = await ingestSymbol({ symbol, intervals, limit, market });
+  console.log(JSON.stringify({ ok: true, source: market.describeSource(), result, at: new Date().toISOString() }));
 }
 
 async function watchIngestion(): Promise<void> {

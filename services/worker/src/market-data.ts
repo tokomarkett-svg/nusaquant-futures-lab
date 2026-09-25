@@ -51,17 +51,70 @@ export class BinancePublicMarketDataClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
-  private readonly spotMirror: boolean;
+  private readonly fallbackBaseUrl: string | null;
+  private fallbackAnnounced = false;
 
   constructor(options: MarketDataClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? DEFAULT_BINANCE_BASE_URL;
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.timeoutMs = options.timeoutMs ?? 8_000;
-    this.spotMirror = !/fapi\.binance\./.test(this.baseUrl);
+    // Kalau env masih menunjuk host futures yang diblokir (HTTP 451), lompat otomatis ke mirror.
+    this.fallbackBaseUrl = /fapi\.binance\./.test(this.baseUrl) && this.baseUrl !== DEFAULT_BINANCE_BASE_URL
+      ? DEFAULT_BINANCE_BASE_URL
+      : null;
   }
 
-  private apiPath(futuresPath: string, spotPath: string): string {
-    return this.spotMirror ? spotPath : futuresPath;
+  /** Deskripsi sumber data untuk log startup (tanpa rahasia). */
+  describeSource(): { baseUrl: string; fallbackBaseUrl: string | null } {
+    return { baseUrl: this.baseUrl, fallbackBaseUrl: this.fallbackBaseUrl };
+  }
+
+  private pathsFor(base: string): { klines: string; markPrice: string; tickers: string } {
+    return /fapi\.binance\./.test(base)
+      ? { klines: '/fapi/v1/klines', markPrice: '/fapi/v1/premiumIndex', tickers: '/fapi/v1/ticker/24hr' }
+      : { klines: '/api/v3/klines', markPrice: '/api/v3/ticker/price', tickers: '/api/v3/ticker/24hr' };
+  }
+
+  private async attempt(base: string, path: string, params: Record<string, string>): Promise<unknown> {
+    const url = new URL(path, base);
+    for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await this.fetchImpl(url, { signal: controller.signal });
+      if (!response.ok) {
+        const error = new Error(`Binance HTTP ${response.status} (${new URL(base).host})`) as Error & { retryable?: boolean };
+        // Kalau host diblokir/di-rate-limit berat, coba sumber cadangan; error lain (mis. 400) langsung dilempar.
+        error.retryable = response.status === 451 || response.status === 403 || response.status >= 500;
+        throw error;
+      }
+      return await response.json();
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private async fetchJson(
+    pickPath: (paths: ReturnType<BinancePublicMarketDataClient['pathsFor']>) => string,
+    params: Record<string, string>,
+  ): Promise<unknown> {
+    const bases = [this.baseUrl, ...(this.fallbackBaseUrl ? [this.fallbackBaseUrl] : [])];
+    let lastError: unknown = new Error('Binance request gagal tanpa percobaan.');
+    for (const base of bases) {
+      try {
+        const payload = await this.attempt(base, pickPath(this.pathsFor(base)), params);
+        if (base !== this.baseUrl && !this.fallbackAnnounced) {
+          this.fallbackAnnounced = true;
+          console.warn(`[market-data] host utama ${new URL(this.baseUrl).host} tidak dapat dipakai — memakai mirror ${new URL(base).host}`);
+        }
+        return payload;
+      } catch (error) {
+        lastError = error;
+        const retryable = (error as { retryable?: boolean }).retryable ?? true; // error jaringan/timeout → boleh coba cadangan
+        if (!retryable) throw error;
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
   async getKlines({ symbol, interval, limit = 500, endTime, closedOnly = true }: {
@@ -72,70 +125,50 @@ export class BinancePublicMarketDataClient {
     closedOnly?: boolean;
   }): Promise<Candle[]> {
     const duration = getIntervalMs(interval);
-    const url = new URL(this.apiPath('/fapi/v1/klines', '/api/v3/klines'), this.baseUrl);
-    url.searchParams.set('symbol', symbol.toUpperCase());
-    url.searchParams.set('interval', interval);
-    url.searchParams.set('limit', String(Math.min(Math.max(limit, 1), 1500)));
-    if (endTime !== undefined) url.searchParams.set('endTime', String(Math.floor(endTime)));
+    const params: Record<string, string> = {
+      symbol: symbol.toUpperCase(),
+      interval,
+      limit: String(Math.min(Math.max(limit, 1), 1500)),
+    };
+    if (endTime !== undefined) params.endTime = String(Math.floor(endTime));
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
-    try {
-      const response = await this.fetchImpl(url, { signal: controller.signal });
-      if (!response.ok) throw new Error(`Binance market data error: HTTP ${response.status}`);
-      const payload = await response.json() as unknown;
-      if (!Array.isArray(payload)) throw new Error('Binance market data payload bukan array.');
-      const now = Date.now();
-      return payload.map((row): Candle => {
-        if (!Array.isArray(row) || row.length < 7) throw new Error('Format kline Binance tidak valid.');
-        const candle: Candle = {
-          time: assertPositive(Number(row[0]), 'open time'),
-          open: assertPositive(Number(row[1]), 'open'),
-          high: assertPositive(Number(row[2]), 'high'),
-          low: assertPositive(Number(row[3]), 'low'),
-          close: assertPositive(Number(row[4]), 'close'),
-          volume: assertNonNegative(Number(row[5]), 'volume'),
-        };
-        if (row.length >= 11) {
-          candle.quoteVolume = assertNonNegative(Number(row[7]), 'quote volume');
-          candle.tradeCount = assertNonNegative(Number(row[8]), 'trade count');
-          candle.takerBuyVolume = assertNonNegative(Number(row[9]), 'taker buy volume');
-          candle.takerBuyQuoteVolume = assertNonNegative(Number(row[10]), 'taker buy quote volume');
-        }
-        return candle;
-      }).filter((candle) => !closedOnly || candle.time + duration <= now)
-        .sort((left, right) => left.time - right.time);
-    } finally {
-      clearTimeout(timeout);
-    }
+    const payload = await this.fetchJson((paths) => paths.klines, params);
+    if (!Array.isArray(payload)) throw new Error('Binance market data payload bukan array.');
+    const now = Date.now();
+    return payload.map((row): Candle => {
+      if (!Array.isArray(row) || row.length < 7) throw new Error('Format kline Binance tidak valid.');
+      const candle: Candle = {
+        time: assertPositive(Number(row[0]), 'open time'),
+        open: assertPositive(Number(row[1]), 'open'),
+        high: assertPositive(Number(row[2]), 'high'),
+        low: assertPositive(Number(row[3]), 'low'),
+        close: assertPositive(Number(row[4]), 'close'),
+        volume: assertNonNegative(Number(row[5]), 'volume'),
+      };
+      if (row.length >= 11) {
+        candle.quoteVolume = assertNonNegative(Number(row[7]), 'quote volume');
+        candle.tradeCount = assertNonNegative(Number(row[8]), 'trade count');
+        candle.takerBuyVolume = assertNonNegative(Number(row[9]), 'taker buy volume');
+        candle.takerBuyQuoteVolume = assertNonNegative(Number(row[10]), 'taker buy quote volume');
+      }
+      return candle;
+    }).filter((candle) => !closedOnly || candle.time + duration <= now)
+      .sort((left, right) => left.time - right.time);
   }
 
   async getMarkPrice(symbol: string): Promise<number> {
     // Mirror spot tidak punya premiumIndex; proksi mark = harga terakhir spot (lab paper).
-    const url = new URL(this.apiPath('/fapi/v1/premiumIndex', '/api/v3/ticker/price'), this.baseUrl);
-    url.searchParams.set('symbol', symbol.toUpperCase());
-    const response = await this.fetchImpl(url);
-    if (!response.ok) throw new Error(`Binance mark price error: HTTP ${response.status}`);
-    const payload = await response.json() as { markPrice?: string; price?: string };
+    const payload = await this.fetchJson((paths) => paths.markPrice, { symbol: symbol.toUpperCase() }) as { markPrice?: string; price?: string };
     return assertPositive(Number(payload.markPrice ?? payload.price), 'mark price');
   }
 
   async get24hTickers(): Promise<Array<{ symbol: string; quoteVolume: number }>> {
-    const url = new URL(this.apiPath('/fapi/v1/ticker/24hr', '/api/v3/ticker/24hr'), this.baseUrl);
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
-    try {
-      const response = await this.fetchImpl(url, { signal: controller.signal });
-      if (!response.ok) throw new Error(`Binance ticker error: HTTP ${response.status}`);
-      const payload = await response.json() as Array<{ symbol?: string; quoteVolume?: string }>;
-      if (!Array.isArray(payload)) throw new Error('Binance ticker payload bukan array.');
-      return payload
-        .filter((row) => typeof row.symbol === 'string' && row.symbol.endsWith('USDT'))
-        .map((row) => ({ symbol: row.symbol as string, quoteVolume: Number(row.quoteVolume ?? 0) }))
-        .filter((row) => Number.isFinite(row.quoteVolume) && row.quoteVolume > 0);
-    } finally {
-      clearTimeout(timeout);
-    }
+    const payload = await this.fetchJson((paths) => paths.tickers, {}) as Array<{ symbol?: string; quoteVolume?: string }>;
+    if (!Array.isArray(payload)) throw new Error('Binance ticker payload bukan array.');
+    return payload
+      .filter((row) => typeof row.symbol === 'string' && row.symbol.endsWith('USDT'))
+      .map((row) => ({ symbol: row.symbol as string, quoteVolume: Number(row.quoteVolume ?? 0) }))
+      .filter((row) => Number.isFinite(row.quoteVolume) && row.quoteVolume > 0);
   }
 }
 
