@@ -72,3 +72,15 @@ Salin persis ke Binance: BUY ETCUSDT 9.5980 SL 9.4100 TP 9.9740
 
 Alat uji: `services/worker/src/uji-notif.ts` — memindai koin terlikuid, mencari paket LONG & SHORT,
 lalu me-render notif Telegram PERSIS seperti aslinya (pakai buildTicketText yang sama dengan mesin).
+
+## G. Kasus MINAUSDT (25/9 ±20:00 WIB) — pemilik ragu, audit membuktikan bot sah
+
+Curiga pemilik: "candle 2 masih ragu, chart malah turun, padahal disuruh long 0.14302."
+Fakta audit (data live, harga saat audit 0.14301):
+- Garis LONG: pintu 0.14223 · manis 0.14095 · batal 0.13938 (High 0.15333/Low 0.13758, range 11%)
+- X = 19:00 (menusuk pintu dari luar) → C1 = 19:15 (buntut 3.92× badan ✓, badan 20% ✓, close paruh luar ✓)
+- C2 = 19:30 close 0.14302 di atas puncak C1 ✓ · umur 1 candle (SEGAR) · gate 1H HIJAU searah ✓
+- TIKET: entry 0.14302 · SL 0.14087 (ekor C1) · TP 0.14732 (2R) · jarak 1.50% · PUTUSAN: BOLEH ENTRI
+- "Chart turun" ke 0.14265 saat screenshot = −0.26% dari entry, belum 0.1R — wajar (retest pintu),
+  idea long tetap hidup selama close tidak di bawah garis batal 0.13938. Saat audit harga sudah balik 0.14301.
+Pelajaran: turun sedikit setelah entry BUKAN bukti bot salah; hakimnya garis SL/batal, bukan perasaan candle berikutnya.
