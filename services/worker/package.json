@@ -12,7 +12,9 @@
     "research:backfill": "RUN_RESEARCH_ARCHIVE_BACKFILL=true node --import tsx src/research-backfill.ts",
     "research:funding": "RUN_RESEARCH_FUNDING_BACKFILL=true node --import tsx src/funding-backfill.ts",
     "research:metrics": "RUN_RESEARCH_METRICS_BACKFILL=true node --import tsx src/metrics-backfill.ts",
-    "research:local": "node --import tsx src/local-research.ts"
+    "research:local": "node --import tsx src/local-research.ts",
+    "desk:dry": "node --import tsx src/desk-dry.ts",
+    "desk:diag": "node --import tsx src/desk-diag.ts"
   },
   "dependencies": {
     "@nusaquant/core": "0.1.0",

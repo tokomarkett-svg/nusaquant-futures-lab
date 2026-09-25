@@ -19,8 +19,7 @@ import {
   type Candle, type SetupMarkers, type Side, type Ticket, type Zones,
 } from '@nusaquant/core';
 import { BinancePublicMarketDataClient, DEFAULT_BINANCE_BASE_URL } from './market-data.ts';
-import { scanAlertCandidates } from './alerts.ts';
-import { sendTelegram } from './alerts.ts';
+import { discoverChatFromUpdates, scanAlertCandidates, sendTelegram } from './alerts.ts';
 import { createWorkerSupabaseClient } from './supabase.ts';
 
 export const DESK_SESSION_ID = process.env.DESK_SESSION_ID ?? '00000000-0000-4000-8000-000000000010';
@@ -293,6 +292,44 @@ export function createSupabaseDeskStore(client = createWorkerSupabaseClient(), s
   };
 }
 
+// ---------------------------------------------------------------- store memori (dry run & tes)
+
+export function createMemoryDeskStore(seed: DeskPosition[] = [], log: Array<Record<string, unknown>> = []): DeskStore & { positions: DeskPosition[]; log: Array<Record<string, unknown>> } {
+  const positions = [...seed];
+  let counter = positions.length;
+  return {
+    positions,
+    log,
+    async ensureSession() { log.push({ action: 'ENSURE_SESSION' }); },
+    async positionsSince(dayStartIso) { return positions.filter((p) => p.openedAt >= dayStartIso); },
+    async openPositions() { return positions.filter((p) => p.status === 'OPEN'); },
+    async openPosition(input) {
+      counter += 1;
+      const created: DeskPosition = {
+        id: `dry-${counter}`,
+        symbol: input.symbol, side: input.side, status: 'OPEN', quantity: input.sizeCoin,
+        entry: input.entry, stop: input.stop, target: input.target,
+        exitPrice: null, realizedPnl: null, closeReason: null,
+        openedAt: input.openedAt, closedAt: null, metadata: input.metadata,
+      };
+      positions.push(created);
+      log.push({ action: 'OPEN', ...created });
+      return created;
+    },
+    async closePosition(id, input) {
+      const found = positions.find((p) => p.id === id);
+      if (!found) return;
+      found.status = 'CLOSED';
+      found.exitPrice = input.exitPrice;
+      found.realizedPnl = input.realizedPnl;
+      found.closeReason = input.closeReason;
+      found.closedAt = input.closedAt;
+      log.push({ action: 'CLOSE', id, ...input });
+    },
+    async journal(input) { log.push({ ...input }); },
+  };
+}
+
 // ---------------------------------------------------------------- siklus
 
 export type DeskCycleDeps = {
@@ -438,7 +475,16 @@ export async function watchDesk(): Promise<void> {
     return;
   }
   const market = new BinancePublicMarketDataClient({ baseUrl: process.env.BINANCE_BASE_URL ?? DEFAULT_BINANCE_BASE_URL });
-  const chatId = (process.env.TELEGRAM_CHAT_ID ?? '').trim() || undefined;
+  let chatId = (process.env.TELEGRAM_CHAT_ID ?? '').trim() || undefined;
+  // Sama seperti alerts: pakai chat yang benar-benar menyapa bot kalau token tersedia.
+  if (process.env.TELEGRAM_BOT_TOKEN) {
+    try {
+      const discovered = await discoverChatFromUpdates();
+      if (discovered) chatId = discovered.chatId;
+    } catch {
+      /* biarkan chat id dari env */
+    }
+  }
   const announcedGuard = new Set<string>();
   console.log(JSON.stringify({ desk: true, watch: true, pollMs, sessionId: DESK_SESSION_ID, maxTradesPerDay: MAX_TRADES_PER_DAY, at: new Date().toISOString() }));
 
