@@ -222,12 +222,13 @@ export async function discoverChatFromUpdates(
 }
 
 /**
- * Saklar utama notif Telegram. Status: NYALA (pemilik menyalakan eksplisit 25/9 malam, setelah
- * langkah arah-hari + MA 15m/1H cocok dipasang). Matikan kapan pun: Railway Variables PMB_NOTIF=0.
+ * Saklar utama notif Telegram. Status: BISU (dibisukan lagi 25/9 larut malam setelah tiket BANK
+ * bocor di nilai batas — C1 tepat 2,00x, C2 breakout paling telat, notif keluar di umur terakhir
+ * tiket). Nyala HANYA bila pemilik set PMB_NOTIF=1 secara eksplisit.
  * Tes yang menyuntik fetchImpl sendiri tidak terdampak.
  */
 export function notifDibungkam(options: { fetchImpl?: typeof fetch } = {}): boolean {
-  return (process.env.PMB_NOTIF ?? '1') === '0' && !options.fetchImpl;
+  return process.env.PMB_NOTIF !== '1' && !options.fetchImpl;
 }
 
 export async function sendTelegram(text: string, options: { token?: string; chatId?: string; fetchImpl?: typeof fetch } = {}): Promise<boolean> {
