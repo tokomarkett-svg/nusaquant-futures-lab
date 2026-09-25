@@ -80,3 +80,11 @@ test('tanpa paket lengkap tidak ada tiket (no setup = no trade)', () => {
   ];
   assert.equal(computeTicket(touchedButNoC1, zones, 'LONG', 99.2), null);
 });
+test('tiket basi: candle 2 > 3 candle lalu MEMATIKAN actionable (kasus ALLO 16 candle)', () => {
+  // candle pengisi di ATAS pintu (low > 100) supaya tidak membuat X baru — paket lama dibiarkan menua
+  const basi = computeTicket([...longCandles, ...Array.from({ length: 16 }, (_, i) => mk(20 + i, 100.4, 100.6, 100.2, 100.5))], zones, 'LONG', 100.5);
+  assert.ok(basi);
+  assert.equal(basi.entryAgeBars !== null && basi.entryAgeBars > 3, true);
+  assert.equal(basi.actionable, false, 'tiket umur 16 candle tidak boleh actionable');
+  assert.match(basi.warnings.join(' '), /tiket dianggap basi/);
+});

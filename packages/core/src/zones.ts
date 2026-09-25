@@ -271,7 +271,8 @@ export function computeTicket(candles: Candle[], zones: Zones, side: Side, price
   const entryAgeBars = setup.candle2 !== null && currentCandleTime !== null
     ? Math.round((currentCandleTime - setup.candle2) / barMs)
     : null;
-  if (entryAgeBars !== null && entryAgeBars > 3) warnings.push(`candle 2 sudah ${entryAgeBars} candle lalu — tiket dianggap basi`);
+  const kedaluwarsa = entryAgeBars !== null && entryAgeBars > 3;
+  if (kedaluwarsa) warnings.push(`candle 2 sudah ${entryAgeBars} candle lalu — tiket dianggap basi`);
 
   const distanceNowPct = ((priceNow - entry) / entry) * 100;
   const travelledR = Math.abs(priceNow - entry) / riskDistance;
@@ -297,7 +298,8 @@ export function computeTicket(candles: Candle[], zones: Zones, side: Side, price
     priceNow,
     distanceNowPct,
     chaseRisk,
-    actionable: stopGeometryOk && !chaseRisk && stopVsBatal === 'aman',
+    // Basi = mati. Umur tiket wajib mematikan actionable — bukan sekadar peringatan.
+    actionable: stopGeometryOk && !chaseRisk && stopVsBatal === 'aman' && !kedaluwarsa,
     warnings,
   };
 }
