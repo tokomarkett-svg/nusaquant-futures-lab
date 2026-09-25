@@ -221,7 +221,21 @@ export async function discoverChatFromUpdates(
   return null;
 }
 
+/**
+ * Saklar utama notif Telegram. Default: BUNGKAM (PMB_NOTIF belum diset = tidak ada yang dikirim).
+ * Alasan 25/9 malam: sinyal melawan arah hari bikin pemilik rugi nyata — semua notif dihentikan
+ * sampai aturan arah-hari diuji data dan pemilik minta nyalakan lagi (Railway Variables: PMB_NOTIF=1).
+ * Tes yang menyuntik fetchImpl sendiri tidak terdampak.
+ */
+export function notifDibungkam(options: { fetchImpl?: typeof fetch } = {}): boolean {
+  return process.env.PMB_NOTIF !== '1' && !options.fetchImpl;
+}
+
 export async function sendTelegram(text: string, options: { token?: string; chatId?: string; fetchImpl?: typeof fetch } = {}): Promise<boolean> {
+  if (notifDibungkam(options)) {
+    console.log('[notif dibungkam] PMB_NOTIF belum diset — pesan tidak dikirim:', text.slice(0, 60).replace(/\n/g, ' '));
+    return false;
+  }
   const token = options.token ?? process.env.TELEGRAM_BOT_TOKEN;
   const chatId = options.chatId ?? process.env.TELEGRAM_CHAT_ID;
   if (!token || !chatId) {
