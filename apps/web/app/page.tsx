@@ -28,6 +28,7 @@ export default async function HomePage() {
           <div className="top-actions">
             <div className="mode-badge">Paper trading</div>
             <div className="health-badge"><span className="health-dot" />Core healthy</div>
+            <a className="control-btn" href="/nominasi" style={{ textDecoration: 'none' }}>Papan Nominasi →</a>
             <SupabaseStatus />
           </div>
         </header>
