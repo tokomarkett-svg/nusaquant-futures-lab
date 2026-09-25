@@ -304,17 +304,22 @@ export async function scanAlertCandidates(client: BinancePublicMarketDataClient,
         const openHariIni = (candleHariIni[0] ?? m15[0]).open;
         const hariNaik = ticker.last >= openHariIni;
         if ((side === 'LONG' && !hariNaik) || (side === 'SHORT' && hariNaik)) return null;
-        // ATURAN UNGU (pelajaran pemilik): cukup lihat harga vs MA99 (garis UNGU di chart).
-        // 1H/15m di atas ungu = trend naik → long sah. Di bawah ungu = trend turun → short sah.
-        // Kuning (MA7) & pink (MA25) cuma pembantu gambar — bukan penentu.
+        // ATURAN UNGU KETAT (pelajaran pemilik): harga harus JELAS di sisi yang benar dari garis
+        // ungu (MA99) — bukan nempel di garis. Margin minimal 0,5%.
+        // Insiden BANK 25/9 22:47 WIB: cuma +0,35% di atas ungu, struktur 15m masih turun → long
+        // bocor. Putusan pemilik benar: itu bukan "trend naik", itu nempel garis.
+        const MARGIN_UNGU = 0.005;
         if (m15.length >= 99) {
           const closes15 = (m15 as Candle[]).map((c) => c.close);
           const ungu15 = closes15.slice(-99).reduce((acc, v) => acc + v, 0) / 99;
           const close15 = closes15.at(-1) ?? Number.NaN;
-          if ((side === 'LONG' && !(close15 > ungu15)) || (side === 'SHORT' && !(close15 < ungu15))) return null;
+          const jelas15 = side === 'LONG' ? close15 >= ungu15 * (1 + MARGIN_UNGU) : close15 <= ungu15 * (1 - MARGIN_UNGU);
+          if (!jelas15) return null;
         }
         const gateInfo = gateFromCandles(h1);
-        const gateAlign = side === 'LONG' ? gateInfo.close > gateInfo.ma99 : gateInfo.close < gateInfo.ma99;
+        const gateAlign = side === 'LONG'
+          ? gateInfo.close >= gateInfo.ma99 * (1 + MARGIN_UNGU)
+          : gateInfo.close <= gateInfo.ma99 * (1 - MARGIN_UNGU);
         const setup = detectSetup(m15 as Candle[], zones, side);
         const ticket = computeTicket(m15 as Candle[], zones, side, ticker.last);
         const row: AlertScanRow = {
