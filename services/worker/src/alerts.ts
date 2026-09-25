@@ -66,9 +66,10 @@ export function buildBellText(candidate: AlertCandidate): string {
   ].join('\n');
 }
 
-export function buildTicketText(candidate: AlertCandidate, ticket: Ticket): string {
+export function buildTicketText(candidate: AlertCandidate, ticket: Ticket, papanUrl?: string): string {
   const digits = digitsFor(ticket.entry);
   const format = (value: number) => value.toFixed(digits);
+  const tautanChart = papanUrl ? `\n🔎 Chart live: ${papanUrl}/nominasi/${candidate.symbol}` : '';
 
   // Kartu SIAP ENTRI: hanya untuk tiket actionable + gate searah — angka entry jadi hero.
   if (candidate.gateAlign && ticket.actionable) {
@@ -84,7 +85,7 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket): stri
       `Gate 1H ${candidate.gate} ✔ · stop ${ticket.riskPct.toFixed(2)}% dari entry · target 2R`,
       ticket.warnings.length ? `⚠ ${ticket.warnings.join(' · ')}` : 'Semua pagar lolos — harga masih di dekat pintu.',
       '',
-      `Salin persis ke Binance: <code>${orderSide} ${candidate.symbol} ${format(ticket.entry)} SL ${format(ticket.stop)} TP ${format(ticket.target)}</code>`,
+      `Salin persis ke Binance: <code>${orderSide} ${candidate.symbol} ${format(ticket.entry)} SL ${format(ticket.stop)} TP ${format(ticket.target)}</code>${tautanChart}`,
       '1% risiko · maksimal 2 trade/hari · stop dipasang SEBELUM entry.',
     ].join('\n');
   }
@@ -105,7 +106,7 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket): stri
       ? `⛔ Gate 1H = ${candidate.gate} — tidak searah dengan ${candidate.side}. Tunggu gate berbalik; tiket ini untuk latihan/jurnal saja.`
       : ticket.warnings.length ? `⚠ ${ticket.warnings.join(' · ')}` : 'Semua pagar lolos: gate searah, stop di sisi benar, harga belum lari.',
     '',
-    'Ingat: 1% risiko · maksimal 2 trade/hari · stop dipasang SEBELUM entry.',
+    `Ingat: 1% risiko · maksimal 2 trade/hari · stop dipasang SEBELUM entry.${tautanChart}`,
   ].join('\n');
 }
 
@@ -113,7 +114,7 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket): stri
 export function collectAlertsForCandidate(
   candidate: AlertCandidate,
   store: ReturnType<typeof createAlertStore>,
-  options: { bellAgeBars?: number; mode?: AlertMode } = {},
+  options: { bellAgeBars?: number; mode?: AlertMode; papanUrl?: string } = {},
 ): AlertMessage[] {
   const messages: AlertMessage[] = [];
   const bellAgeBars = options.bellAgeBars ?? 1;
@@ -130,11 +131,17 @@ export function collectAlertsForCandidate(
     if (!store.has(key)) {
       const kind = candidate.gateAlign ? 'TIKET' : 'TIKET_TANPA_GATE';
       const allowed = mode === 'semua' || (mode === 'tiketsiap' && kind === 'TIKET') || mode === 'tiketsemua';
-      if (allowed) messages.push({ key, kind, text: buildTicketText(candidate, candidate.ticket) });
+      if (allowed) messages.push({ key, kind, text: buildTicketText(candidate, candidate.ticket, options.papanUrl) });
     }
   }
 
   return messages;
+}
+
+/** Alamat papan web (tanpa garis miring di ujung) untuk tautan chart pada notif. */
+function normalizePapanUrl(): string | undefined {
+  const raw = (process.env.PAPAN_URL ?? '').trim().replace(/\/+$/, '');
+  return raw ? raw : undefined;
 }
 
 /** Baris diagnosa (tanpa membocorkan rahasia) supaya salah ketik langsung ketahuan dari log. */
@@ -292,14 +299,14 @@ export async function scanAlertCandidates(client: BinancePublicMarketDataClient,
 export async function runAlertCycle(
   store: ReturnType<typeof createAlertStore>,
   client?: BinancePublicMarketDataClient,
-  options: { chatId?: string; mode?: AlertMode } = {},
+  options: { chatId?: string; mode?: AlertMode; papanUrl?: string } = {},
 ): Promise<{ scanned: number; sent: number; messages: AlertMessage[] }> {
   const market = client ?? new BinancePublicMarketDataClient({ baseUrl: process.env.BINANCE_BASE_URL ?? DEFAULT_BINANCE_BASE_URL });
   const rows = await scanAlertCandidates(market);
   const messages: AlertMessage[] = [];
   for (const row of rows) {
     if (!row.gateAlign && row.setup.candle2 === null) continue; // hemat: gate belum searah & belum ada paket = tidak ada yang dikabarkan
-    messages.push(...collectAlertsForCandidate(row, store, { mode: options.mode }));
+    messages.push(...collectAlertsForCandidate(row, store, { mode: options.mode, papanUrl: options.papanUrl ?? normalizePapanUrl() }));
   }
   let sent = 0;
   for (const message of messages) {

@@ -47,6 +47,9 @@ test('tiket siap: pesannya memuat entry, stop, target, ukuran, dan pengingat ris
   assert.match(text, /1% risiko/);
   assert.doesNotMatch(text, /JANGAN EKSEKUSI/);
 
+  const denganTautan = buildTicketText(candidateTicket, ticket, 'https://papan.example.app');
+  assert.match(denganTautan, /https:\/\/papan\.example\.app\/nominasi\/RUNEUSDT/);
+
   const basi = buildTicketText(candidateTicket, { ...ticket, actionable: false, chaseRisk: true, warnings: ['harga sudah berjalan 0.8R — jangan dikejar'] });
   assert.match(basi, /TIKET BASI — jangan dikejar/);
 });
