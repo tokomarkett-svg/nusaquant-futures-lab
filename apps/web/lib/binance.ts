@@ -144,6 +144,8 @@ export type BoardRow = {
   bucket: Bucket | null;
   dataAgeMin: number;
   volJt: number;
+  setup: { x: number | null; candle1: number | null; candle2: number | null; valid: boolean; note: string | null };
+  ticket: Ticket | null;
 };
 
 export function bucketOf(minutes: number | null): Bucket | null {
@@ -222,6 +224,8 @@ export async function scanBoard(limit = 40): Promise<Board> {
         const touchAgeMin = insideBand ? 0 : detectTouchAge(m15, zones, side, now);
         const status: Status = insideBand ? 'MENYALA' : Math.abs(distPct) <= 1.5 ? 'SIMAK' : 'DISIMAK';
         const gateAlign = (side === 'LONG' && gate === 'HIJAU') || (side === 'SHORT' && gate === 'MERAH');
+        const setup = detectSetup(m15, zones, side);
+        const ticket = computeTicket(m15, zones, side, ticker.last);
         const row: BoardRow = {
           symbol: ticker.symbol,
           last: ticker.last,
@@ -238,6 +242,8 @@ export async function scanBoard(limit = 40): Promise<Board> {
           bucket: bucketOf(touchAgeMin),
           dataAgeMin: Math.round(dataAgeMin),
           volJt: Number((ticker.quoteVolume / 1e6).toFixed(1)),
+          setup: { x: setup.x, candle1: setup.candle1, candle2: setup.candle2, valid: setup.valid, note: setup.notes.at(-1) ?? null },
+          ticket,
         };
         return row;
       } catch {
@@ -272,6 +278,10 @@ export type SetupMarkers = {
   staleBars: number | null;
   valid: boolean;
   notes: string[];
+  /** Angka tiket — terisi hanya kalau paket lengkap (X → candle 1 → candle 2). */
+  entry: number | null;
+  stop: number | null;
+  riskDistance: number | null;
 };
 
 function bodyOf(c: Candle): number { return Math.abs(c.close - c.open); }
@@ -289,7 +299,7 @@ export function detectSetup(candles: Candle[], zones: Zones, side: Side): SetupM
   }
   if (xIndex === null) {
     notes.push('Belum ada X: harga belum menusuk garis pintu dari luar.');
-    return { side, x: null, candle1: null, candle2: null, staleBars: null, valid: false, notes };
+    return { side, x: null, candle1: null, candle2: null, staleBars: null, valid: false, notes, entry: null, stop: null, riskDistance: null };
   }
   const x = bars[xIndex];
   let c1Index: number | null = null;
@@ -316,7 +326,7 @@ export function detectSetup(candles: Candle[], zones: Zones, side: Side): SetupM
   }
   if (c1Index === null) {
     notes.push(`X ada (${new Date(x.time).toISOString().slice(11, 16)} UTC) tapi candle 1 belum sah: ${c1InvalidReason ?? 'belum muncul'}.`);
-    return { side, x: x.time, candle1: null, candle2: null, staleBars: bars.length - 1 - xIndex, valid: false, notes };
+    return { side, x: x.time, candle1: null, candle2: null, staleBars: bars.length - 1 - xIndex, valid: false, notes, entry: null, stop: null, riskDistance: null };
   }
   const c1 = bars[c1Index];
   let c2Index: number | null = null;
@@ -329,11 +339,99 @@ export function detectSetup(candles: Candle[], zones: Zones, side: Side): SetupM
   if (c2Index === null) {
     notes.push(`Candle 1 SAH (buntut ${(Math.abs((side === 'LONG' ? Math.min(c1.open, c1.close) - c1.low : c1.high - Math.max(c1.open, c1.close))) / Math.max(bodyOf(c1), 1e-12)).toFixed(2)}× badan). Candle 2 belum lahir: tunggu close di ${side === 'LONG' ? 'atas puncak' : 'bawah dasar'} candle 1 (maks 3 candle).`);
     if (staleBars > TOUCH_EXPIRY_CANDLES) notes.push(`Sudah ${staleBars} candle sejak X → melewati batas ${TOUCH_EXPIRY_CANDLES} candle (kedaluwarsa).`);
-    return { side, x: x.time, candle1: c1.time, candle2: null, staleBars, valid: false, notes };
+    return { side, x: x.time, candle1: c1.time, candle2: null, staleBars, valid: false, notes, entry: null, stop: null, riskDistance: null };
   }
   const c2 = bars[c2Index];
-  notes.push(`Paket lengkap: X → candle 1 → candle 2 (close ${side === 'LONG' ? 'di atas puncak' : 'di bawah dasar'} candle 1). Entry ${c2.close}, stop ${side === 'LONG' ? c1.low : c1.high}.`);
-  return { side, x: x.time, candle1: c1.time, candle2: c2.time, staleBars, valid: true, notes };
+  const entry = c2.close;
+  const stop = side === 'LONG' ? c1.low : c1.high;
+  const riskDistance = Math.abs(entry - stop);
+  notes.push(`Paket lengkap: X → candle 1 → candle 2 (close ${side === 'LONG' ? 'di atas puncak' : 'di bawah dasar'} candle 1). Entry ${entry}, stop ${stop}.`);
+  return { side, x: x.time, candle1: c1.time, candle2: c2.time, staleBars, valid: true, notes, entry, stop, riskDistance };
+}
+
+export type Ticket = {
+  side: Side;
+  entry: number;
+  stop: number;
+  target: number;
+  riskDistance: number;
+  riskPct: number;
+  sizeCoin: number;
+  riskUsdt: number;
+  rewardUsdt: number;
+  rr: number;
+  stopGeometryOk: boolean;
+  stopVsBatal: 'aman' | 'peringatan';
+  entryAgeBars: number | null;
+  priceNow: number;
+  distanceNowPct: number;
+  chaseRisk: boolean;
+  actionable: boolean;
+  warnings: string[];
+};
+
+export const RISK_USDT = 0.31; // 1% dari modal latihan 31 USDT
+export const TARGET_R = 2;
+/** Kalau harga sudah berjalan > 0,5R dari entry → jangan dikejar (tiket tidak bisa dieksekusi lagi). */
+const CHASE_LIMIT_R = 0.5;
+
+/**
+ * Tiket eksekusi otomatis dari aturan kita:
+ * entry = close candle 2 · stop = ujung buntut candle 1 · target = entry ± 2R
+ * ukuran coin = 1R ÷ (jarak entry→stop), 1R = 0,31 USDT
+ */
+export function computeTicket(candles: Candle[], zones: Zones, side: Side, priceNow: number): Ticket | null {
+  const setup = detectSetup(candles, zones, side);
+  if (!setup.valid || setup.entry === null || setup.stop === null || setup.riskDistance === null || setup.riskDistance <= 0) {
+    return null;
+  }
+  const { entry, stop, riskDistance } = setup;
+  const target = side === 'LONG' ? entry + TARGET_R * riskDistance : entry - TARGET_R * riskDistance;
+  const zone = zoneOf(zones, side);
+  const warnings: string[] = [];
+
+  const stopGeometryOk = side === 'LONG' ? stop < entry : stop > entry;
+  if (!stopGeometryOk) warnings.push('geometri stop tidak wajar — periksa ulang candle 1');
+
+  // Untuk long: stop (= buntut candle 1) seharusnya masih di atas garis batal; kalau di bawah, zona sudah mati sebelum stop kena.
+  const stopVsBatal: 'aman' | 'peringatan' = side === 'LONG'
+    ? (stop >= zone.batal ? 'aman' : 'peringatan')
+    : (stop <= zone.batal ? 'aman' : 'peringatan');
+  if (stopVsBatal === 'peringatan') warnings.push('stop berada di luar garis batal — setup lemah, zona sudah mati sebelum stop kena');
+
+  const currentCandleTime = candles.at(-1)?.time ?? null;
+  const entryAgeBars = setup.candle2 !== null && currentCandleTime !== null
+    ? Math.round((currentCandleTime - setup.candle2) / (candles.length > 1 ? Math.max(1, candles[1].time - candles[0].time) : 900_000))
+    : null;
+  if (entryAgeBars !== null && entryAgeBars > 3) warnings.push(`candle 2 sudah ${entryAgeBars} candle lalu — tiket mendingan dianggap basi`);
+
+  const distanceNowPct = ((priceNow - entry) / entry) * 100;
+  const travelledR = Math.abs(priceNow - entry) / riskDistance;
+  const chaseRisk = travelledR > CHASE_LIMIT_R;
+  if (chaseRisk) {
+    warnings.push(`harga sudah berjalan ${travelledR.toFixed(1)}R dari entry — jangan dikejar, tunggu setup baru (aturan anti-nyangkut)`);
+  }
+
+  return {
+    side,
+    entry,
+    stop,
+    target,
+    riskDistance,
+    riskPct: (riskDistance / entry) * 100,
+    sizeCoin: RISK_USDT / riskDistance,
+    riskUsdt: RISK_USDT,
+    rewardUsdt: RISK_USDT * TARGET_R,
+    rr: TARGET_R,
+    stopGeometryOk,
+    stopVsBatal,
+    entryAgeBars,
+    priceNow,
+    distanceNowPct,
+    chaseRisk,
+    actionable: stopGeometryOk && !chaseRisk && stopVsBatal === 'aman',
+    warnings,
+  };
 }
 
 export type CoinDetail = {
@@ -346,6 +444,8 @@ export type CoinDetail = {
   ma99: number[];
   setupLong: SetupMarkers;
   setupShort: SetupMarkers;
+  ticketLong: Ticket | null;
+  ticketShort: Ticket | null;
   last: number;
   dataAgeMin: number;
   at: string;
@@ -377,6 +477,8 @@ export async function coinDetail(symbol: string, interval: string): Promise<Coin
     ma99: ma(99),
     setupLong: detectSetup(candles, zones, 'LONG'),
     setupShort: detectSetup(candles, zones, 'SHORT'),
+    ticketLong: computeTicket(candles, zones, 'LONG', ticker.last),
+    ticketShort: computeTicket(candles, zones, 'SHORT', ticker.last),
     last: ticker.last,
     dataAgeMin: Math.round((Date.now() - (newest + intervalMs)) / 60_000),
     at: new Date().toISOString(),

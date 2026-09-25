@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { Board, BoardRow, Status } from '../../lib/binance';
 
-type Filter = 'SEMUA' | 'LONG' | 'SHORT' | 'SEARAH';
+type Filter = 'SEMUA' | 'LONG' | 'SHORT' | 'SEARAH' | 'TIKET';
 
 const STATUS_STYLE: Record<Status, { bg: string; fg: string; border: string; label: string }> = {
   MENYALA: { bg: '#3a2a06', fg: '#ffc44d', border: '#6b4d0a', label: '🔥 MENYALA' },
@@ -81,6 +81,7 @@ export default function PapanNominasi() {
     if (filter === 'LONG') return board.rows.filter((row) => row.side === 'LONG');
     if (filter === 'SHORT') return board.rows.filter((row) => row.side === 'SHORT');
     if (filter === 'SEARAH') return board.rows.filter((row) => row.gateAlign);
+    if (filter === 'TIKET') return board.rows.filter((row) => row.ticket !== null);
     return board.rows;
   }, [board, filter]);
 
@@ -122,14 +123,14 @@ export default function PapanNominasi() {
       </section>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {(['SEMUA', 'LONG', 'SHORT', 'SEARAH'] as Filter[]).map((item) => (
+        {(['SEMUA', 'LONG', 'SHORT', 'SEARAH', 'TIKET'] as Filter[]).map((item) => (
           <button
             key={item}
             onClick={() => setFilter(item)}
             className="control-btn"
             style={filter === item ? { background: 'var(--green-dark)', color: 'white', borderColor: 'var(--green-dark)' } : undefined}
           >
-            {item === 'SEARAH' ? 'GATE SEARAH ✔' : item}
+            {item === 'SEARAH' ? 'GATE SEARAH ✔' : item === 'TIKET' ? '🎯 SIAP TIKET' : item}
           </button>
         ))}
       </div>
@@ -164,6 +165,15 @@ export default function PapanNominasi() {
                     <span>manis <b>{zone.manis.toFixed(digits)}</b></span>
                     <span>batal <b>{zone.batal.toFixed(digits)}</b></span>
                   </div>
+                  {row.ticket && (
+                    <div style={{ marginTop: 8, padding: '7px 10px', borderRadius: 9, background: row.ticket.actionable ? '#eaf8ef' : '#fff4e8', border: `1px solid ${row.ticket.actionable ? '#c8e9d5' : '#f3ddc2'}`, fontFamily: "'DM Mono', monospace", fontSize: 11.5 }}>
+                      🎯 <b style={{ color: row.ticket.actionable ? 'var(--green-dark)' : 'var(--amber)' }}>{row.ticket.actionable ? 'TIKET SIAP' : 'TIKET BASI — JANGAN DIKEJAR'}</b>
+                      {'  ·  '}entry {row.ticket.entry.toFixed(digits)} · SL {row.ticket.stop.toFixed(digits)} · TP {row.ticket.target.toFixed(digits)} · ukuran {row.ticket.sizeCoin.toLocaleString('id-ID', { maximumFractionDigits: 4 })} coin
+                    </div>
+                  )}
+                  {!row.ticket && row.setup.note && (
+                    <div style={{ marginTop: 8, color: 'var(--muted)', fontSize: 11 }}>catatan: {row.setup.note}</div>
+                  )}
                   <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8, alignItems: 'center', fontSize: 11.5 }}>
                     <span style={{ padding: '2px 8px', borderRadius: 6, background: gate.bg, color: gate.fg, border: `1px solid ${gate.border}`, fontWeight: 800 }}>{gate.label}</span>
                     {row.gateAlign && <span style={{ color: 'var(--green-dark)', fontWeight: 700 }}>searah ✔</span>}

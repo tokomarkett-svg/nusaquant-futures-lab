@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import ZoneChart from '../../components/ZoneChart';
-import type { CoinDetail as CoinDetailPayload, SetupMarkers } from '../../../lib/binance';
+import type { CoinDetail as CoinDetailPayload, SetupMarkers, Ticket } from '../../../lib/binance';
 
 const TIMEFRAMES = ['5m', '15m', '1h', '4h'] as const;
 type Timeframe = (typeof TIMEFRAMES)[number];
@@ -45,6 +45,38 @@ function SetupChecklist({ setup, title, digits }: { setup: SetupMarkers; title: 
         <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #edf2ee', fontSize: 11, fontFamily: "'DM Mono', monospace", color: 'var(--ink)' }}>
           Entry di close candle 2 · stop di ujung buntut candle 1 · target 2R
         </div>
+      )}
+    </div>
+  );
+}
+
+function TicketPanel({ ticket, digits, label }: { ticket: Ticket | null; digits: number; label: string }) {
+  if (!ticket) {
+    return (
+      <div className="diagnostic-table-wrap">
+        <div className="diagnostic-table-title">{label}</div>
+        <div style={{ color: 'var(--muted)', fontSize: 11.5, lineHeight: 1.6 }}>
+          Belum ada tiket: paket X → candle 1 → candle 2 belum lengkap. Tidak ada tiket = tidak ada entri. (Menunggu itu bagian dari sistem.)
+        </div>
+      </div>
+    );
+  }
+  const tone = ticket.actionable ? { bg: '#eaf8ef', border: '#c8e9d5', fg: 'var(--green-dark)', text: 'SIAP / MASIH BISA DIEKSEKUSI' }
+    : { bg: '#fff4e8', border: '#f3ddc2', fg: 'var(--amber)', text: 'TIDAK BISA DIEKSEKUSI LAGI — TUNGGU SETUP BARU' };
+  return (
+    <div className="diagnostic-table-wrap" style={{ background: tone.bg, borderColor: tone.border }}>
+      <div className="diagnostic-table-title" style={{ color: tone.fg }}>{label} · {tone.text}</div>
+      <div style={{ display: 'grid', gap: 6, fontSize: 12, fontFamily: "'DM Mono', monospace" }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--muted)' }}>entry (close candle 2)</span><b>{ticket.entry.toFixed(digits)}</b></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--muted)' }}>stop (ujung buntut candle 1)</span><span style={{ color: 'var(--red)' }}>{ticket.stop.toFixed(digits)}</span></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--muted)' }}>target 2R</span><span style={{ color: 'var(--green-dark)' }}>{ticket.target.toFixed(digits)}</span></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--muted)' }}>jarak entry→stop</span><span>{ticket.riskDistance.toFixed(digits)} ({ticket.riskPct.toFixed(2)}%)</span></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--muted)' }}>ukuran coin (1R = 0,31 USDT)</span><b>{ticket.sizeCoin.toLocaleString('id-ID', { maximumFractionDigits: 4 })}</b></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--muted)' }}>risiko / imbalan</span><span>{ticket.riskUsdt} USDT → {ticket.rewardUsdt} USDT</span></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--muted)' }}>harga sekarang vs entry</span><span style={{ color: ticket.chaseRisk ? 'var(--amber)' : 'var(--ink)' }}>{ticket.distanceNowPct >= 0 ? '+' : ''}{ticket.distanceNowPct.toFixed(2)}%</span></div>
+      </div>
+      {ticket.warnings.length > 0 && (
+        <div style={{ marginTop: 8, color: 'var(--amber)', fontSize: 11, lineHeight: 1.6 }}>⚠ {ticket.warnings.join(' · ')}</div>
       )}
     </div>
   );
@@ -177,6 +209,11 @@ export default function CoinDetail({ symbol }: { symbol: string }) {
       <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
         <SetupChecklist setup={payload.setupLong} title="SKENARIO LONG" digits={digits} />
         <SetupChecklist setup={payload.setupShort} title="SKENARIO SHORT" digits={digits} />
+      </section>
+
+      <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
+        <TicketPanel ticket={payload.ticketLong} digits={digits} label="TIKET LONG (otomatis)" />
+        <TicketPanel ticket={payload.ticketShort} digits={digits} label="TIKET SHORT (otomatis)" />
       </section>
 
       <section className="panel" style={{ padding: '14px 16px', borderRadius: 18 }}>
