@@ -8,6 +8,7 @@
  * menjadi membaca PASAR YANG SAMA: futures.
  */
 import http from 'node:http';
+import { bukaDemo, tutupDemo, tokenSah } from './exec-demo.ts';
 
 const INTERVAL_MS: Record<string, number> = {
   '5m': 300_000, '15m': 900_000, '30m': 1_800_000, '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000,
@@ -62,6 +63,33 @@ export function createDataProxyHandler(upstreamBase = process.env.WORKER_UPSTREA
 
     let upstreamPath = '';
     let params: Record<string, string> = {};
+    if (route === '/exec/demo' && req.method === 'POST') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      try {
+        const parsed = JSON.parse(body || '{}') as { token?: string; symbol?: string; side?: string; qty?: number; stop?: number; target?: number };
+        if (!tokenSah(parsed.token, process.env.EXEC_TOKEN)) return balasJson(401, { ok: false, error: 'token eksekusi salah/kosong.' });
+        const hasil = await bukaDemo({
+          symbol: String(parsed.symbol ?? '').toUpperCase(),
+          side: parsed.side === 'LONG' ? 'LONG' : 'SHORT',
+          qty: Number(parsed.qty), stop: Number(parsed.stop), target: Number(parsed.target),
+        });
+        return balasJson(200, hasil);
+      } catch (error) {
+        return balasJson(502, { ok: false, error: error instanceof Error ? error.message : 'gagal eksekusi demo.' });
+      }
+    }
+    if (route === '/exec/demo-close' && req.method === 'POST') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      try {
+        const parsed = JSON.parse(body || '{}') as { token?: string; symbol?: string };
+        if (!tokenSah(parsed.token, process.env.EXEC_TOKEN)) return balasJson(401, { ok: false, error: 'token eksekusi salah/kosong.' });
+        return balasJson(200, await tutupDemo(String(parsed.symbol ?? '').toUpperCase()));
+      } catch (error) {
+        return balasJson(502, { ok: false, error: error instanceof Error ? error.message : 'gagal menutup demo.' });
+      }
+    }
     if (route === '/data/prices') {
       upstreamPath = '/fapi/v1/ticker/price';
     } else if (route === '/data/tickers') {

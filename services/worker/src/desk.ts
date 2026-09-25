@@ -20,6 +20,7 @@ import {
 } from '@nusaquant/core';
 import { BinancePublicMarketDataClient, DEFAULT_BINANCE_BASE_URL } from './market-data.ts';
 import { discoverChatFromUpdates, scanAlertCandidates, sendTelegram } from './alerts.ts';
+import { tutupDemo } from './exec-demo.ts';
 import { createWorkerSupabaseClient } from './supabase.ts';
 
 export const DESK_SESSION_ID = process.env.DESK_SESSION_ID ?? '00000000-0000-4000-8000-000000000010';
@@ -383,6 +384,13 @@ export async function runDeskCycle(deps: DeskCycleDeps): Promise<DeskCycleResult
       closeReason: evaluation.outcome,
       closedAt,
     });
+    if (position.metadata?.via === 'DEMO') {
+      try {
+        await tutupDemo(position.symbol);
+      } catch (error) {
+        console.error(`[desk] gagal menutup demo ${position.symbol} di testnet:`, error instanceof Error ? error.message : error);
+      }
+    }
     const afterClose = [...today.filter((p) => p.id !== position.id), { ...position, status: 'CLOSED' as const, realizedPnl, closedAt }];
     const rToday = afterClose.filter((p) => p.status === 'CLOSED').reduce((sum, p) => sum + (p.realizedPnl ?? 0), 0) / RISK_USDT;
     await store.journal({

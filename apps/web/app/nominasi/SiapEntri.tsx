@@ -9,8 +9,28 @@ const digitsFor = (price: number) => (price >= 100 ? 2 : price >= 1 ? 4 : price 
 export default function SiapEntri({ rows, prices }: { rows: BoardRow[]; prices: Record<string, number> }) {
   const [copied, setCopied] = useState<string | null>(null);
   const [buka, setBuka] = useState<Record<string, { state: 'loading' | 'opened' | 'error'; message?: string }>>({});
+  const [demo, setDemo] = useState<Record<string, { state: 'loading' | 'opened' | 'error'; message?: string }>>({});
   const ready = rows.filter((row) => row.ticket?.actionable && row.gateAlign).slice(0, 3);
   if (ready.length === 0) return null;
+
+  const entriDemo = async (row: BoardRow) => {
+    setDemo((prev) => ({ ...prev, [row.symbol]: { state: 'loading' } }));
+    try {
+      const response = await fetch('/api/meja/demo', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ symbol: row.symbol, side: row.side }),
+      });
+      const hasil = await response.json() as { ok: boolean; error?: string; position?: { entry: number; qty?: string } };
+      if (!hasil.ok) {
+        setDemo((prev) => ({ ...prev, [row.symbol]: { state: 'error', message: hasil.error ?? 'Gagal mengirim order demo.' } }));
+        return;
+      }
+      setDemo((prev) => ({ ...prev, [row.symbol]: { state: 'opened', message: `ORDER DEMO MASUK KE TESTNET @ ${hasil.position?.entry} (${hasil.position?.qty} coin) — SL/TP terpasang di bursa demo` } }));
+    } catch {
+      setDemo((prev) => ({ ...prev, [row.symbol]: { state: 'error', message: 'Server tidak terjangkau — coba lagi.' } }));
+    }
+  };
 
   const salin = async (row: BoardRow) => {
     const t = row.ticket;
@@ -90,6 +110,15 @@ export default function SiapEntri({ rows, prices }: { rows: BoardRow[]; prices: 
                 {copied === row.symbol ? 'TERSALIN ✓' : '📋 SALIN TIKET'}
               </button>
               <button
+                onClick={() => void entriDemo(row)}
+                disabled={lari || demo[row.symbol]?.state === 'loading' || demo[row.symbol]?.state === 'opened'}
+                className="control-btn"
+                style={{ fontWeight: 800, borderColor: 'var(--amber)', color: 'var(--amber)', opacity: lari ? 0.45 : 1 }}
+                title="Kirim order sungguhan-format ke Binance Futures TESTNET (uang pura-pura resmi dari Binance)"
+              >
+                {demo[row.symbol]?.state === 'loading' ? 'MENGIRIM…' : demo[row.symbol]?.state === 'opened' ? 'DEMO MASUK ✓' : '🧪 ENTRI DEMO (TESTNET)'}
+              </button>
+              <button
                 onClick={() => void entriPaper(row)}
                 disabled={lari || buka[row.symbol]?.state === 'loading' || buka[row.symbol]?.state === 'opened'}
                 className="control-btn"
@@ -99,6 +128,11 @@ export default function SiapEntri({ rows, prices }: { rows: BoardRow[]; prices: 
               </button>
               <span style={{ fontSize: 11, color: 'var(--muted)' }}>{salinText}</span>
             </div>
+            {demo[row.symbol]?.message && (
+              <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: demo[row.symbol].state === 'error' ? 'var(--red)' : 'var(--amber)' }}>
+                {demo[row.symbol].state === 'error' ? '⛔ ' : '🧪 '}{demo[row.symbol].message}
+              </div>
+            )}
             {buka[row.symbol]?.message && (
               <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: buka[row.symbol].state === 'error' ? 'var(--red)' : 'var(--green-dark)' }}>
                 {buka[row.symbol].state === 'error' ? '⛔ ' : '✅ '}{buka[row.symbol].message}

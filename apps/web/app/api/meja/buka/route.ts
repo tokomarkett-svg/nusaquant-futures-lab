@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 
 /** Sama dengan sesi meja di services/worker/src/desk.ts — supaya meja ikut mengawasi posisi tombol. */
 const MEJA_SESSION_ID = '00000000-0000-4000-8000-000000000010';
-const MAX_TRADES_PER_DAY = 2;
+const MAX_TOMBOL_PER_DAY = 3;
 const MAX_CONSECUTIVE_LOSSES = 2;
 
 /** Awal hari WIB (sama dengan desk.ts). */
@@ -75,7 +75,7 @@ export async function POST(request: Request) {
   const [openToday, todayRows, recentClosed] = await Promise.all([
     client.from('paper_positions').select('id,symbol').eq('bot_session_id', MEJA_SESSION_ID).eq('status', 'OPEN'),
     client.from('paper_positions').select('metadata').eq('bot_session_id', MEJA_SESSION_ID).gte('opened_at', dayStart).order('opened_at', { ascending: true }),
-    client.from('paper_positions').select('realized_pnl,closed_at').eq('bot_session_id', MEJA_SESSION_ID).eq('status', 'CLOSED').order('closed_at', { ascending: false }).limit(5),
+    client.from('paper_positions').select('realized_pnl,metadata,closed_at').eq('bot_session_id', MEJA_SESSION_ID).eq('status', 'CLOSED').order('closed_at', { ascending: false }).limit(10),
   ]);
   const firstError = openToday.error ?? todayRows.error ?? recentClosed.error;
   if (firstError) {
@@ -85,12 +85,15 @@ export async function POST(request: Request) {
   if ((openToday.data ?? []).some((row) => row.symbol === symbol)) {
     return NextResponse.json({ ok: false, error: 'Sudah ada posisi terbuka di koin ini — satu koin satu posisi.' }, { status: 409 });
   }
-  const openedToday = (todayRows.data ?? []).length;
-  if (openedToday >= MAX_TRADES_PER_DAY) {
-    return NextResponse.json({ ok: false, error: `Sudah ${openedToday} trade hari ini — meja tutup sampai besok (pagar 2 trade/hari).` }, { status: 409 });
+  const metaOf = (row: { metadata: unknown }) => (row.metadata ?? {}) as Record<string, unknown>;
+  const tombolHariIni = (todayRows.data ?? []).filter((row) => metaOf(row).via === 'TOMBOL' || metaOf(row).via === 'DEMO');
+  if (tombolHariIni.length >= MAX_TOMBOL_PER_DAY) {
+    return NextResponse.json({ ok: false, error: `Kuota latihanmu hari ini habis (${tombolHariIni.length}/${MAX_TOMBOL_PER_DAY}) — besok lagi. Jatah robot tidak ikut dipakai.` }, { status: 409 });
   }
   let consecutiveLosses = 0;
   for (const row of recentClosed.data ?? []) {
+    const via = metaOf(row).via;
+    if (via !== 'TOMBOL' && via !== 'DEMO') continue;
     if (Number(row.realized_pnl ?? 0) < 0) consecutiveLosses += 1; else break;
   }
   if (consecutiveLosses >= MAX_CONSECUTIVE_LOSSES) {
