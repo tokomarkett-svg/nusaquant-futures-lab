@@ -11,6 +11,7 @@ import http from 'node:http';
 import zlib from 'node:zlib';
 import { bukaDemo, tutupDemo, tokenSah } from './exec-demo.ts';
 import { sendTelegram, scanAlertCandidates } from './alerts.ts';
+import { createSupabaseDeskStore } from './desk.ts';
 import { BinancePublicMarketDataClient, DEFAULT_BINANCE_BASE_URL } from './market-data.ts';
 
 const INTERVAL_MS: Record<string, number> = {
@@ -91,6 +92,28 @@ export function createDataProxyHandler(upstreamBase = process.env.WORKER_UPSTREA
         return balasJson(200, await tutupDemo(String(parsed.symbol ?? '').toUpperCase()));
       } catch (error) {
         return balasJson(502, { ok: false, error: error instanceof Error ? error.message : 'gagal menutup demo.' });
+      }
+    }
+    // POST /desk/bersih { token } — tutup semua posisi PAPER terbuka sbg VOID-REGRESI (PnL 0, tanpa notif).
+    // Pakai saat aturan mesin berganti: papan skor 20-trade (docs/41) harus mulai dari nol yang jujur.
+    if (route === '/desk/bersih' && req.method === 'POST') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      try {
+        const parsed = JSON.parse(body || '{}') as { token?: string };
+        if (!tokenSah(parsed.token, process.env.EXEC_TOKEN)) return balasJson(401, { ok: false, error: 'token eksekusi salah/kosong.' });
+        const store = createSupabaseDeskStore();
+        const terbuka = await store.openPositions();
+        const kini = new Date().toISOString();
+        const daftar: string[] = [];
+        for (const pos of terbuka) {
+          await store.closePosition(pos.id, { exitPrice: pos.entry, realizedPnl: 0, closeReason: 'VOID-REGRESI', closedAt: kini });
+          await store.journal({ symbol: pos.symbol, action: 'DESK_VOID', reason: 'VOID-REGRESI: posisi aturan lama ditutup netral (PnL 0) agar uji 20-trade aturan baru mulai bersih.', qualityScore: null, payload: { positionId: pos.id, side: pos.side, entry: pos.entry } });
+          daftar.push(`${pos.symbol} ${pos.side}`);
+        }
+        return balasJson(200, { ok: true, ditutup: daftar.length, daftar });
+      } catch (error) {
+        return balasJson(502, { ok: false, error: error instanceof Error ? error.message : 'gagal membersihkan meja.' });
       }
     }
     if (route === '/notify/demo' && req.method === 'POST') {
