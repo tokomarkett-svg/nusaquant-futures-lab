@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildBellText, buildStartupText, buildTicketText, collectAlertsForCandidate, createAlertStore, sendTelegram, type AlertCandidate } from './alerts.ts';
+import { buildBellText, buildStartupText, buildTicketText, collectAlertsForCandidate, createAlertStore, describeTelegramConfig, explainTelegramError, sendTelegram, type AlertCandidate } from './alerts.ts';
 import type { SetupMarkers, Ticket } from '@nusaquant/core';
 
 const setupNoC1: SetupMarkers = {
@@ -83,6 +83,26 @@ test('pesan sapa startup memuat label aktif dan aturan risiko', () => {
   assert.match(text, /alert aktif/);
   assert.match(text, /BEL PINTU/);
   assert.match(text, /1% risiko/);
+});
+
+test('penerjemah error Telegram memberi langkah perbaikan yang benar', () => {
+  assert.match(explainTelegramError(401, '{"ok":false,"description":"Unauthorized"}'), /TOKEN salah/);
+  assert.match(explainTelegramError(400, '{"description":"Bad Request: chat not found"}'), /CHAT ID salah/);
+  assert.match(explainTelegramError(403, JSON.stringify({ description: "Forbidden: bot can't initiate conversation with a user" })), /BELUM menekan tombol START/);
+  assert.match(explainTelegramError(400, '{"description":"Bad Request: chat_id is empty"}'), /CHAT ID kosong/);
+});
+
+test('diagnosa konfigurasi tidak membocorkan token/chat id lengkap', () => {
+  const previous = { token: process.env.TELEGRAM_BOT_TOKEN, chat: process.env.TELEGRAM_CHAT_ID };
+  process.env.TELEGRAM_BOT_TOKEN = '1234567890:AAHsecretsecretsecretsecret';
+  process.env.TELEGRAM_CHAT_ID = ' 123456789';
+  const config = describeTelegramConfig() as Record<string, unknown>;
+  assert.equal(config.tokenLooksValid, true);
+  assert.match(String(config.tokenMasked), /^12…/);
+  assert.ok(!String(config.tokenMasked).includes('secret'));
+  assert.equal(config.chatIdPunyaSpasi, true, 'spasi di chat id harus terdeteksi');
+  if (previous.token === undefined) delete process.env.TELEGRAM_BOT_TOKEN; else process.env.TELEGRAM_BOT_TOKEN = previous.token;
+  if (previous.chat === undefined) delete process.env.TELEGRAM_CHAT_ID; else process.env.TELEGRAM_CHAT_ID = previous.chat;
 });
 
 test('tanpa token, pengiriman jatuh ke mode DRY RUN (tidak melempar error)', async () => {

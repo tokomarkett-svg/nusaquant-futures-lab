@@ -103,6 +103,43 @@ export function collectAlertsForCandidate(
   return messages;
 }
 
+/** Baris diagnosa (tanpa membocorkan rahasia) supaya salah ketik langsung ketahuan dari log. */
+export function describeTelegramConfig(): Record<string, string | number | boolean> {
+  const token = process.env.TELEGRAM_BOT_TOKEN ?? '';
+  const chatId = process.env.TELEGRAM_CHAT_ID ?? '';
+  const mask = (value: string) => (value.length <= 4 ? '*'.repeat(value.length) : `${value.slice(0, 2)}…${value.slice(-2)} (${value.length} karakter)`);
+  return {
+    tokenPresent: token.length > 0,
+    tokenLooksValid: /^\d{6,}:[A-Za-z0-9_-]{20,}$/.test(token),
+    tokenMasked: mask(token),
+    chatIdPresent: chatId.length > 0,
+    chatIdDigitsOnly: /^-?\d+$/.test(chatId.trim()),
+    chatIdMasked: mask(chatId.trim()),
+    chatIdPunyaSpasi: chatId !== chatId.trim() || /\s/.test(chatId),
+  };
+}
+
+/** Terjemahkan pesan error Telegram menjadi langkah perbaikan yang bisa dikerjakan di HP. */
+export function explainTelegramError(status: number, body: string): string {
+  const text = body.toLowerCase();
+  if (status === 401 || text.includes('unauthorized')) {
+    return 'TOKEN salah/kurang lengkap. Buka BotFather → /mybots → bot-mu → API Token → salin ulang seluruh token (termasuk angka dan titik dua di depan).';
+  }
+  if (text.includes('chat not found')) {
+    return 'CHAT ID salah. Ambil ulang dari @userinfobot, pastikan hanya angkanya (tanpa spasi/kata «Id:»).';
+  }
+  if (text.includes("can't initiate conversation") || text.includes('bot was blocked') || text.includes('user is deactivated')) {
+    return 'Kamu BELUM menekan tombol START di chat bot-mu. Buka link t.me/namabot → tekan START (wajib sekali).';
+  }
+  if (text.includes('chat_id is empty') || text.includes('chat id is empty')) {
+    return 'CHAT ID kosong. Isi variabel TELEGRAM_CHAT_ID di Railway dengan angka dari @userinfobot.';
+  }
+  if (status === 400) {
+    return 'Permintaan ditolak Telegram. Periksa token & chat id (lihat baris diagnosa di atas).';
+  }
+  return `Telegram menolak (HTTP ${status}): ${body.slice(0, 160)}`;
+}
+
 export async function sendTelegram(text: string, options: { token?: string; chatId?: string; fetchImpl?: typeof fetch } = {}): Promise<boolean> {
   const token = options.token ?? process.env.TELEGRAM_BOT_TOKEN;
   const chatId = options.chatId ?? process.env.TELEGRAM_CHAT_ID;
@@ -118,7 +155,7 @@ export async function sendTelegram(text: string, options: { token?: string; chat
   });
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`Telegram HTTP ${response.status}: ${body.slice(0, 200)}`);
+    throw new Error(explainTelegramError(response.status, body));
   }
   return true;
 }
@@ -228,20 +265,28 @@ export function buildStartupText(): string {
 export async function watchAlerts(): Promise<void> {
   const store = createAlertStore();
   const pollMs = Math.max(Number(process.env.ALERT_POLL_MS ?? 120_000), 60_000);
-  const hasToken = Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID);
-  console.log(JSON.stringify({ alerts: true, watch: true, pollMs, hasToken, at: new Date().toISOString() }));
-  if (hasToken) {
-    try {
-      await sendTelegram(buildStartupText());
-      console.log(JSON.stringify({ alerts: true, startupMessage: 'sent', at: new Date().toISOString() }));
-    } catch (error) {
-      console.error('[alerts] gagal kirim pesan sapa:', error instanceof Error ? error.message : error);
-    }
+  const config = describeTelegramConfig();
+  const hasToken = Boolean(config.tokenPresent && config.chatIdPresent);
+  console.log(JSON.stringify({ alerts: true, watch: true, pollMs, hasToken, config, at: new Date().toISOString() }));
+  if (!hasToken) {
+    console.warn('[alerts] token/chat id belum lengkap → mode DRY RUN (pesan hanya ditulis di log). Pesan sapa akan dicoba lagi setiap siklus setelah variabel diisi.');
   }
+  let startupSent = false;
   for (;;) {
     try {
+      // Pesan sapa dicoba tiap siklus sampai berhasil — supaya perbaikan variabel langsung terbukti tanpa redeploy.
+      if (!startupSent && hasToken) {
+        try {
+          await sendTelegram(buildStartupText());
+          startupSent = true;
+          console.log(JSON.stringify({ alerts: true, startupMessage: 'sent', at: new Date().toISOString() }));
+        } catch (error) {
+          console.error('[alerts] gagal kirim pesan sapa:', error instanceof Error ? error.message : error);
+          console.error('[alerts] diagnosa:', JSON.stringify(describeTelegramConfig()));
+        }
+      }
       const result = await runAlertCycle(store);
-      console.log(JSON.stringify({ alerts: true, scanned: result.scanned, sent: result.sent, seen: store.size(), at: new Date().toISOString() }));
+      console.log(JSON.stringify({ alerts: true, scanned: result.scanned, sent: result.sent, seen: store.size(), startupSent, at: new Date().toISOString() }));
     } catch (error) {
       console.error('[alerts]', error instanceof Error ? error.message : error);
     }
