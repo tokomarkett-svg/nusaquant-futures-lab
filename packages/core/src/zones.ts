@@ -19,9 +19,9 @@ export const RISK_USDT = 0.31;
 export const TARGET_R = 2;
 /** Kalau harga sudah berjalan > 0,5R dari entry → jangan dikejar. */
 export const CHASE_LIMIT_R = 0.5;
-/** Profil v3 (uji balik 25/9): stop struktural di garis batal — menaikkan menang 18%→26%. */
+/** Bawaan = aturan asli: stop ekor candle 1. Nilai 'batal' hanya opsi riset (alat uji balik). */
 export function stopMode(): 'buntut' | 'batal' {
-  return (process.env.PMB_STOP_MODE ?? 'batal') as 'buntut' | 'batal';
+  return (process.env.PMB_STOP_MODE ?? 'buntut') as 'buntut' | 'batal';
 }
 
 export type Side = 'LONG' | 'SHORT';

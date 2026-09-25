@@ -38,10 +38,9 @@ test('tiket long: entry = close candle 2, stop = buntut candle 1, target = 2R, u
 
   const ticket = computeTicket(longCandles, zones, 'LONG', 101.5);
   assert.ok(ticket, 'tiket harus terbentuk');
-  // profil v3: stop = garis batal long (95), risk 6.2, target entry+2R
-  const risk = 101.2 - 95;
+  const risk = 101.2 - 96.4;
   assert.equal(ticket.entry, 101.2);
-  assert.equal(ticket.stop, 95);
+  assert.equal(ticket.stop, 96.4);
   assert.ok(Math.abs(ticket.target - (101.2 + 2 * risk)) < 1e-9);
   assert.ok(Math.abs(ticket.sizeCoin - 0.31 / risk) < 1e-9);
   assert.equal(ticket.rr, 2);
@@ -50,16 +49,16 @@ test('tiket long: entry = close candle 2, stop = buntut candle 1, target = 2R, u
   assert.equal(ticket.warnings.length, 0);
 });
 
-test('profil lama (PMB_STOP_MODE=buntut): stop tetap buntut candle 1', () => {
-  process.env.PMB_STOP_MODE = 'buntut';
+test('opsi riset (PMB_STOP_MODE=batal): stop pindah ke garis batal', () => {
+  process.env.PMB_STOP_MODE = 'batal';
   try {
     const t = computeTicket(longCandles, zones, 'LONG', 101.5);
     assert.ok(t);
-    assert.equal(t.stop, 96.4);
-    assert.equal(t.target, 101.2 + 2 * (101.2 - 96.4));
+    assert.equal(t.stop, 95);
+    assert.equal(t.target, 101.2 + 2 * (101.2 - 95));
     assert.equal(t.actionable, true);
   } finally {
-    process.env.PMB_STOP_MODE = 'batal';
+    process.env.PMB_STOP_MODE = 'buntut';
   }
 });
 
@@ -71,14 +70,14 @@ test('pagar anti-nyangkut: harga sudah jalan >0,5R dari entry -> tiket tidak bis
   assert.match(chased.warnings.join(' '), /jangan dikejar/);
 });
 
-test('tiket short (cermin): profil v3 — stop = garis batal short (99), target 2R ke bawah', () => {
+test('tiket short (cermin): entry = close candle 2, stop = buntut atas candle 1, target = 2R ke bawah', () => {
   const setup = detectSetup(shortCandles, zones, 'SHORT');
   assert.equal(setup.valid, true);
   const ticket = computeTicket(shortCandles, zones, 'SHORT', 92.9);
   assert.ok(ticket);
   assert.equal(ticket.entry, 93.4);
-  assert.equal(ticket.stop, 99);
-  const risk = 99 - 93.4;
+  assert.equal(ticket.stop, 97.6);
+  const risk = 97.6 - 93.4;
   assert.ok(Math.abs(ticket.target - (93.4 - 2 * risk)) < 1e-9);
   assert.equal(ticket.stopGeometryOk, true);
   assert.equal(ticket.actionable, true);
