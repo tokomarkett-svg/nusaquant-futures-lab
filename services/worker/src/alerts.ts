@@ -257,7 +257,7 @@ export async function sendTelegram(text: string, options: { token?: string; chat
 const EXCLUDED = /(USDC|FDUSD|TUSD|BUSD|DAI|EUR|TRY|BRL|AEUR|USD1|XUSD|EURI)$/;
 const LEVERAGED = /(UP|DOWN|BULL|BEAR)USDT$/;
 const CONCURRENCY = 5;
-const MAX_CANDIDATES = 40;
+const MAX_CANDIDATES = 600; // PINDAI SEMUA: semua koin USDT yang lolos gerbang vol/range (permintaan pemilik 25/9)
 
 export type AlertScanRow = AlertCandidate & { rangePct: number; quoteVolume: number; dataAgeMin: number };
 
@@ -304,17 +304,17 @@ export async function scanAlertCandidates(client: BinancePublicMarketDataClient,
         const openHariIni = (candleHariIni[0] ?? m15[0]).open;
         const hariNaik = ticker.last >= openHariIni;
         if ((side === 'LONG' && !hariNaik) || (side === 'SHORT' && hariNaik)) return null;
-        // MA 15m juga wajib searah (pelajaran pemilik: jangan melawan MA — kalau trend short,
-        // tunggu harga kena PINTU SHORT walau sempat naik; bounce tanpa MA searah = jebakan).
+        // ATURAN UNGU (pelajaran pemilik): cukup lihat harga vs MA99 (garis UNGU di chart).
+        // 1H/15m di atas ungu = trend naik → long sah. Di bawah ungu = trend turun → short sah.
+        // Kuning (MA7) & pink (MA25) cuma pembantu gambar — bukan penentu.
         if (m15.length >= 99) {
           const closes15 = (m15 as Candle[]).map((c) => c.close);
-          const rata = (n: number) => closes15.slice(-n).reduce((acc, v) => acc + v, 0) / n;
-          const ma25x = rata(25); const ma99x = rata(99); const close15 = closes15.at(-1) ?? Number.NaN;
-          const hijau15 = close15 > ma99x && ma25x > ma99x;
-          const merah15 = close15 < ma99x && ma25x < ma99x;
-          if ((side === 'LONG' && !hijau15) || (side === 'SHORT' && !merah15)) return null;
+          const ungu15 = closes15.slice(-99).reduce((acc, v) => acc + v, 0) / 99;
+          const close15 = closes15.at(-1) ?? Number.NaN;
+          if ((side === 'LONG' && !(close15 > ungu15)) || (side === 'SHORT' && !(close15 < ungu15))) return null;
         }
-        const gateAlign = (side === 'LONG' && gate === 'HIJAU') || (side === 'SHORT' && gate === 'MERAH');
+        const gateInfo = gateFromCandles(h1);
+        const gateAlign = side === 'LONG' ? gateInfo.close > gateInfo.ma99 : gateInfo.close < gateInfo.ma99;
         const setup = detectSetup(m15 as Candle[], zones, side);
         const ticket = computeTicket(m15 as Candle[], zones, side, ticker.last);
         const row: AlertScanRow = {

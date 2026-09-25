@@ -50,8 +50,9 @@ async function main(): Promise<void> {
         // gate PADA SAAT candle 2 lahir (replay yang jujur, bukan gate sekarang)
         const h1SaatLahir = h1.filter((c) => c.time + 3_600_000 <= setup.candle2! + 900_000).slice(-99);
         if (h1SaatLahir.length < 99) continue;
-        const gateLahir = gateFromCandles(h1SaatLahir).gate;
-        const gateAlign = (side === 'LONG' && gateLahir === 'HIJAU') || (side === 'SHORT' && gateLahir === 'MERAH');
+        const gi = gateFromCandles(h1SaatLahir);
+        const gateLahir = gi.gate;
+        const gateAlign = side === 'LONG' ? gi.close > gi.ma99 : gi.close < gi.ma99;
         const garis = side === 'LONG' ? zones.long : zones.short;
         const cand = { symbol: t.symbol, side, priceNow: t.last, gate: gateLahir, gateAlign, setup, ticket, garis };
         const umurCandle = Math.round((m15.at(-1)!.time - setup.candle2) / 900_000);
