@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { computeTicket, detectSetup, type Zones } from './zones.ts';
+import { computeTicket, detectSetup, statusFor, type Zones } from './zones.ts';
 import type { Candle } from './index.ts';
 
 /** Zona long buatan: pintu 100, manis 98, batal 95 (short cermin: pintu 94, batal 99). */
@@ -164,4 +164,10 @@ test('zona baru (High/Low bergeser) menghidupkan sisi lagi — batal lama tidak 
   };
   const setup = detectSetup(candles, zonaBaru, 'LONG');
   assert.equal(/BATAL/.test(setup.notes.join(' ')), false, 'sisi long hidup lagi dengan zona baru');
+});
+
+test('statusFor: zona padam menang atas semua — bukan MENYALA walau harga di dalam pita', () => {
+  assert.equal(statusFor(false, true, 0, true), 'PADAM');
+  assert.equal(statusFor(true, true, 0, true), 'PADAM');
+  assert.equal(statusFor(false, true, 0, false), 'MENYALA');
 });

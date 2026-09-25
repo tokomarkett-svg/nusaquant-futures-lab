@@ -26,7 +26,8 @@ export function stopMode(): 'buntut' | 'batal' {
 
 export type Side = 'LONG' | 'SHORT';
 export type Gate = 'HIJAU' | 'MERAH' | 'KUNING';
-export type Status = 'MENYALA' | 'SIMAK' | 'DISIMAK';
+/** PADAM = sisi itu kena BATAL (zona mati sampai High/Low 24 jam bergeser) — bukan mode nonton. */
+export type Status = 'MENYALA' | 'SIMAK' | 'DISIMAK' | 'PADAM';
 export type Bucket = '<1 jam' | '1-2 jam' | '2-3 jam' | '>3 jam';
 
 export type Zone = { pintu: number; manis: number; batal: number };
@@ -126,7 +127,8 @@ export function detectTouchAge(candles: Candle[], zones: Zones, side: Side, now 
   return null;
 }
 
-export function statusFor(setupValid: boolean, insideBand: boolean, distPct: number): Status {
+export function statusFor(setupValid: boolean, insideBand: boolean, distPct: number, zonaPadam = false): Status {
+  if (zonaPadam) return 'PADAM';
   if (setupValid) return 'MENYALA';
   if (insideBand) return 'MENYALA';
   return Math.abs(distPct) <= 1.5 ? 'SIMAK' : 'DISIMAK';

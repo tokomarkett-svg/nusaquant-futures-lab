@@ -199,9 +199,12 @@ export async function scanBoard(limit = 40): Promise<Board> {
         const insideBand = side === 'LONG' ? insideLong : insideShort;
         const distPct = side === 'LONG' ? distLong : distShort;
         const touchAgeMin = insideBand ? 0 : detectTouchAge(m15, zones, side, now);
-        const status: Status = insideBand ? 'MENYALA' : Math.abs(distPct) <= 1.5 ? 'SIMAK' : 'DISIMAK';
-        const gateAlign = (side === 'LONG' && gate === 'HIJAU') || (side === 'SHORT' && gate === 'MERAH');
         const setup = detectSetup(m15, zones, side);
+        // Zona yang kena BATAL itu MATI — jangan pernah tampil "MENYALA" hanya karena harga
+        // kebetulan balik ke dalam pita (inilah yang bikin kartu mati terlihat seperti sah).
+        const zonaPadam = setup.notes.some((note) => note.includes('kena BATAL'));
+        const status: Status = zonaPadam ? 'PADAM' : insideBand ? 'MENYALA' : Math.abs(distPct) <= 1.5 ? 'SIMAK' : 'DISIMAK';
+        const gateAlign = (side === 'LONG' && gate === 'HIJAU') || (side === 'SHORT' && gate === 'MERAH');
         const ticket = computeTicket(m15, zones, side, ticker.last);
         const row: BoardRow = {
           symbol: ticker.symbol,
@@ -233,7 +236,7 @@ export async function scanBoard(limit = 40): Promise<Board> {
     }
   }
 
-  const order: Record<Status, number> = { MENYALA: 0, SIMAK: 1, DISIMAK: 2 };
+  const order: Record<Status, number> = { MENYALA: 0, SIMAK: 1, DISIMAK: 2, PADAM: 3 };
   rows.sort((a, b) => order[a.status] - order[b.status]
     || (a.touchAgeMin ?? Number.MAX_SAFE_INTEGER) - (b.touchAgeMin ?? Number.MAX_SAFE_INTEGER));
 

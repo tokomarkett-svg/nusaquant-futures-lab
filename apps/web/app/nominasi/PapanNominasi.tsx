@@ -13,6 +13,7 @@ const STATUS_STYLE: Record<Status, { bg: string; fg: string; border: string; lab
   MENYALA: { bg: '#3a2a06', fg: '#ffc44d', border: '#6b4d0a', label: '🔥 MENYALA' },
   SIMAK: { bg: '#122036', fg: '#8fb6ff', border: '#23406b', label: 'SIMAK' },
   DISIMAK: { bg: '#141b29', fg: '#8ea3c0', border: '#28344a', label: 'DISIMAK' },
+  PADAM: { bg: '#241214', fg: '#ff9db0', border: '#5c2330', label: '💀 PADAM — zona mati (kena batal)' },
 };
 
 const GATE_STYLE = {
@@ -182,7 +183,7 @@ export default function PapanNominasi() {
             const gate = GATE_STYLE[row.gate];
             return (
               <Link key={row.symbol} href={`/nominasi/${row.symbol}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                <div className="panel" style={{ padding: '12px 14px', borderRadius: 14, borderLeft: `3px solid ${row.status === 'MENYALA' ? '#d29125' : '#dce5dd'}` }}>
+                <div className="panel" style={{ padding: '12px 14px', borderRadius: 14, borderLeft: `3px solid ${row.status === 'MENYALA' ? '#d29125' : row.status === 'PADAM' ? '#5c2330' : '#dce5dd'}` }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <b style={{ fontSize: 15 }}>{row.symbol.replace('USDT', '')}</b>
                     <span style={{ fontSize: 10.5, fontWeight: 800, padding: '2px 8px', borderRadius: 6, background: row.side === 'LONG' ? '#eaf8ef' : '#fdeeee', color: row.side === 'LONG' ? 'var(--green-dark)' : 'var(--red)', border: `1px solid ${row.side === 'LONG' ? '#c8e9d5' : '#f3d4d4'}` }}>{row.side}</span>
