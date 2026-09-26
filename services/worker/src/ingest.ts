@@ -64,7 +64,26 @@ export async function ingestSymbol({
 
   for (const interval of intervals) {
     const candles = await source.getKlines({ symbol, interval, limit, closedOnly: true });
-    const rows = toMarketCandleRows(symbol, interval, candles);
+
+    // Jangan kirim ulang ratusan/ribuan candle yang sama setiap siklus. Selain boros
+    // egress dan log Supabase, upsert duplikat tidak memberi informasi baru. Tetap
+    // ambil jendela catch-up dari Binance, tetapi tulis hanya candle setelah data
+    // terakhir di database. Rumus dan isi candle sama persis.
+    const latest = await client.from('market_candles')
+      .select('open_time')
+      .eq('symbol', symbol.toUpperCase())
+      .eq('interval', interval)
+      .order('open_time', { ascending: false })
+      .limit(1)
+      .maybeSingle<{ open_time: string }>();
+    if (latest.error) throw new Error(`Gagal membaca candle terakhir ${symbol} ${interval}: ${latest.error.message}`);
+    const latestMs = latest.data ? Date.parse(latest.data.open_time) : Number.NEGATIVE_INFINITY;
+    const rows = toMarketCandleRows(symbol, interval, candles.filter((candle) => candle.time > latestMs));
+    if (rows.length === 0) {
+      counts[interval] = 0;
+      continue;
+    }
+
     let result = await client.from('market_candles').upsert(rows, {
       onConflict: 'symbol,interval,open_time',
       ignoreDuplicates: false,
@@ -94,7 +113,9 @@ async function main(): Promise<void> {
 }
 
 async function watchIngestion(): Promise<void> {
-  const intervalMs = Math.max(Number(process.env.INGEST_INTERVAL_MS ?? 60_000), 15_000);
+  // Candle terkecil 15 menit; polling 5 menit menangkap penutupan baru tanpa
+  // menghantam Supabase setiap menit. ALERT/MEJA PMB tetap punya loop tersendiri.
+  const intervalMs = Math.max(Number(process.env.INGEST_INTERVAL_MS ?? 300_000), 60_000);
   for (;;) {
     try {
       await main();
@@ -106,10 +127,12 @@ async function watchIngestion(): Promise<void> {
 }
 
 async function watch(): Promise<void> {
-  const sessionIds = resolveBotSessionIds(process.env.BOT_SESSION_IDS);
-  console.log(JSON.stringify({ control: true, watch: true, sessionIds, at: new Date().toISOString() }));
+  const sessionControlEnabled = process.env.RUN_SESSION_CONTROL === 'true';
+  const sessionIds = sessionControlEnabled ? resolveBotSessionIds(process.env.BOT_SESSION_IDS) : [];
+  console.log(JSON.stringify({ control: sessionControlEnabled, watch: true, sessionIds, at: new Date().toISOString() }));
   const controllers = sessionIds.map((sessionId) => new PaperSessionController(sessionId));
-  const tasks = [watchIngestion(), ...controllers.map((controller) => controller.watch())];
+  const tasks: Promise<void>[] = controllers.map((controller) => controller.watch());
+  if (process.env.RUN_MARKET_INGEST === 'true') tasks.push(watchIngestion());
   if (process.env.RUN_RESEARCH_JOBS === 'true') tasks.push(watchResearchJobs());
   if (process.env.RUN_RADAR === 'true') tasks.push(watchRadar());
   if (process.env.RUN_ALERTS === 'true') tasks.push(watchAlerts());
@@ -125,8 +148,12 @@ async function watch(): Promise<void> {
   await Promise.all(tasks);
 }
 
-if (process.env.RUN_MARKET_INGEST === 'true') {
-  const task = process.env.RUN_MARKET_WATCH === 'true' ? watch() : main();
+const task = process.env.RUN_MARKET_WATCH === 'true'
+  ? watch()
+  : process.env.RUN_MARKET_INGEST === 'true'
+    ? main()
+    : null;
+if (task) {
   task.catch((error: unknown) => {
     console.error(error);
     process.exitCode = 1;

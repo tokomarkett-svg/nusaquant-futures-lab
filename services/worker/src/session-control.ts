@@ -25,7 +25,10 @@ export const WILLIAMS_MARKET_DATA_MAX_AGE_MS = 2 * 60 * 60 * 1000 + 15 * 60 * 10
 
 export function resolveBotSessionIds(configured?: string): string[] {
   const extra = (configured ?? '').split(',').map((id) => id.trim()).filter(Boolean);
-  return [...new Set([...DEFAULT_BOT_SESSION_IDS, ...extra])];
+  // BTC + ETH adalah baseline aman. Sesi ADA/ZEC/UNI/RUNE hanya dijalankan bila
+  // disebut eksplisit di BOT_SESSION_IDS; sebelumnya keenam sesi selalu dipoll
+  // walau env hanya berisi dua, sehingga kuota Supabase habis tanpa manfaat.
+  return [...new Set([DEFAULT_BOT_SESSION_ID, ETH_BOT_SESSION_ID, ...extra])];
 }
 
 export function isFreshMarketCandle(openTime: string, now = Date.now(), maxAgeMs = DEFAULT_MARKET_DATA_MAX_AGE_MS): boolean {
@@ -171,7 +174,9 @@ export class PaperSessionController {
   private lastEvaluatedCandleTime: string | null = null;
   private lastStaleMarketCandleTime: string | null = null;
   private lastSignalId: string | null = null;
+  private lastPersistedOpenId: string | null = null;
   private lastPersistedClosedId: string | null = null;
+  private lastMarkedCandleTime: string | null = null;
   private lastEquitySnapshotAt = 0;
   private lastHeartbeatAt = 0;
 
@@ -230,7 +235,9 @@ export class PaperSessionController {
   }
 
   async watch(): Promise<void> {
-    const intervalMs = Math.max(Number(process.env.CONTROL_POLL_INTERVAL_MS ?? 10_000), 5_000);
+    // Respons tombol tetap cepat, tetapi tidak lagi membuat enam query per menit
+    // per sesi saat strategi hanya berubah pada penutupan candle 15m/1h.
+    const intervalMs = Math.max(Number(process.env.CONTROL_POLL_INTERVAL_MS ?? 30_000), 10_000);
     for (;;) {
       try {
         await this.sync();
@@ -265,7 +272,11 @@ export class PaperSessionController {
       .eq('status', 'OPEN')
       .maybeSingle<StoredPosition>();
     if (openPosition.error) throw new Error(`Gagal membaca paper position: ${openPosition.error.message}`);
-    if (openPosition.data) this.engine.restorePosition(mapStoredPosition(openPosition.data));
+    if (openPosition.data) {
+      const restored = mapStoredPosition(openPosition.data);
+      this.engine.restorePosition(restored);
+      this.lastPersistedOpenId = restored.id;
+    }
 
     if ((session.status === 'WAITING_APPROVAL' || session.status === 'POSITION_OPEN') && !openPosition.data) {
       const pending = await this.client
@@ -290,16 +301,18 @@ export class PaperSessionController {
     const strategy = resolvePaperStrategy(process.env.BOT_STRATEGY);
     const entryInterval = strategy === 'WILLIAMS_VOLATILITY_BREAKOUT' ? WILLIAMS_ENTRY_INTERVAL : '15m';
     const entryLimit = strategy === 'WILLIAMS_VOLATILITY_BREAKOUT' ? WILLIAMS_ENTRY_CANDLE_LIMIT : 500;
-    const [higherResult, entryResult] = await Promise.all([
-      this.client.from('market_candles').select('open_time,open,high,low,close,volume').eq('symbol', session.symbol).eq('interval', '1h').order('open_time', { ascending: false }).limit(500),
-      this.client.from('market_candles').select('open_time,open,high,low,close,volume').eq('symbol', session.symbol).eq('interval', entryInterval).order('open_time', { ascending: false }).limit(entryLimit),
-    ]);
-    if (higherResult.error) throw new Error(`Gagal membaca candle 1h: ${higherResult.error.message}`);
-    if (entryResult.error) throw new Error(`Gagal membaca candle 15m: ${entryResult.error.message}`);
-
-    const higherRows = (higherResult.data ?? []) as CandleRow[];
-    const entryRows = (entryResult.data ?? []) as CandleRow[];
-    const latestRow = entryRows[0];
+    // Cek satu timestamp dulu. Versi lama mengunduh 500–1.200 candle pada SETIAP
+    // poll 10 detik, lalu baru menyadari candle belum berubah. Riwayat penuh kini
+    // hanya dibaca sekali ketika benar-benar ada candle baru.
+    const newest = await this.client.from('market_candles')
+      .select('open_time')
+      .eq('symbol', session.symbol)
+      .eq('interval', entryInterval)
+      .order('open_time', { ascending: false })
+      .limit(1)
+      .maybeSingle<{ open_time: string }>();
+    if (newest.error) throw new Error(`Gagal membaca candle terbaru: ${newest.error.message}`);
+    const latestRow = newest.data;
     if (!latestRow) return current;
     const defaultMaxAge = strategy === 'WILLIAMS_VOLATILITY_BREAKOUT'
       ? WILLIAMS_MARKET_DATA_MAX_AGE_MS
@@ -342,6 +355,14 @@ export class PaperSessionController {
       return current;
     }
 
+    const [higherResult, entryResult] = await Promise.all([
+      this.client.from('market_candles').select('open_time,open,high,low,close,volume').eq('symbol', session.symbol).eq('interval', '1h').order('open_time', { ascending: false }).limit(500),
+      this.client.from('market_candles').select('open_time,open,high,low,close,volume').eq('symbol', session.symbol).eq('interval', entryInterval).order('open_time', { ascending: false }).limit(entryLimit),
+    ]);
+    if (higherResult.error) throw new Error(`Gagal membaca candle 1h: ${higherResult.error.message}`);
+    if (entryResult.error) throw new Error(`Gagal membaca candle ${entryInterval}: ${entryResult.error.message}`);
+    const higherRows = (higherResult.data ?? []) as CandleRow[];
+    const entryRows = (entryResult.data ?? []) as CandleRow[];
     const higherTimeframe = higherRows.reverse().map(mapCandle);
     const entryTimeframe = entryRows.reverse().map(mapCandle);
     const snapshot = this.engine?.onClosedCandle({ higherTimeframe, entryTimeframe }) ?? current;
@@ -399,6 +420,10 @@ export class PaperSessionController {
       .maybeSingle<{ high: number | string; low: number | string; close: number | string; open_time: string }>();
     if (latest.error) throw new Error(`Gagal membaca harga paper position: ${latest.error.message}`);
     if (!latest.data) return current;
+    // Satu candle hanya boleh dihitung sekali. Pemrosesan ulang tiap poll dapat
+    // menambah barsHeld dan memicu time-exit paper terlalu cepat.
+    if (this.lastMarkedCandleTime === latest.data.open_time) return current;
+    this.lastMarkedCandleTime = latest.data.open_time;
     return this.engine?.onCandle({
       high: Number(latest.data.high),
       low: Number(latest.data.low),
@@ -408,7 +433,7 @@ export class PaperSessionController {
   }
 
   private async persistPaperState(sessionId: string, session: SessionRecord, snapshot: WorkerSnapshot): Promise<void> {
-    if (snapshot.position) {
+    if (snapshot.position && snapshot.position.id !== this.lastPersistedOpenId) {
       const existing = await this.client
         .from('paper_positions')
         .select('id')
@@ -453,10 +478,12 @@ export class PaperSessionController {
         if (position.error) throw new Error(`Gagal menyimpan paper position: ${position.error.message}`);
         await this.writeJournal(sessionId, snapshot.position.symbol, 'PAPER_OPEN', 'Paper approval disetujui dan position dibuat.', snapshot);
       }
+      this.lastPersistedOpenId = snapshot.position.id;
     }
 
     const closed = snapshot.lastClosedPosition;
-    if (closed && closed.id !== this.lastPersistedClosedId) {
+    const closedIsNew = Boolean(closed && closed.id !== this.lastPersistedClosedId);
+    if (closed && closedIsNew) {
       const update = await this.client
         .from('paper_positions')
         .update({
@@ -479,10 +506,13 @@ export class PaperSessionController {
       if (update.error) throw new Error(`Gagal menutup paper position: ${update.error.message}`);
       await this.writeJournal(sessionId, closed.symbol, 'PAPER_CLOSE', `${closed.closeReason ?? 'EXIT'} pada ${closed.exit}.`, snapshot);
       this.lastPersistedClosedId = closed.id;
+      this.lastPersistedOpenId = null;
     }
 
     const now = Date.now();
-    if (now - this.lastEquitySnapshotAt >= 60_000 || snapshot.lastClosedPosition !== null) {
+    // Grafik equity cukup satu titik per candle 15m. Penutupan baru tetap disimpan
+    // segera; posisi closed lama tidak lagi menyebabkan insert pada setiap poll.
+    if (now - this.lastEquitySnapshotAt >= 15 * 60_000 || closedIsNew) {
       const equity = await this.client.from('equity_snapshots').insert({
         bot_session_id: sessionId,
         equity: snapshot.equity,
@@ -510,7 +540,9 @@ export class PaperSessionController {
 
   private async touchHeartbeat(sessionId: string): Promise<void> {
     const now = Date.now();
-    if (now - this.lastHeartbeatAt < 30_000) return;
+    // Heartbeat operasional, bukan bagian rumus trading; lima menit cukup untuk
+    // membuktikan worker hidup tanpa menulis database dua kali per menit.
+    if (now - this.lastHeartbeatAt < 5 * 60_000) return;
     const { error } = await this.client
       .from('bot_sessions')
       .update({ updated_at: new Date(now).toISOString() })

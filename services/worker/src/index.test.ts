@@ -67,15 +67,11 @@ test('stale market candles are rejected before signal evaluation', () => {
   assert.equal(isFreshMarketCandle('2026-09-10T03:15:00.000Z', now), false);
 });
 
-test('worker watch always includes BTC and ETH sessions', () => {
+test('worker watch includes baseline BTC/ETH and only explicitly configured extra sessions', () => {
   const sessions = resolveBotSessionIds('custom-session,00000000-0000-4000-8000-000000000001');
   assert.deepEqual(sessions, [
     '00000000-0000-4000-8000-000000000001',
     '00000000-0000-4000-8000-000000000002',
-    '00000000-0000-4000-8000-000000000003',
-    '00000000-0000-4000-8000-000000000004',
-    '00000000-0000-4000-8000-000000000005',
-    '00000000-0000-4000-8000-000000000006',
     'custom-session',
   ]);
 });
