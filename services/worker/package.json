@@ -20,11 +20,11 @@
   "dependencies": {
     "@nusaquant/core": "0.1.0",
     "@supabase/supabase-js": "^2.109.0",
-    "fflate": "^0.8.3"
+    "fflate": "^0.8.3",
+    "tsx": "4.23.13"
   },
   "devDependencies": {
     "@types/node": "20.17.10",
-    "tsx": "4.23.13",
     "typescript": "5.7.2"
   }
 }

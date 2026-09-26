@@ -2,7 +2,7 @@
   "name": "nusaquant-futures-lab",
   "version": "0.1.0",
   "private": true,
-  "description": "Research and paper-trading platform for Binance USD\u24c8-M Futures",
+  "description": "Research and paper-trading platform for Binance USDⓈ-M Futures",
   "workspaces": [
     "apps/*",
     "packages/*",
@@ -14,5 +14,8 @@
     "start": "npm run start --workspace @nusaquant/web",
     "typecheck": "npm run typecheck --workspace @nusaquant/core && npm run typecheck --workspace @nusaquant/web && npm run typecheck --workspace @nusaquant/worker",
     "test": "npm run test --workspace @nusaquant/core && npm run test --workspace @nusaquant/worker && npm run test --workspace @nusaquant/web"
+  },
+  "engines": {
+    "node": ">=22 <25"
   }
 }
