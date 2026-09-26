@@ -5,7 +5,6 @@ import { createWorkerSupabaseClient } from './supabase.ts';
 import { watchResearchJobs } from './research-jobs.ts';
 import { watchRadar } from './radar.ts';
 import { watchAlerts } from './alerts.ts';
-import { watchPantauan } from './pantauan.ts';
 import { watchDesk } from './desk.ts';
 import { startDataProxy } from './data-proxy.ts';
 
@@ -115,9 +114,6 @@ async function watch(): Promise<void> {
   if (process.env.RUN_RADAR === 'true') tasks.push(watchRadar());
   if (process.env.RUN_ALERTS === 'true') tasks.push(watchAlerts());
   if (process.env.RUN_DESK === 'true') tasks.push(watchDesk());
-
-  // PANTAUAN (permintaan pemilik 26/9): laporan berkala "siapa dekat pintu" — baca saja, rumus tak tersentuh.
-  if (process.env.PANTAUAN_NOTIF !== '0') tasks.push(watchPantauan());
 
   // Jembatan data futures untuk web (bisa dimatikan dengan DATA_PROXY=off).
   if (process.env.DATA_PROXY !== 'off') {
