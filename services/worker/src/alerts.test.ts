@@ -4,6 +4,9 @@ import { buildBellText, buildStartupText, buildTicketText, collectAlertsForCandi
 import { jenisPerp } from '@nusaquant/core';
 import type { SetupMarkers, Ticket } from '@nusaquant/core';
 
+// Tiket di tes dianggap BARU LAHIR — candle 2 relatif ke jam sekarang (aturan umur tiket 3 candle ×15m).
+const KINI = Date.now();
+
 const setupNoC1: SetupMarkers = {
   side: 'LONG', x: 1_700_000_000_000, candle1: null, candle2: null,
   staleBars: 1, valid: false, notes: ['X ada, candle 1 belum sah'],
@@ -11,8 +14,8 @@ const setupNoC1: SetupMarkers = {
 };
 
 const setupTicket: SetupMarkers = {
-  side: 'LONG', x: 1_700_000_000_000, candle1: 1_700_000_900_000, candle2: 1_700_001_800_000,
-  staleBars: 3, valid: true, notes: ['Paket lengkap'],
+  side: 'LONG', x: 1_700_000_000_000, candle1: KINI - 25 * 60_000, candle2: KINI - 15 * 60_000,
+  staleBars: 1, valid: true, notes: ['Paket lengkap'],
   entry: 101.2, stop: 96.4, riskDistance: 4.8,
 };
 
@@ -67,7 +70,7 @@ test('dedupe: satu setup tidak dikirim dua kali', () => {
   assert.equal(second.length, 0);
 
   // setup baru (candle 2 lain) → boleh dikirim lagi
-  const newer = collectAlertsForCandidate({ ...candidateTicket, setup: { ...setupTicket, candle2: 1_700_002_700_000 } }, store);
+  const newer = collectAlertsForCandidate({ ...candidateTicket, setup: { ...setupTicket, candle2: KINI - 5 * 60_000 } }, store);
   assert.equal(newer.length, 1);
 });
 

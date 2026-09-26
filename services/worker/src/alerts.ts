@@ -36,7 +36,7 @@ export function jenisPerpText(jenis: 'saham' | 'komoditas' | 'kripto' | undefine
   return null;
 }
 
-export type AlertMessage = { key: string; kind: 'X' | 'TIKET' | 'TIKET_TANPA_GATE'; text: string };
+export type AlertMessage = { key: string; kind: 'X' | 'TIKET' | 'TIKET_TANPA_GATE' | 'TIKET_BASI'; text: string };
 
 /**
  * Mode notifikasi:
@@ -64,6 +64,33 @@ export function createAlertStore() {
 }
 
 const digitsFor = (price: number) => (price >= 100 ? 2 : price >= 1 ? 4 : price >= 0.01 ? 5 : 7);
+
+/** Jam WIB "HH:MM" dari epoch ms. */
+const jamWib = (ms: number) => new Date(ms + 7 * 3_600_000).toISOString().slice(11, 16);
+
+/**
+ * Umur tiket (aturan rumus pemilik): tiket sah maks 3 candle ×15m setelah
+ * candle 2 TERTUTUP. Lewat itu = TIKET BASI — notif entri terlarang.
+ */
+export function tiketSahSampai(candle2Ms: number): number {
+  return candle2Ms + 15 * 60_000 + 3 * 15 * 60_000;
+}
+export function tiketMasihSah(candle2Ms: number | null, now = Date.now()): boolean {
+  if (candle2Ms === null) return false;
+  return now <= tiketSahSampai(candle2Ms);
+}
+
+/** ⚰️ Kabar tiket mati — wajib menyusul setiap SIAP ENTRI yang kadaluarsa. */
+export function buildBasiText(candidate: AlertCandidate): string {
+  const batas = candidate.setup.candle2 !== null ? jamWib(tiketSahSampai(candidate.setup.candle2)) : '?';
+  return [
+    `⚰️ <b>TIKET BASI — ${candidate.symbol} ${candidate.side}</b>`,
+    '',
+    `Batas sah ${batas} WIB sudah lewat / harga sudah lari dari pintu.`,
+    '❌ JANGAN entri sekarang. ❌ JANGAN kejar. Tunggu paket X→C1→C2 yang BARU.',
+    'Kalau posisi sudah terbuka dari tiket ini: stop TETAP di angka semula, jangan diturunkan.',
+  ].join('\n');
+}
 
 export function buildBellText(candidate: AlertCandidate): string {
   const digits = digitsFor(candidate.priceNow);
@@ -93,7 +120,7 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket, papan
     ? '⚠ Data SPOT (futures tak terjangkau) — garis bisa BEDA dengan chart futures-mu'
     : '📊 Data FUTURES — sama dengan chart futures-mu';
   const lahirText = candidate.setup.candle2
-    ? `Lahir ${new Date(candidate.setup.candle2 + 7 * 3_600_000).toISOString().slice(11, 16)} WIB — tiket umurnya pendek, lirik yang baru`
+    ? `⏳ Lahir ${jamWib(candidate.setup.candle2)} WIB · SAH sampai ${jamWib(tiketSahSampai(candidate.setup.candle2))} WIB (3 candle ×15m) — lewat itu TIKET BASI, jangan entri.`
     : '';
 
   // Kartu SIAP ENTRI: hanya untuk tiket actionable + gate searah — angka entry jadi hero.
@@ -158,9 +185,20 @@ export function collectAlertsForCandidate(
     if (!store.has(key)) messages.push({ key, kind: 'X', text: buildBellText(candidate) });
   }
 
-  if (candidate.ticket && candidate.ticket.actionable && candidate.setup.candle2 !== null) {
+  if (candidate.setup.candle2 !== null) {
     const key = `${candidate.symbol}:${candidate.side}:TIKET:${candidate.setup.candle2}`;
-    if (!store.has(key)) {
+    const basiKey = `BASI:${candidate.symbol}:${candidate.side}:${candidate.setup.candle2}`;
+    const masihSah = tiketMasihSah(candidate.setup.candle2);
+    const sudahDikabari = store.has(key);
+
+    // TIKET BASI: pernah dikabarkan tapi waktunya habis → WAJIB diumumkan mati (sekali).
+    if (sudahDikabari && !masihSah) {
+      if (!store.has(basiKey)) messages.push({ key: basiKey, kind: 'TIKET_BASI', text: buildBasiText(candidate) });
+      return messages;
+    }
+
+    // SIAP ENTRI hanya untuk tiket MASIH SAH — tiket tua dilarang keras tampil sebagai sinyal segar.
+    if (!sudahDikabari && masihSah && candidate.ticket && candidate.ticket.actionable) {
       const kind = candidate.gateAlign ? 'TIKET' : 'TIKET_TANPA_GATE';
       const allowed = mode === 'semua' || (mode === 'tiketsiap' && kind === 'TIKET') || mode === 'tiketsemua';
       if (allowed) messages.push({ key, kind, text: buildTicketText(candidate, candidate.ticket, options.papanUrl) });
