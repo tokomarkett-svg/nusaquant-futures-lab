@@ -56,7 +56,7 @@ async function scanPapanPayload(): Promise<unknown> {
         garis: r.garis ?? null, ageMin: r.dataAgeMin,
         market: r.market ?? 'FUTURES',
       }));
-      const result = { ok: true, rows, at: new Date().toISOString() };
+      const result = { ok: true, rows: payload, at: new Date().toISOString() };
       papanCache = { at: Date.now(), payload: result };
       return result;
     })().finally(() => { papanInFlight = null; });
