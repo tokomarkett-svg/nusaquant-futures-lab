@@ -109,11 +109,7 @@ async function watch(): Promise<void> {
   const sessionIds = resolveBotSessionIds(process.env.BOT_SESSION_IDS);
   console.log(JSON.stringify({ control: true, watch: true, sessionIds, at: new Date().toISOString() }));
   const controllers = sessionIds.map((sessionId) => new PaperSessionController(sessionId));
-  // Ingest arsip hanya ikut supervisor bila RUN_MARKET_INGEST=true — notif, meja,
-  // dan jembatan data TIDAK bergantung padanya (pisah saklar sejak insiden 26/9:
-  // INGEST=false membuat seluruh worker pulang tanpa menyalakan apa pun).
-  const tasks = [...controllers.map((controller) => controller.watch())];
-  if (process.env.RUN_MARKET_INGEST === 'true') tasks.push(watchIngestion());
+  const tasks = [watchIngestion(), ...controllers.map((controller) => controller.watch())];
   if (process.env.RUN_RESEARCH_JOBS === 'true') tasks.push(watchResearchJobs());
   if (process.env.RUN_RADAR === 'true') tasks.push(watchRadar());
   if (process.env.RUN_ALERTS === 'true') tasks.push(watchAlerts());
@@ -129,28 +125,10 @@ async function watch(): Promise<void> {
   await Promise.all(tasks);
 }
 
-// Boot (aman diimpor di tes: tanpa tugas eksplisit = tidak menjalankan apa pun):
-//  · INGEST=true saja (tanpa WATCH/ALERTS/DESK) → satu kali ingest arsip lalu selesai (cron backfill).
-//  · WATCH/ALERTS/DESK salah satu true          → supervisor jangka panjang: notif, meja, jembatan data
-//    (+ ingest arsip hanya bila RUN_MARKET_INGEST=true). Inilah mode produksi bawaan.
-const ingestSaja = process.env.RUN_MARKET_INGEST === 'true'
-  && process.env.RUN_MARKET_WATCH !== 'true'
-  && process.env.RUN_ALERTS !== 'true'
-  && process.env.RUN_DESK !== 'true';
-const modeWatch = process.env.RUN_MARKET_WATCH === 'true'
-  || process.env.RUN_ALERTS === 'true'
-  || process.env.RUN_DESK === 'true';
-
-if (ingestSaja) {
-  main().catch((error: unknown) => {
+if (process.env.RUN_MARKET_INGEST === 'true') {
+  const task = process.env.RUN_MARKET_WATCH === 'true' ? watch() : main();
+  task.catch((error: unknown) => {
     console.error(error);
     process.exitCode = 1;
   });
-} else if (modeWatch) {
-  watch().catch((error: unknown) => {
-    console.error(error);
-    process.exitCode = 1;
-  });
-} else {
-  console.error('[ingest] tidak ada tugas: set RUN_ALERTS / RUN_DESK / RUN_MARKET_WATCH / RUN_MARKET_INGEST di variabel.');
 }

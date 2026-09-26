@@ -5,7 +5,7 @@
     "buildCommand": "echo skip-build: worker jalan langsung via tsx, tanpa kompilasi"
   },
   "deploy": {
-    "startCommand": "npm run start --workspace @nusaquant/worker",
+    "startCommand": "npm run ingest:watch --workspace @nusaquant/worker",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
