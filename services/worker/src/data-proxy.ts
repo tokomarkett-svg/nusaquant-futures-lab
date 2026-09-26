@@ -10,7 +10,7 @@
 import http from 'node:http';
 import zlib from 'node:zlib';
 import { bukaDemo, tutupDemo, tokenSah } from './exec-demo.ts';
-import { sendTelegram, scanAlertCandidates } from './alerts.ts';
+import { sendTelegram, scanAlertCandidatesShared } from './alerts.ts';
 import { createSupabaseDeskStore } from './desk.ts';
 import { scanMarketClient } from './market-data.ts';
 
@@ -26,17 +26,15 @@ const CACHE_TTL_MS: Record<string, number> = {
 };
 
 /**
- * Papan hanya menampilkan 12 baris, tetapi filter arah-hari + MA99 dijalankan
- * SETELAH ranking jarak pintu. Memindai cuma 12 kandidat mentah sering menghasilkan
- * 0 baris walaupun pasar punya kandidat sah. Ambil pool yang cukup lebar, lalu potong
- * hasil akhirnya. Cache + in-flight lock mencegah setiap HP mengulang ratusan request.
+ * Papan hanya menampilkan 12 hasil akhir dari pindai bersama ALERT + MEJA.
+ * Cache lokal + in-flight lock mencegah setiap HP memicu pemindaian ulang.
  */
 const PAPAN_RESULT_LIMIT = 12;
-const PAPAN_SCAN_POOL = 120;
 const PAPAN_CACHE_MS = 45_000;
 
 type CacheEntry = { at: number; payload: unknown };
 const cache = new Map<string, CacheEntry>();
+let upstreamRetryAt = 0;
 let papanCache: CacheEntry | null = null;
 let papanInFlight: Promise<unknown> | null = null;
 
@@ -45,8 +43,7 @@ async function scanPapanPayload(): Promise<unknown> {
   if (!papanInFlight) {
     papanInFlight = (async () => {
       const market = scanMarketClient();
-      const scanned = await scanAlertCandidates(market, PAPAN_SCAN_POOL);
-      const rows = scanned.slice(0, PAPAN_RESULT_LIMIT);
+      const rows = await scanAlertCandidatesShared(market, PAPAN_RESULT_LIMIT);
       const payload = rows.map((r) => ({
         symbol: r.symbol, side: r.side, price: r.priceNow, gate: r.gate, gateAlign: r.gateAlign,
         siap: Boolean(r.ticket?.actionable && r.gateAlign),
@@ -56,7 +53,7 @@ async function scanPapanPayload(): Promise<unknown> {
         garis: r.garis ?? null, ageMin: r.dataAgeMin,
         market: r.market ?? 'FUTURES',
       }));
-      const result = { ok: true, rows: payload, at: new Date().toISOString() };
+      const result = { ok: true, rows: payload, market: market.marketUsed() ?? 'FUTURES', at: new Date().toISOString() };
       papanCache = { at: Date.now(), payload: result };
       return result;
     })().finally(() => { papanInFlight = null; });
@@ -76,14 +73,17 @@ export function validateKlinesQuery(query: URLSearchParams): { ok: true; symbol:
 }
 
 async function fetchUpstream(base: string, path: string, params: Record<string, string>): Promise<unknown> {
+  if (Date.now() < upstreamRetryAt) throw new Error('fapi cooldown setelah rate-limit; web memakai cadangan sementara.');
   const url = new URL(path, base);
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
   const response = await fetch(url, { signal: AbortSignal.timeout(9_000) });
   const payload = await response.json() as unknown;
   if (!response.ok) {
+    if (response.status === 418 || response.status === 429) upstreamRetryAt = Date.now() + 15 * 60_000;
     const pesan = (payload as { msg?: string })?.msg ?? `HTTP ${response.status}`;
     throw new Error(`fapi: ${pesan}`);
   }
+  upstreamRetryAt = 0;
   return payload;
 }
 

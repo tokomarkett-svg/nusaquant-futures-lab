@@ -19,7 +19,7 @@ import {
   type Candle, type SetupMarkers, type Side, type Ticket, type Zones,
 } from '@nusaquant/core';
 import { BinancePublicMarketDataClient, scanMarketClient } from './market-data.ts';
-import { discoverChatFromUpdates, scanAlertCandidates, sendTelegram } from './alerts.ts';
+import { discoverChatFromUpdates, scanAlertCandidatesShared, sendTelegram } from './alerts.ts';
 import { tutupDemo } from './exec-demo.ts';
 import { createWorkerSupabaseClient } from './supabase.ts';
 
@@ -411,7 +411,7 @@ export async function runDeskCycle(deps: DeskCycleDeps): Promise<DeskCycleResult
   }
 
   // 2) cari tiket siap baru.
-  const candidates = await scanAlertCandidates(deps.market);
+  const candidates = await scanAlertCandidatesShared(deps.market);
   result.scannedCandidates = candidates.length;
   const ready = candidates.filter((row) => row.ticket !== null && row.ticket.actionable && row.gateAlign);
   result.readyTickets = ready.length;

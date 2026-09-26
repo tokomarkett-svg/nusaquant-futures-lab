@@ -64,6 +64,8 @@ export class BinancePublicMarketDataClient {
   /** Host terakhir yang TERBUKTI berhasil — dipakai lebih dulu supaya tidak menghantam host mati berulang-ulang. */
   private stickyBase: string | null = null;
   private marketTerakhir: DataMarket | null = null;
+  /** Setelah 418/429/451, jangan pukul host utama terus-menerus dan memperpanjang ban IP. */
+  private primaryRetryAt = 0;
 
   constructor(options: MarketDataClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? DEFAULT_BINANCE_BASE_URL;
@@ -100,8 +102,9 @@ export class BinancePublicMarketDataClient {
       const response = await this.fetchImpl(url, { signal: controller.signal });
       if (!response.ok) {
         const error = new Error(`Binance HTTP ${response.status} (${new URL(base).host})`) as Error & { retryable?: boolean };
-        // Kalau host diblokir/di-rate-limit berat, coba sumber cadangan; error lain (mis. 400) langsung dilempar.
-        error.retryable = response.status === 451 || response.status === 403 || response.status >= 500;
+        // 418/429 = rate-limit/ban sementara Binance. Itu harus masuk jalur cadangan;
+        // sebelumnya dianggap fatal sehingga Cek Sistem menampilkan ❌ walau worker hidup.
+        error.retryable = response.status === 418 || response.status === 429 || response.status === 451 || response.status === 403 || response.status >= 500;
         throw error;
       }
       return await response.json();
@@ -115,15 +118,20 @@ export class BinancePublicMarketDataClient {
     params: Record<string, string>,
   ): Promise<unknown> {
     const bases = [this.baseUrl, ...(this.fallbackBaseUrl ? [this.fallbackBaseUrl] : [])];
-    // Host yang terbukti hidup dicoba lebih dulu (sticky) — hemat waktu & rate-limit.
-    const ordered = this.stickyBase && bases.includes(this.stickyBase)
-      ? [this.stickyBase, ...bases.filter((base) => base !== this.stickyBase)]
-      : bases;
+    const primaryCoolingDown = Boolean(this.fallbackBaseUrl && Date.now() < this.primaryRetryAt);
+    // Saat host utama sedang diban, jangan menyentuhnya sama sekali. Setelah cooldown,
+    // coba futures lagi agar fallback SPOT tidak menjadi permanen.
+    const ordered = primaryCoolingDown
+      ? [this.fallbackBaseUrl!]
+      : this.stickyBase === this.baseUrl
+        ? [this.baseUrl, ...bases.filter((base) => base !== this.baseUrl)]
+        : bases;
     let lastError: unknown = new Error('Binance request gagal tanpa percobaan.');
     for (const base of ordered) {
       try {
         const payload = await this.attempt(base, pickPath(this.pathsFor(base)), params);
         this.stickyBase = base;
+        if (base === this.baseUrl) this.primaryRetryAt = 0;
         this.marketTerakhir = marketOfBase(base);
         if (base !== this.baseUrl && !this.fallbackAnnounced) {
           this.fallbackAnnounced = true;
@@ -134,6 +142,10 @@ export class BinancePublicMarketDataClient {
         lastError = error;
         const retryable = (error as { retryable?: boolean }).retryable ?? true; // error jaringan/timeout → boleh coba cadangan
         if (!retryable) throw error;
+        if (base === this.baseUrl && this.fallbackBaseUrl) {
+          // Cukup panjang untuk melewati ban Binance umum dan mencegah ban diperpanjang.
+          this.primaryRetryAt = Date.now() + 15 * 60_000;
+        }
       }
     }
     throw lastError instanceof Error ? lastError : new Error(String(lastError));

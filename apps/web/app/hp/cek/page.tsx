@@ -82,13 +82,16 @@ export default function CekSistem() {
       detail: `hidup · pasar ${w.market ?? '?'} · ${(worker!.ms / 1000).toFixed(1)} dtk`,
     } : { nama: 'Worker Railway', status: 'gagal', detail: 'tidak terjangkau dari HP ini' };
 
-    const pmb = await ukur(`${WORKER}/data/papan-json`, 20000);
-    const j = pmb?.json as { ok?: boolean; rows?: Array<{ symbol: string; siap: boolean; market?: string }>; at?: string } | undefined;
+    const pmb = await ukur(`${WORKER}/data/papan-json`, 30000);
+    const j = pmb?.json as { ok?: boolean; rows?: Array<{ symbol: string; siap: boolean; market?: string }>; market?: string; at?: string; error?: string } | undefined;
     const umurPmb = j?.at ? Math.round((Date.now() - new Date(j.at).getTime()) / 60_000) : null;
     hasil[5] = j?.ok ? {
       nama: 'Mesin PMB (pindai live)', status: 'ok',
-      detail: `${j.rows?.length ?? 0} kandidat teratas · ${j.rows?.filter((r) => r.siap).length ?? 0} siap · pasar ${j.rows?.[0]?.market ?? '?'} · pindai ${umurPmb ?? '?'} mnt lalu`,
-    } : { nama: 'Mesin PMB (pindai live)', status: 'gagal', detail: 'pindai tidak menjawab (worker mati/lambat?)' };
+      detail: `${j.rows?.length ?? 0} kandidat teratas · ${j.rows?.filter((r) => r.siap).length ?? 0} siap · pasar ${j.market ?? j.rows?.[0]?.market ?? '?'} · pindai ${umurPmb ?? '?'} mnt lalu`,
+    } : {
+      nama: 'Mesin PMB (pindai live)', status: worker?.json ? 'lambat' : 'gagal',
+      detail: j?.error ?? 'pindai pasar sedang rate-limit/timeout; worker tetap hidup',
+    };
 
     setItems(hasil);
     setDiuji(false);

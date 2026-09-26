@@ -411,6 +411,37 @@ export async function scanAlertCandidates(client: BinancePublicMarketDataClient,
   return rows;
 }
 
+// ALERT, MEJA, dan PAPAN sebelumnya menjalankan pindai identik sendiri-sendiri:
+// ratusan request kline per konsumen. Akibatnya IP Railway diban Binance (HTTP 418).
+// Satu hasil bersama cukup karena semua memakai rumus dan pasar yang sama.
+const SHARED_SCAN_TTL_MS = 120_000;
+let sharedScanCache: { at: number; rows: AlertScanRow[] } | null = null;
+let sharedScanInFlight: Promise<AlertScanRow[]> | null = null;
+
+export async function scanAlertCandidatesShared(
+  client: BinancePublicMarketDataClient,
+  limit = MAX_CANDIDATES,
+): Promise<AlertScanRow[]> {
+  if (sharedScanCache && Date.now() - sharedScanCache.at < SHARED_SCAN_TTL_MS) {
+    return sharedScanCache.rows.slice(0, limit);
+  }
+  if (!sharedScanInFlight) {
+    sharedScanInFlight = scanAlertCandidates(client, MAX_CANDIDATES)
+      .then((rows) => {
+        sharedScanCache = { at: Date.now(), rows };
+        return rows;
+      })
+      .catch((error) => {
+        // Kalau upstream tersendat sesaat, snapshot terakhir lebih jujur daripada
+        // status "worker mati". Timestamp payload tetap menunjukkan umurnya.
+        if (sharedScanCache) return sharedScanCache.rows;
+        throw error;
+      })
+      .finally(() => { sharedScanInFlight = null; });
+  }
+  return (await sharedScanInFlight).slice(0, limit);
+}
+
 export async function runAlertCycle(
   store: ReturnType<typeof createAlertStore>,
   client?: BinancePublicMarketDataClient,
@@ -418,7 +449,7 @@ export async function runAlertCycle(
 ): Promise<{ scanned: number; sent: number; messages: AlertMessage[] }> {
   // Futures dulu: garis & tiket harus diukur dari pasar yang sama dengan chart murid.
   const market = client ?? scanMarketClient();
-  const rows = await scanAlertCandidates(market);
+  const rows = await scanAlertCandidatesShared(market);
   const messages: AlertMessage[] = [];
   for (const row of rows) {
     if (!row.gateAlign && row.setup.candle2 === null) continue; // hemat: gate belum searah & belum ada paket = tidak ada yang dikabarkan
