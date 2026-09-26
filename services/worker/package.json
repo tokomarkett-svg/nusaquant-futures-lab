@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "start": "node --import tsx src/ingest.ts",
     "dev": "RUN_MARKET_INGEST=true RUN_MARKET_WATCH=true node --import tsx src/ingest.ts",
     "test": "node --import tsx --test src/*.test.ts",
     "typecheck": "tsc --noEmit",
