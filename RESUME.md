@@ -117,3 +117,24 @@ npm run research:local --workspace @nusaquant/worker -- --symbols=BTCUSDT --star
   - Sweep universe batch 1+2 (22 aset tambahan, 2021-01 → 2026-08): **ZEC, UNI, RUNE PASS**
     (RUNE terkuat: PF 1.27, WF +0.140R, 6/6 tahun); review + persetujuan paper di `docs/25`.
     Portofolio paper kini 5 playbook (ETH, ADA, ZEC sesi ...004, UNI ...005, RUNE ...006).
+
+---
+
+## Lampiran handoff — 26 September 2026 (sesi perbaikan entri + Mode HP)
+
+Status: `main` = `c7df71c`+ (lihat git log). Typecheck/test/build pass saat push.
+
+**Perbaikan mesin (sistem PMB, docs/51):**
+1. Pemindaian teknik (notif, meja, papan-json) kini FUTURES-dulu (`scanMarketClient`,
+   env `SCAN_BINANCE_BASE_URL`); mirror spot hanya fallback + notif berlabel `Data SPOT`.
+2. C1 wajib candle SETELAH X (X tidak dirangkap) — `detectSetup` di `packages/core/src/zones.ts`.
+3. BATAL mematikan zona sampai High/Low 24j bergeser (cek semua candle sejak zona lahir).
+4. Badge PADAM di papan (`Status` baru), label perp SAHAM/KOMODITAS (`jenisPerp` di core).
+
+**Mode HP (docs/52-53):** rute `/hp` (Beranda/Papan/Posisi/Meja + `/hp/koin/[symbol]`),
+API baru `/api/meja/skor` & `/api/meja/riwayat`, manifest `start_url: /hp`, SW `nq-v2`,
+notif Telegram menautkan ke `/hp/koin/...`. Semua lapisan tampilan — mesin tidak disentuh.
+
+Catatan lingkungan: `node_modules` tidak ikut snapshot workspace; jalankan `npm install`
+sebelum typecheck/test/build. Remote git perlu `git remote add origin …` ulang tiap sesi
+(kredensial tidak tersimpan).

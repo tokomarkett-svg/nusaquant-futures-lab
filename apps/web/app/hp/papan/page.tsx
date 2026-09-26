@@ -22,6 +22,7 @@ export default function PapanHp() {
   const [board, setBoard] = useState<Board | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('SEMUA');
+  const [cari, setCari] = useState('');
 
   const muat = useCallback(async () => {
     try {
@@ -43,7 +44,9 @@ export default function PapanHp() {
 
   const rows = board?.rows ?? [];
   const tampil = useMemo(() => {
+    const kata = cari.trim().toUpperCase().replace(/USDT$/, '');
     const cocok = (r: BoardRow): boolean => {
+      if (kata && !r.symbol.includes(kata)) return false;
       if (filter === 'LONG') return r.side === 'LONG';
       if (filter === 'SHORT') return r.side === 'SHORT';
       if (filter === 'SEARAH') return r.gateAlign;
@@ -51,7 +54,7 @@ export default function PapanHp() {
       return true;
     };
     return rows.filter(cocok);
-  }, [rows, filter]);
+  }, [rows, filter, cari]);
 
   return (
     <div style={{ padding: '10px 12px 0' }}>
@@ -61,6 +64,15 @@ export default function PapanHp() {
         <span style={{ marginLeft: 'auto', ...labelSumber(board?.market).style }}>{labelSumber(board?.market).text}</span>
       </header>
 
+      <input
+        value={cari}
+        onChange={(e) => setCari(e.target.value)}
+        placeholder="🔎 Cari koin… (ketik tanpa USDT, mis. RUNE)"
+        style={{
+          width: '100%', padding: '10px 12px', marginBottom: 8, fontSize: 12.5,
+          border: '1px solid var(--line)', borderRadius: 12, background: '#fff', color: WARNA.ink, outline: 'none',
+        }}
+      />
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '0 0 10px' }}>
         {([['SEMUA', 'Semua'], ['LONG', 'LONG'], ['SHORT', 'SHORT'], ['SEARAH', 'Gate searah'], ['SIAP', '🎯 Siap']] as const).map(([nilai, label]) => (
           <button key={nilai} onClick={() => setFilter(nilai)} style={filter === nilai ? CHIP_ON : CHIP}>{label}</button>

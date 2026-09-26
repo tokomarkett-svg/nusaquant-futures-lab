@@ -6,6 +6,7 @@
  * R = (harga − entry) ÷ jarak risiko, arah menyesuaikan LONG/SHORT. Data posisi: /api/meja.
  */
 
+import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { WARNA, digitsFor, fmt, salinTeks, umur } from '../bahan';
 
@@ -110,7 +111,9 @@ export default function PosisiHp() {
         return (
           <div key={p.symbol} style={{ background: '#fff', border: '1px solid var(--line)', borderLeft: `3px solid ${long ? '#0d7a4b' : WARNA.red}`, borderRadius: 14, padding: '11px 12px', marginBottom: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
-              <b style={{ fontSize: 14 }}>{p.symbol}</b>
+              <Link href={`/hp/koin/${p.symbol}`} style={{ textDecoration: 'none' }}>
+                <b style={{ fontSize: 14, color: WARNA.ink, borderBottom: '1px dotted #9db3a6' }}>{p.symbol}</b>
+              </Link>
               <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 6, background: long ? WARNA.mintSoft : WARNA.redSoft, color: long ? WARNA.greenDark : WARNA.red, border: `1px solid ${long ? '#bfe8d1' : '#f3cdd6'}` }}>{p.side}</span>
               <span style={{ marginLeft: 'auto', fontSize: 11, color: WARNA.muted }}>umur {umur(p.openedAt)}</span>
             </div>
