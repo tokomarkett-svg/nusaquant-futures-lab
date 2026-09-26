@@ -42,6 +42,9 @@ const kandidat = (candle2: number | null, over: Partial<AlertCandidate> = {}): A
     staleBars: 0,
     valid: candle2 !== null,
     notes: [],
+    entry: candle2 === null ? null : 100,
+    stop: candle2 === null ? null : 99,
+    riskDistance: candle2 === null ? null : 1,
   };
   return {
     symbol: 'TESUSDT',
@@ -52,9 +55,6 @@ const kandidat = (candle2: number | null, over: Partial<AlertCandidate> = {}): A
     setup,
     ticket: candle2 === null ? null : tiketPalsu(100.2),
     jenis: 'kripto',
-    rangePct: 5,
-    quoteVolume: 9_000_000,
-    dataAgeMin: 1,
     ...over,
   };
 };
