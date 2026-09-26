@@ -25,8 +25,44 @@ const CACHE_TTL_MS: Record<string, number> = {
   '/data/klines': 8_000,
 };
 
+/**
+ * Papan hanya menampilkan 12 baris, tetapi filter arah-hari + MA99 dijalankan
+ * SETELAH ranking jarak pintu. Memindai cuma 12 kandidat mentah sering menghasilkan
+ * 0 baris walaupun pasar punya kandidat sah. Ambil pool yang cukup lebar, lalu potong
+ * hasil akhirnya. Cache + in-flight lock mencegah setiap HP mengulang ratusan request.
+ */
+const PAPAN_RESULT_LIMIT = 12;
+const PAPAN_SCAN_POOL = 120;
+const PAPAN_CACHE_MS = 45_000;
+
 type CacheEntry = { at: number; payload: unknown };
 const cache = new Map<string, CacheEntry>();
+let papanCache: CacheEntry | null = null;
+let papanInFlight: Promise<unknown> | null = null;
+
+async function scanPapanPayload(): Promise<unknown> {
+  if (papanCache && Date.now() - papanCache.at < PAPAN_CACHE_MS) return papanCache.payload;
+  if (!papanInFlight) {
+    papanInFlight = (async () => {
+      const market = scanMarketClient();
+      const scanned = await scanAlertCandidates(market, PAPAN_SCAN_POOL);
+      const rows = scanned.slice(0, PAPAN_RESULT_LIMIT);
+      const payload = rows.map((r) => ({
+        symbol: r.symbol, side: r.side, price: r.priceNow, gate: r.gate, gateAlign: r.gateAlign,
+        siap: Boolean(r.ticket?.actionable && r.gateAlign),
+        basi: Boolean(r.ticket && !r.ticket.actionable),
+        entry: r.ticket?.entry ?? null, stop: r.ticket?.stop ?? null, target: r.ticket?.target ?? null,
+        sizeCoin: r.ticket?.sizeCoin ?? null, riskPct: r.ticket?.riskPct ?? null,
+        garis: r.garis ?? null, ageMin: r.dataAgeMin,
+        market: r.market ?? 'FUTURES',
+      }));
+      const result = { ok: true, rows, at: new Date().toISOString() };
+      papanCache = { at: Date.now(), payload: result };
+      return result;
+    })().finally(() => { papanInFlight = null; });
+  }
+  return papanInFlight;
+}
 
 export function validateKlinesQuery(query: URLSearchParams): { ok: true; symbol: string; interval: string; limit: number } | { ok: false; error: string } {
   const symbol = (query.get('symbol') ?? '').toUpperCase();
@@ -185,18 +221,7 @@ export function createDataProxyHandler(upstreamBase = process.env.WORKER_UPSTREA
     if (route === '/data/papan-json' && req.method === 'GET') {
       try {
         // Futures dulu: papan darurat harus menampilkan garis dari pasar yang sama dengan notif & chart.
-        const market = scanMarketClient();
-        const rows = await scanAlertCandidates(market, 12);
-        const payload = rows.map((r) => ({
-          symbol: r.symbol, side: r.side, price: r.priceNow, gate: r.gate, gateAlign: r.gateAlign,
-          siap: Boolean(r.ticket?.actionable && r.gateAlign),
-          basi: Boolean(r.ticket && !r.ticket.actionable),
-          entry: r.ticket?.entry ?? null, stop: r.ticket?.stop ?? null, target: r.ticket?.target ?? null,
-          sizeCoin: r.ticket?.sizeCoin ?? null, riskPct: r.ticket?.riskPct ?? null,
-          garis: r.garis ?? null, ageMin: r.dataAgeMin,
-          market: r.market ?? 'FUTURES',
-        }));
-        return balasJson(200, { ok: true, rows: payload, at: new Date().toISOString() });
+        return balasJson(200, await scanPapanPayload());
       } catch (error) {
         return balasJson(502, { ok: false, error: error instanceof Error ? error.message : 'pindai gagal' });
       }
