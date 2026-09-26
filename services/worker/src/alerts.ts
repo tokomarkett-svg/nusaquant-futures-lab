@@ -276,8 +276,8 @@ export async function sendTelegram(text: string, options: { token?: string; chat
   return true;
 }
 
-const EXCLUDED = /(USDC|FDUSD|TUSD|BUSD|DAI|EUR|TRY|BRL|AEUR|USD1|XUSD|EURI)$/;
-const LEVERAGED = /(UP|DOWN|BULL|BEAR)USDT$/;
+export const EXCLUDED = /(USDC|FDUSD|TUSD|BUSD|DAI|EUR|TRY|BRL|AEUR|USD1|XUSD|EURI)$/;
+export const LEVERAGED = /(UP|DOWN|BULL|BEAR)USDT$/;
 const CONCURRENCY = 5;
 const MAX_CANDIDATES = 600; // PINDAI SEMUA: semua koin USDT yang lolos gerbang vol/range (permintaan pemilik 25/9)
 
