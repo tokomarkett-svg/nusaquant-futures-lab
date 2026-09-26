@@ -36,11 +36,13 @@ export default function PeringatanMode() {
         <div style={{ flex: 1 }}>
           <b>Chrome-mu lagi mode SITUS DESKTOP — makanya tampil sempit.</b>
           <br />
-          Perbaikan 10 detik: menu <b>⋮</b> (kanan atas) → <b>hilangkan centang “Situs desktop”</b>.
+          Perbaikan tampilan: menu <b>⋮</b> (kanan atas) → <b>hilangkan centang “Situs desktop”</b>.
           <br />
-          Lalu menu <b>⋮</b> → <b>“Tambahkan ke layar utama”</b> → hapus ikon lama → buka ikon yang baru:
-          langsung jadi aplikasi HP penuh.
+          Mau ikon yang BENAR-BENAR aplikasi (full-screen, tanpa Chrome)? Ketuk tombol di bawah.
         </div>
+        <a href="/hp/pasang" style={{ display: 'block', marginTop: 7, textAlign: 'center', background: '#0e2a1d', color: '#7ff0b0', fontWeight: 800, fontSize: 12.5, padding: '9px 0', borderRadius: 10, textDecoration: 'none' }}>
+          📲 PASANG APLIKASI BENERAN — sekali ketuk
+        </a>
         <button onClick={() => setDitutup(true)} aria-label="tutup" style={{ border: 'none', background: 'transparent', color: '#6b4d0a', fontSize: 16, fontWeight: 800, cursor: 'pointer', padding: '0 2px' }}>✕</button>
       </div>
     </div>

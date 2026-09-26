@@ -84,6 +84,10 @@ export default function BerandaHp() {
 
       <div style={{ fontSize: 12, fontWeight: 800, color: '#33463c', margin: '10px 2px 6px' }}>🔔 BEL PINTU — nonton (belum sah)</div>
       {bel.length === 0 && <div style={{ fontSize: 12, color: WARNA.muted, margin: '0 2px' }}>Tidak ada X yang sedang menunggu.</div>}
+      <div style={{ display: 'flex', gap: 8, margin: '10px 0 4px' }}>
+        <a href="/hp/pasang" style={{ flex: 1, textAlign: 'center', textDecoration: 'none', background: '#fff', border: '1px solid var(--line)', borderRadius: 12, padding: '9px 0', fontSize: 11.5, fontWeight: 800, color: WARNA.greenDark }}>📲 Pasang aplikasi beneran</a>
+        <a href="/hp/cek" style={{ flex: 1, textAlign: 'center', textDecoration: 'none', background: '#fff', border: '1px solid var(--line)', borderRadius: 12, padding: '9px 0', fontSize: 11.5, fontWeight: 800, color: WARNA.greenDark }}>🩺 Cek sistem</a>
+      </div>
       {bel.map((row) => (
         <Link key={row.symbol} href={`/hp/koin/${row.symbol}`} style={{ textDecoration: 'none', color: 'inherit' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--line)', borderRadius: 14, padding: '10px 11px', marginBottom: 8 }}>
