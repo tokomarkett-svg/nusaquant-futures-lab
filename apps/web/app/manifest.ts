@@ -10,6 +10,7 @@ export default function manifest(): MetadataRoute.Manifest {
     id: '/hp',
     scope: '/',
     display: 'standalone',
+    display_override: ['standalone', 'minimal-ui'],
     background_color: '#f4f9f5',
     theme_color: '#0e2a1d',
     orientation: 'portrait',

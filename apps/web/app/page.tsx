@@ -7,6 +7,7 @@ import CandleChart from './components/CandleChart';
 import BacktestPanel from './components/BacktestPanel';
 import MarketIntelligence from './components/MarketIntelligence';
 import PaperMetrics from './components/PaperMetrics';
+import ArahkanModeHp from './components/ArahkanModeHp';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,6 +66,7 @@ export default async function HomePage() {
 
           <div className="footer-note"><span><strong>Next gate:</strong> research edge → paper duration → Demo/Testnet adapter (locked).</span><span>v0.3.0 · 11 Sep 2026</span></div>
         </main>
+        <ArahkanModeHp />
       </div>
     </div>
   );

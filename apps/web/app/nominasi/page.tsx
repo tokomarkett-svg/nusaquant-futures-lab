@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import PapanNominasi from './PapanNominasi';
 import MejaPaper from './MejaPaper';
+import ArahkanModeHp from '../components/ArahkanModeHp';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,6 +42,7 @@ export default function NominasiPage() {
             <MejaPaper />
           </div>
         </main>
+        <ArahkanModeHp />
       </div>
     </div>
   );

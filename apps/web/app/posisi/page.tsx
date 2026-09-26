@@ -7,6 +7,7 @@
  */
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
+import ArahkanModeHp from '../components/ArahkanModeHp';
 
 type Posisi = {
   symbol: string;
@@ -148,6 +149,7 @@ export default function HalamanPosisi() {
       <p style={{ fontSize: 11.5, color: '#66778c', marginTop: 16, lineHeight: 1.5 }}>
         PAPER = latihan tanpa uang. Angka mengikuti aturan: entry close candle 2 · SL ekor candle 1 · TP 2R · 1R = 0,31 USDT · maks 2 trade/hari.
       </p>
+      <ArahkanModeHp />
     </main>
   );
 }
