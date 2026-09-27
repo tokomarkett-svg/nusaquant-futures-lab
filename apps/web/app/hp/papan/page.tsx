@@ -4,18 +4,22 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import HpHeader from '../HpHeader';
-import { badgeJenis, badgeSisi, badgeStatus, fmt, Pita, tiketSiap, type Board, type BoardRow } from '../bahan';
+import { badgeJenis, badgeSisi, fmt, Pita, type Board, type BoardRow } from '../bahan';
+import { signalStage, type SignalStage } from '../../../lib/signal-stage';
 
-type Filter = 'SEMUA' | 'LONG' | 'SHORT' | 'SEARAH' | 'SIAP';
+type Filter = 'SEMUA' | Exclude<SignalStage, 'PANTAU'>;
 const FILTERS: ReadonlyArray<{ id: Filter; text: string }> = [
-  { id: 'SEMUA', text: 'Semua' }, { id: 'LONG', text: 'Long' }, { id: 'SHORT', text: 'Short' },
-  { id: 'SEARAH', text: 'Gate searah' }, { id: 'SIAP', text: '◎ Tiket siap' },
+  { id: 'SEMUA', text: 'Semua' }, { id: 'PINTU', text: '① Tembus pintu' },
+  { id: 'C1', text: '② Candle 1' }, { id: 'C2', text: '③ Candle 2' },
+  { id: 'SIAP', text: '🎯 Siap entri' }, { id: 'BASI', text: '⌛ Basi' },
+  { id: 'BATAL', text: '✕ Batal' },
 ];
 
 export default function PapanHp() {
   const [board, setBoard] = useState<Board | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('SEMUA');
+  const [sisi, setSisi] = useState<'SEMUA' | 'LONG' | 'SHORT'>('SEMUA');
   const [cari, setCari] = useState('');
   const [sekarang, setSekarang] = useState<number | null>(null);
 
@@ -43,20 +47,21 @@ export default function PapanHp() {
 
   const terkini = Boolean(board && !error && sekarang !== null && board.market === 'FUTURES' && sekarang - Date.parse(board.at) <= 120_000);
   const rows = terkini ? board?.rows ?? [] : [];
+  const tahap = (row: BoardRow) => signalStage(row, board?.at ?? '', sekarang ?? Date.now());
+  const jumlah = useMemo(() => {
+    const hasil: Record<Filter, number> = { SEMUA: rows.length, PINTU: 0, C1: 0, C2: 0, SIAP: 0, BASI: 0, BATAL: 0 };
+    for (const row of rows) {
+      const stage = signalStage(row, board?.at ?? '', sekarang ?? Date.now());
+      if (stage !== 'PANTAU') hasil[stage]++;
+    }
+    return hasil;
+  }, [rows, board, sekarang]);
   const tampil = useMemo(() => {
     const kata = cari.trim().toUpperCase().replace(/USDT$/, '');
-    const cocok = (r: BoardRow): boolean => {
-      if (kata && !r.symbol.includes(kata)) return false;
-      if (filter === 'LONG') return r.side === 'LONG';
-      if (filter === 'SHORT') return r.side === 'SHORT';
-      if (filter === 'SEARAH') return r.gateAlign;
-      if (filter === 'SIAP') return tiketSiap(r) && board !== null && sekarang !== null &&
-        r.dataAgeMin + (sekarang - Date.parse(board.at)) / 60_000 <= 45 && r.setup.candle2 !== null &&
-        sekarang >= r.setup.candle2 + 900_000 && sekarang <= r.setup.candle2 + 4 * 900_000;
-      return true;
-    };
-    return rows.filter(cocok);
-  }, [rows, board, filter, cari, sekarang]);
+    return rows.filter((row) => (!kata || row.symbol.includes(kata))
+      && (sisi === 'SEMUA' || row.side === sisi)
+      && (filter === 'SEMUA' || signalStage(row, board?.at ?? '', sekarang ?? Date.now()) === filter));
+  }, [rows, board, filter, sisi, cari, sekarang]);
 
   return (
     <div className="hp-page">
@@ -70,23 +75,29 @@ export default function PapanHp() {
         <span className={`hp-live${error || (board && !terkini) ? ' hp-live--error' : ''}`}>{error || (board && !terkini) ? 'TUNDA' : terkini ? 'AKTIF' : 'MEMUAT'}</span>
       </div>
       <label className="hp-search"><span aria-hidden="true">⌕</span><input value={cari} onChange={(e) => setCari(e.target.value)} placeholder="Cari koin, misalnya RUNE" aria-label="Cari koin" /></label>
-      <div className="hp-filters" role="group" aria-label="Filter koin">
-        {FILTERS.map(({ id, text }) => <button className="hp-filter" type="button" key={id} onClick={() => setFilter(id)} aria-pressed={filter === id}>{text}</button>)}
+      <p className="hp-lede">Urutan rumus: pintu → candle 1 → candle 2 → siap entri. Basi dan batal dipisahkan; <b>hanya SIAP</b> yang menjadi alarm tiket baru di Telegram.</p>
+      <div className="hp-filters" role="group" aria-label="Tahap sinyal" style={{ overflowX: 'auto', flexWrap: 'nowrap', paddingBottom: 6 }}>
+        {FILTERS.map(({ id, text }) => <button className="hp-filter" type="button" key={id} onClick={() => setFilter(id)} aria-pressed={filter === id} style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{text} · {jumlah[id]}</button>)}
+      </div>
+      <div className="hp-filters" role="group" aria-label="Arah sinyal">
+        {(['SEMUA', 'LONG', 'SHORT'] as const).map((arah) => <button className="hp-filter" type="button" key={arah} onClick={() => setSisi(arah)} aria-pressed={sisi === arah}>{arah === 'SEMUA' ? 'Dua arah' : arah}</button>)}
       </div>
       {error && <div className="hp-error" role="alert"><b>Data tidak dapat dipastikan.</b> {error}</div>}
-      <div className="hp-section-label">{filter === 'SIAP' ? 'TIKET SIAP' : 'HASIL PEMINDAIAN'} <small>{tampil.length} koin ditampilkan</small></div>
+      <div className="hp-section-label">{filter === 'SEMUA' ? 'SEMUA KOIN FUTURES' : `TAHAP ${filter}`} <small>{tampil.length} koin cocok · {rows.length} terdaftar</small></div>
       {!error && tampil.length === 0 && <div className="hp-card hp-empty"><span className="hp-empty-icon" aria-hidden="true">⌕</span><b>{board && !terkini ? 'Menunggu data futures segar' : !board ? 'Memuat kandidat…' : 'Belum ada koin di filter ini'}</b><p>{!terkini ? 'Papan muncul setelah pasar berhasil dibaca.' : filter === 'SIAP' ? 'Belum ada tiket sah. Mesin tidak memaksa entri.' : 'Coba kata kunci atau filter yang lain.'}</p></div>}
+      {tampil.length > 60 && <p className="hp-lede">Menampilkan 60 pertama agar HP tetap ringan. Cari simbol untuk melihat seluruh {tampil.length} hasil.</p>}
       {tampil.slice(0, 60).map((row) => {
-        const status = badgeStatus(row);
+        const stage = tahap(row);
+        const label = stage === 'PANTAU' ? 'Belum lolos filter / masih dipantau' : stage === 'SIAP' ? '🎯 SIAP ENTRI · alarm Telegram' : `Tahap ${stage}`;
         return (
-          <Link key={row.symbol} href={`/hp/koin/${row.symbol}`} className={`hp-card hp-market-row${row.status === 'PADAM' ? ' is-off' : ''}`}>
+          <Link key={row.symbol} href={`/hp/koin/${row.symbol}`} className={`hp-card hp-market-row${stage === 'BATAL' || stage === 'BASI' ? ' is-off' : ''}`}>
             <div className="hp-market-row-top">
               <span className="hp-market-row-name">{row.symbol.replace('USDT', '')}</span>
               <span style={badgeSisi(row).style}>{badgeSisi(row).text}</span>
               {badgeJenis(row)}
               <span className="hp-market-row-price">{fmt(row.last)}</span>
             </div>
-            <div className="hp-market-row-status">{status.text} · Gate 1H {row.gate}{row.gateAlign ? ' · MA99 searah ✓' : ''}</div>
+            <div className="hp-market-row-status">{label} · Gate 1H {row.gate}{row.gateAlign ? ' · MA99 searah ✓' : ''}{stage === 'SIAP' && !row.demoReady ? ' · belum tersedia di Testnet' : ''}</div>
             <Pita row={row} />
             <div className="hp-market-row-meta">{row.setup.note ?? 'Menunggu bukti candle yang lengkap.'} · range {row.rangePct.toFixed(1)}% · vol {row.volJt}jt</div>
           </Link>

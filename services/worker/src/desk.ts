@@ -407,6 +407,7 @@ export async function runDeskCycle(deps: DeskCycleDeps): Promise<DeskCycleResult
     const closedPosition = { ...position, status: 'CLOSED' as const, realizedPnl, closedAt };
     const todayIndex = today.findIndex((p) => p.id === position.id);
     if (todayIndex >= 0) today[todayIndex] = closedPosition;
+    else today.push(closedPosition); // posisi dibuka kemarin, tetapi LOSS yang baru ditutup hari ini tetap menghitung pagar hari ini
     const rToday = today.filter((p) => p.status === 'CLOSED').reduce((sum, p) => sum + (p.realizedPnl ?? 0), 0) / RISK_USDT;
     await store.journal({
       symbol: position.symbol,
@@ -435,7 +436,7 @@ export async function runDeskCycle(deps: DeskCycleDeps): Promise<DeskCycleResult
     && row.dataAgeMin + Math.max(0, (now - row.scannedAt) / 60_000) <= STALE_CANDLE_MINUTES);
   result.readyTickets = ready.length;
 
-  const openedTodayBefore = today.filter((p) => p.metadata.source === 'MEJA_PAPAN').length;
+  const openedTodayBefore = today.filter((p) => p.metadata.source === 'MEJA_PAPAN' && p.openedAt >= dayStart).length;
   let openedToday = openedTodayBefore;
   const openSymbols = new Set(open.map((p) => p.symbol));
 

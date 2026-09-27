@@ -377,17 +377,21 @@ export async function scanAlertCandidates(client: BinancePublicMarketDataClient,
         // Insiden BANK 25/9 22:47 WIB: cuma +0,35% di atas ungu, struktur 15m masih turun → long
         // bocor. Putusan pemilik benar: itu bukan "trend naik", itu nempel garis.
         const MARGIN_UNGU = 0.005;
-        if (m15.length >= 99) {
-          const closes15 = (m15 as Candle[]).map((c) => c.close);
-          const ungu15 = closes15.slice(-99).reduce((acc, v) => acc + v, 0) / 99;
-          const close15 = closes15.at(-1) ?? Number.NaN;
-          const jelas15 = side === 'LONG' ? close15 >= ungu15 * (1 + MARGIN_UNGU) : close15 <= ungu15 * (1 - MARGIN_UNGU);
-          if (!jelas15) return null;
-        }
+        // Sebelumnya kandidat yang belum lolos MA99 dihapus total. Akibatnya tahap
+        // PINTU/C1/C2 tidak pernah terlihat di aplikasi, walau rumus sudah diproses.
+        // Kini tetap catat progres, tetapi hanya gateAlign=true bisa menjadi SIAP/alarm.
+        const closes15 = (m15 as Candle[]).map((c) => c.close);
+        const ungu15 = m15.length >= 99
+          ? closes15.slice(-99).reduce((acc, v) => acc + v, 0) / 99 : Number.NaN;
+        const close15 = closes15.at(-1) ?? Number.NaN;
+        const jelas15 = side === 'LONG'
+          ? close15 >= ungu15 * (1 + MARGIN_UNGU)
+          : close15 <= ungu15 * (1 - MARGIN_UNGU);
         const gateInfo = gateFromCandles(h1);
-        const gateAlign = side === 'LONG'
+        const jelas1h = side === 'LONG'
           ? gateInfo.close >= gateInfo.ma99 * (1 + MARGIN_UNGU)
           : gateInfo.close <= gateInfo.ma99 * (1 - MARGIN_UNGU);
+        const gateAlign = jelas15 && jelas1h;
         const setup = detectSetup(m15 as Candle[], zones, side);
         const ticket = computeTicket(m15 as Candle[], zones, side, ticker.last);
         const row: AlertScanRow = {

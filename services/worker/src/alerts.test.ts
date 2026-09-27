@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { appConfirmsReady, buildBellText, buildStartupText, buildTicketText, collectAlertsForCandidate, createAlertStore, describeTelegramConfig, discoverChatFromUpdates, explainTelegramError, jenisPerpText, resolveAlertMode, sendTelegram, type AlertCandidate, type AlertScanRow } from './alerts.ts';
+import { appConfirmsReady, buildBellText, buildStartupText, buildTicketText, collectAlertsForCandidate, createAlertStore, describeTelegramConfig, discoverChatFromUpdates, explainTelegramError, jenisPerpText, resolveAlertMode, scanAlertCandidates, sendTelegram, type AlertCandidate, type AlertScanRow } from './alerts.ts';
 import { jenisPerp } from '@nusaquant/core';
 import type { SetupMarkers, Ticket } from '@nusaquant/core';
 
@@ -273,4 +273,23 @@ test('alarm SIAP hanya jika app memvalidasi setup yang sama, harga sama, dan bel
   assert.equal(await appConfirmsReady({ ...row, market: 'SPOT' }, { ...base, fetchImpl: reply(valid) }), false);
   assert.equal(await appConfirmsReady({ ...row, scannedAt: Date.now() - 180_000 }, { ...base, fetchImpl: reply(valid) }), false);
   assert.equal(await appConfirmsReady(row, { ...base, token: '', fetchImpl: reply(valid) }), false);
+});
+
+test('scanner mempertahankan tahap koin yang belum lolos MA99 agar aplikasi bisa tampilkan PINTU/C1/C2', async () => {
+  const now = Date.now();
+  const latest15 = Math.floor(now / 900_000) * 900_000 - 900_000;
+  const latest1h = Math.floor(now / 3_600_000) * 3_600_000 - 3_600_000;
+  const market = {
+    marketUsed: () => 'FUTURES',
+    get24hTickerDetails: async () => [{ symbol: 'TESTUSDT', last: 105, high: 140, low: 80, quoteVolume: 50_000_000 }],
+    getKlines: async ({ interval }: { interval: string }) => interval === '15m'
+      ? Array.from({ length: 140 }, (_, i) => ({ time: latest15 - (139 - i) * 900_000,
+        open: 100, high: 101, low: 99, close: 100, volume: 1 }))
+      : Array.from({ length: 130 }, (_, i) => ({ time: latest1h - (129 - i) * 3_600_000,
+        open: 100, high: 101, low: 99, close: 100, volume: 1 })),
+  } as unknown as import('./market-data.ts').BinancePublicMarketDataClient;
+  const rows = await scanAlertCandidates(market, 10);
+  assert.equal(rows.length, 1, 'koin belum searah tidak boleh lenyap dari progres scanner');
+  assert.equal(rows[0].gateAlign, false, 'tidak akan mengirim alarm SIAP');
+  assert.equal(rows[0].symbol, 'TESTUSDT');
 });
