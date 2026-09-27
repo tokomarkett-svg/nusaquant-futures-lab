@@ -18,7 +18,6 @@ export default function ApprovalClient({ symbol: rawSymbol, side: rawSide }: { s
     return url && key ? createClient(url, key) : null;
   }, []);
   const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState('');
   const [token, setToken] = useState<string | null>(null);
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [executionEnabled, setExecutionEnabled] = useState(false);
@@ -36,18 +35,20 @@ export default function ApprovalClient({ symbol: rawSymbol, side: rawSide }: { s
     return () => subscription.unsubscribe();
   }, [client]);
 
-  const sendCode = async () => {
+  const sendLink = async () => {
     if (!client) return;
     setBusy(true); setStatus('');
-    const { error } = await client.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false } });
-    setStatus(error ? `Gagal kirim kode: ${error.message}` : 'Kode login dikirim ke email operator yang terdaftar.');
-    setBusy(false);
-  };
-  const verifyCode = async () => {
-    if (!client) return;
-    setBusy(true); setStatus('');
-    const { error } = await client.auth.verifyOtp({ email: email.trim(), token: otp.trim(), type: 'email' });
-    setStatus(error ? `Kode salah/kedaluwarsa: ${error.message}` : 'Login berhasil. Periksa tiket terbaru sebelum konfirmasi.');
+    // Supabase default template sends a one-time Magic Link (no custom SMTP required).
+    // Redirect to this exact origin; keep only the symbol/side needed for the preview.
+    const redirect = new URL('/hp/entri', window.location.origin);
+    if (/^[A-Z0-9]{2,24}USDT$/.test(symbol) && side) {
+      redirect.searchParams.set('symbol', symbol);
+      redirect.searchParams.set('side', side);
+    }
+    const { error } = await client.auth.signInWithOtp({
+      email: email.trim(), options: { shouldCreateUser: false, emailRedirectTo: redirect.toString() },
+    });
+    setStatus(error ? `Gagal kirim tautan: ${error.message}` : 'Jika email ini terdaftar, tautan login satu kali akan dikirim. Buka dari email Anda di browser HP.');
     setBusy(false);
   };
   const preview = async () => {
@@ -92,10 +93,9 @@ export default function ApprovalClient({ symbol: rawSymbol, side: rawSide }: { s
     {!client ? <div className="hp-error">Login Supabase belum dikonfigurasi. Tidak ada order yang dapat dikirim.</div> : !token ? (
       <div className="hp-card hp-guide" style={{ display: 'grid', gap: 10 }}>
         <b>Login email operator</b>
+        <p className="hp-lede" style={{ margin: 0 }}>Gunakan tautan login sekali pakai dari email. Tidak perlu mengatur SMTP atau mengetik kode OTP.</p>
         <input type="email" autoComplete="email" placeholder="Email operator yang terdaftar" value={email} onChange={e => setEmail(e.target.value)} className="hp-input" />
-        <button type="button" className="hp-install-button" disabled={busy || !email.trim()} onClick={() => void sendCode()}>Kirim kode masuk</button>
-        <input type="text" inputMode="numeric" autoComplete="one-time-code" placeholder="Kode dari email" value={otp} onChange={e => setOtp(e.target.value)} className="hp-input" />
-        <button type="button" className="hp-install-button" disabled={busy || !otp.trim()} onClick={() => void verifyCode()}>Verifikasi kode</button>
+        <button type="button" className="hp-install-button" disabled={busy || !email.trim()} onClick={() => void sendLink()}>Kirim tautan login ke email</button>
       </div>
     ) : (
       <>
