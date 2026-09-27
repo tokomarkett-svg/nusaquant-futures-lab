@@ -228,8 +228,8 @@ export async function championCycle(now = Date.now()): Promise<void> {
 }
 
 export async function watchChampion(): Promise<void> {
-  const symbols = (process.env.CHAMPION_SYMBOLS ?? 'BTCUSDT,ETHUSDT').split(',').map((s) => s.trim().toUpperCase())
-    .filter((s) => /^[A-Z0-9]{2,24}USDT$/.test(s) && jenisPerp(s) === 'kripto').slice(0, 4);
+  const symbols = (process.env.CHAMPION_SYMBOLS ?? 'BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,DOGEUSDT,ADAUSDT,LINKUSDT,AVAXUSDT,SUIUSDT,LTCUSDT,TRXUSDT').split(',').map((s) => s.trim().toUpperCase())
+    .filter((s) => /^[A-Z0-9]{2,24}USDT$/.test(s) && jenisPerp(s) === 'kripto').slice(0, 12);
   for (const symbol of symbols) states.set(symbol, { bars: [], candidate: null, decision: null, watch: null, tickSize: 0,
     status: 'menunggu data transaksi Futures', lastWindow: null, at: 0 });
   // Handshake is a status notice, NOT a trade alert; never fabricate a setup.
