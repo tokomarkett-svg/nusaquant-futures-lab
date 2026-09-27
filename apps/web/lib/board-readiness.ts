@@ -1,25 +1,31 @@
 import type { Board } from './binance';
 import { ticketTimeValid } from './binance';
-import { demoReadyTicket } from './demo-readiness';
-import type { ManualTicket } from './manual-ticket';
+import { manualTicket, type ManualTicket } from './manual-ticket';
+import { simbolTestnet } from './testnet';
 
-/** Papan tidak mengklaim SIAP sampai gerbang yang sama dengan alarm dan pratinjau lulus.
- * Kegagalan API/testnet mengembalikan false, tidak mengubah sinyal menjadi siap. */
+/** Worker dan web membaca snapshot Futures yang sama. Server aplikasi mengesahkan
+ * lagi rumus tiket; Testnet hanya status EKSEKUSI DEMO, bukan filter universe sinyal. */
 export async function markDemoReadiness(
-  board: Board, verify: (symbol: string, side: 'LONG' | 'SHORT') => Promise<ManualTicket> = demoReadyTicket,
+  board: Board,
+  verify: (symbol: string, side: 'LONG' | 'SHORT') => Promise<ManualTicket> = manualTicket,
+  getTestnet: () => Promise<Set<string>> = simbolTestnet,
 ): Promise<Board> {
   const now = Date.now();
+  const testnet = await getTestnet().catch(() => new Set<string>());
   await Promise.all(board.rows.map(async (row) => {
+    const candidate = row.technicalReady === true;
+    row.technicalReady = false;
     row.demoReady = false;
-    if (board.market !== 'FUTURES' || !row.ticket?.actionable || !row.gateAlign || row.status === 'PADAM'
+    if (!candidate || board.market !== 'FUTURES' || !row.ticket?.actionable || !row.gateAlign || row.status === 'PADAM'
       || !ticketTimeValid(row.setup.candle2, now) || row.dataAgeMin > 45) return;
     try {
       const verified = await verify(row.symbol, row.side);
       const same = (a: number, b: number) => Math.abs(a - b) <= Math.max(1e-10, Math.abs(b) * 1e-9);
-      row.demoReady = verified.setupKey === `${row.symbol}:${row.side}:${row.setup.candle2}`
+      row.technicalReady = verified.setupKey === `${row.symbol}:${row.side}:${row.setup.candle2}`
         && same(verified.entry, row.ticket.entry) && same(verified.stop, row.ticket.stop)
         && same(verified.target, row.ticket.target);
-    } catch { /* fail closed: technical candidate only */ }
+      row.demoReady = row.technicalReady && testnet.has(row.symbol);
+    } catch { /* fail closed: not READY if technical verification failed */ }
   }));
   return board;
 }

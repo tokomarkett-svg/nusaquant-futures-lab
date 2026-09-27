@@ -76,7 +76,7 @@ export default function PapanHp() {
       {error && <div className="hp-error" role="alert"><b>Data tidak dapat dipastikan.</b> {error}</div>}
       <div className="hp-section-label">{filter === 'SIAP' ? 'TIKET SIAP' : 'HASIL PEMINDAIAN'} <small>{tampil.length} koin ditampilkan</small></div>
       {!error && tampil.length === 0 && <div className="hp-card hp-empty"><span className="hp-empty-icon" aria-hidden="true">⌕</span><b>{board && !terkini ? 'Menunggu data futures segar' : !board ? 'Memuat kandidat…' : 'Belum ada koin di filter ini'}</b><p>{!terkini ? 'Papan muncul setelah pasar berhasil dibaca.' : filter === 'SIAP' ? 'Belum ada tiket sah. Mesin tidak memaksa entri.' : 'Coba kata kunci atau filter yang lain.'}</p></div>}
-      {tampil.map((row) => {
+      {tampil.slice(0, 60).map((row) => {
         const status = badgeStatus(row);
         return (
           <Link key={row.symbol} href={`/hp/koin/${row.symbol}`} className={`hp-card hp-market-row${row.status === 'PADAM' ? ' is-off' : ''}`}>

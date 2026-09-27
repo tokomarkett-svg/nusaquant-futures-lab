@@ -28,6 +28,8 @@ export type AlertCandidate = {
   market?: DataMarket;
   /** Jenis aset di bawahnya — perp saham/komoditas perlu ditandai agar tak dicari di daftar koin. */
   jenis?: 'saham' | 'komoditas' | 'kripto';
+  /** Kelayakan order Testnet terpisah dari sinyal Futures teknis. */
+  demoTradable?: boolean;
 };
 
 /** Baris penanda untuk notif/papan — kosong untuk kripto. jenisPerp() datang dari core. */
@@ -114,7 +116,7 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket, papan
   const digits = digitsFor(ticket.entry);
   const format = (value: number) => value.toFixed(digits);
   const tautanChart = papanUrl ? `\n🔎 Chart live: ${papanUrl}/hp/koin/${candidate.symbol}` : '';
-  const tautanIzin = papanUrl ? `\n🧪 Tinjau tiket DEMO (login & setujui sendiri): ${papanUrl}/hp/entri?symbol=${encodeURIComponent(candidate.symbol)}&side=${candidate.side}` : '';
+  const tautanIzin = papanUrl && candidate.demoTradable ? `\n🧪 Tinjau tiket DEMO (login & setujui sendiri): ${papanUrl}/hp/entri?symbol=${encodeURIComponent(candidate.symbol)}&side=${candidate.side}` : '';
   const garisText = candidate.garis
     ? `📏 Garis pas bot: pintu ${format(candidate.garis.pintu)} · manis ${format(candidate.garis.manis)} · batal ${format(candidate.garis.batal)}`
     : '';
@@ -129,7 +131,7 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket, papan
   if (candidate.gateAlign && ticket.actionable) {
     const orderSide = candidate.side === 'LONG' ? 'BUY' : 'SELL';
     return [
-      `🎯 <b>TIKET DEMO SIAP DITINJAU — ${candidate.symbol} ${candidate.side}</b>`,
+      `🎯 <b>TIKET FUTURES SAH — ${candidate.symbol} ${candidate.side}</b>`,
       '',
       `👉 <b>ENTRY: ${format(ticket.entry)}</b>  (${orderSide})`,
       `🛑 SL     : ${format(ticket.stop)}  (−${ticket.riskUsdt} USDT)`,
@@ -143,8 +145,11 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket, papan
       lahirText,
       ticket.warnings.length ? `⚠ ${ticket.warnings.join(' · ')}` : 'Semua pagar lolos — harga masih di dekat pintu.',
       '',
+      candidate.demoTradable
+        ? '🧪 Simbol TRADING di Testnet; Demo hanya jika tombol aktif dan Anda setujui tiket baru di aplikasi.'
+        : '⛔ Simbol ini belum TRADING di Testnet; sinyal Futures sah tetapi TIDAK BISA order Demo.',
       `Alarm saja — buka aplikasi untuk periksa ulang; jangan salin order ke Binance.${tautanChart}${tautanIzin}`,
-      'Tidak ada order otomatis. Hanya Testnet, wajib login dan persetujuan per tiket; jika Demo terkunci jangan entry.',
+      'Tidak ada order otomatis. Uang asli tetap terkunci; bila Demo terkunci jangan entry.',
     ].join('\n');
   }
 
@@ -325,7 +330,7 @@ const LEVERAGED = /(UP|DOWN|BULL|BEAR)USDT$/;
 const CONCURRENCY = 5;
 const MAX_CANDIDATES = 600; // PINDAI SEMUA: semua koin USDT yang lolos gerbang vol/range (permintaan pemilik 25/9)
 
-export type AlertScanRow = AlertCandidate & { rangePct: number; quoteVolume: number; dataAgeMin: number; scannedAt: number };
+export type AlertScanRow = AlertCandidate & { zones?: Zones; rangePct: number; quoteVolume: number; dataAgeMin: number; scannedAt: number };
 
 /** Pindai pasar dengan aturan yang sama seperti papan web. */
 export async function scanAlertCandidates(client: BinancePublicMarketDataClient, limit = MAX_CANDIDATES): Promise<AlertScanRow[]> {
@@ -400,6 +405,7 @@ export async function scanAlertCandidates(client: BinancePublicMarketDataClient,
           // Opsional-call: klien palsu di tes boleh tidak punya marketUsed().
           market: tickerMarket,
           jenis: jenisPerp(ticker.symbol),
+          zones,
           rangePct: zones.rangePct,
           quoteVolume: ticker.quoteVolume,
           dataAgeMin: Math.round(dataAgeMin),
@@ -471,13 +477,15 @@ export async function appConfirmsReady(row: AlertScanRow, options: { fetchImpl?:
       signal: AbortSignal.timeout(12_000), cache: 'no-store',
     });
     if (!response.ok) return false;
-    const payload = await response.json() as { ok?: boolean; setupKey?: string; entry?: number; stop?: number; target?: number; expiresAt?: string };
+    const payload = await response.json() as { ok?: boolean; setupKey?: string; entry?: number; stop?: number; target?: number; expiresAt?: string; demoTradable?: boolean };
     const close = (a: number, b: number) => Number.isFinite(a) && Number.isFinite(b)
       && Math.abs(a - b) <= Math.max(1e-10, Math.abs(b) * 1e-9);
-    return payload.ok === true && payload.setupKey === `${row.symbol}:${row.side}:${c2}`
+    const valid = payload.ok === true && payload.setupKey === `${row.symbol}:${row.side}:${c2}`
       && Date.parse(payload.expiresAt ?? '') > Date.now()
       && close(Number(payload.entry), row.ticket.entry) && close(Number(payload.stop), row.ticket.stop)
       && close(Number(payload.target), row.ticket.target);
+    if (valid) row.demoTradable = payload.demoTradable === true;
+    return valid;
   } catch { return false; }
 }
 
@@ -499,7 +507,9 @@ export async function runAlertCycle(
     if (!pending.some((message) => message.kind === 'TIKET')) continue;
     if (!(await (options.confirmReady ?? appConfirmsReady)(row))) continue;
     if (!tiketMasihSah(row.setup.candle2)) continue;
-    messages.push(...pending.filter((message) => message.kind === 'TIKET'));
+    messages.push(...pending.filter((message) => message.kind === 'TIKET').map((message) => ({
+      ...message, text: buildTicketText(row, row.ticket!, options.papanUrl ?? normalizePapanUrl()),
+    })));
   }
   let sent = 0;
   for (const message of messages) {
@@ -524,7 +534,7 @@ export function buildStartupText(): string {
     'Bot memantau seluruh pasar USDT dengan sistem pintu–manis–batal.',
     'Yang akan kamu terima:',
     '🔔 BEL PINTU — harga menyentuh pintu & gate searah',
-    '🎯 TIKET DEMO SIAP DITINJAU — hanya saat aplikasi menyatakan tiket sah dan simbol Testnet TRADING',
+    '🎯 TIKET FUTURES SAH — hanya saat rumus aplikasi mengesahkan sinyal; status order Demo terpisah',
     '',
     'Alarm bukan order. Login di aplikasi, periksa ulang dan setujui sendiri per tiket; Demo terkunci sampai diaktifkan, uang asli selalu terkunci.',
   ].join('\n');

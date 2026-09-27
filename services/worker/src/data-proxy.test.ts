@@ -7,7 +7,7 @@ test('papan cached tidak pernah menunjukkan SIAP setelah tiket kedaluwarsa', () 
   const candle2 = 2_000_000_000_000;
   const row = {
     symbol: 'TESTUSDT', side: 'LONG', priceNow: 100, gate: 'HIJAU', gateAlign: true,
-    setup: { candle2 }, ticket: { actionable: true }, dataAgeMin: 5, scannedAt: candle2 + 16 * 60_000,
+    market: 'FUTURES', setup: { candle2, valid: true }, ticket: { actionable: true }, dataAgeMin: 5, scannedAt: candle2 + 16 * 60_000,
   } as AlertScanRow;
   const snapshot = { at: candle2 + 16 * 60_000, rows: [row], market: 'FUTURES' };
   assert.equal(papanPayload(snapshot, snapshot.at).rows[0].siap, true);

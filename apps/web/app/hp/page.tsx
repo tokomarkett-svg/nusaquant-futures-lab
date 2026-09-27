@@ -104,7 +104,8 @@ function KartuSiap({ row }: { row: BoardRow }) {
       <div className="hp-expiry"><span>Ukuran {t.sizeCoin.toLocaleString('id-ID', { maximumFractionDigits: 4 })} koin</span><span>Lahir {lahir ?? '—'} WIB</span></div>
       <div className="hp-expiry-meter" aria-label={`Umur tiket ${t.entryAgeBars ?? 0} dari 3 candle`}><i style={{ width: `${Math.max(7, 100 - ((t.entryAgeBars ?? 0) / 3) * 100)}%` }} /></div>
       {t.warnings.length > 0 && <div className="hp-ticket-warning">⚠ {t.warnings.join(' · ')}</div>}
-      <Link href={`/hp/entri?symbol=${row.symbol}&side=${row.side}`} className="hp-cta">🧪 Tinjau Demo · login & periksa ulang</Link>
+      {row.demoReady ? <Link href={`/hp/entri?symbol=${row.symbol}&side=${row.side}`} className="hp-cta">🧪 Tinjau Demo · login & periksa ulang</Link>
+        : <div className="hp-cta hp-cta-secondary">Sinyal Futures sah · simbol belum TRADING di Testnet (tidak ada order Demo)</div>}
       <Link href={`/hp/koin/${row.symbol}`} className="hp-cta hp-cta-secondary">Lihat chart & garis ↗</Link>
       <div className="hp-ticket-disclaimer">Alarm bukan order · jangan salin tiket langsung ke Binance · Demo perlu persetujuan per tiket.</div>
     </section>

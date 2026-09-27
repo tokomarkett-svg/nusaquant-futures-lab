@@ -13,9 +13,6 @@ const BASES = [
   'https://api.binance.com',
 ];
 
-const EXCLUDED = /(USDC|FDUSD|TUSD|BUSD|DAI|EUR|TRY|BRL|AEUR|USD1|XUSD|EURI)$/;
-const LEVERAGED = /(UP|DOWN|BULL|BEAR)USDT$/;
-
 export type Candle = {
   time: number;
   open: number;
@@ -86,7 +83,7 @@ export async function fetchTickers(): Promise<Ticker[]> {
   const rows: Ticker[] = [];
   for (const row of payload) {
     const symbol = String(row.symbol ?? '');
-    if (!symbol.endsWith('USDT') || symbol.includes('_') || EXCLUDED.test(symbol) || LEVERAGED.test(symbol)) continue;
+    if (!symbol.endsWith('USDT') || symbol.includes('_')) continue; // seluruh universe USDT-M; gerbang likuiditas/rumus tetap memfilter sinyal
     const last = toNumber(row.lastPrice);
     const high = toNumber(row.highPrice);
     const low = toNumber(row.lowPrice);
@@ -165,6 +162,7 @@ export type BoardRow = {
   setup: { x: number | null; candle1: number | null; candle2: number | null; valid: boolean; note: string | null };
   ticket: Ticket | null;
   /** Satu keputusan dengan pratinjau operator & alarm Telegram; false bila Testnet/gate/data gagal. */
+  technicalReady?: boolean;
   demoReady?: boolean;
 };
 
@@ -315,6 +313,8 @@ export type CoinDetail = {
   setupShort: SetupMarkers;
   ticketLong: Ticket | null;
   ticketShort: Ticket | null;
+  technicalReadyLong?: boolean;
+  technicalReadyShort?: boolean;
   demoReadyLong?: boolean;
   demoReadyShort?: boolean;
   last: number;

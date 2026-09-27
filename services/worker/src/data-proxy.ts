@@ -31,7 +31,9 @@ const CACHE_TTL_MS: Record<string, number> = {
  * Papan hanya menampilkan 12 hasil akhir dari pindai bersama ALERT + MEJA.
  * Cache lokal + in-flight lock mencegah setiap HP memicu pemindaian ulang.
  */
-const PAPAN_RESULT_LIMIT = 12;
+// Semua kandidat yang lolos filter awal dari universe Futures, BUKAN hanya 12 kartu atas.
+// Aplikasi & alarm membaca snapshot scanner yang sama; HP membatasi jumlah kartu tampak sendiri.
+const PAPAN_RESULT_LIMIT = 600;
 const PAPAN_CACHE_MS = 45_000;
 
 type CacheEntry = { at: number; payload: unknown };
@@ -45,13 +47,16 @@ let papanInFlight: Promise<PapanSnapshot> | null = null;
 export function papanPayload(snapshot: PapanSnapshot, now = Date.now()) {
   const rows = snapshot.rows.map((r) => {
     const ageMin = r.dataAgeMin + Math.max(0, Math.floor((now - r.scannedAt) / 60_000));
-    const siap = Boolean(r.ticket?.actionable && r.gateAlign && tiketMasihSah(r.setup.candle2, now) && ageMin <= STALE_CANDLE_MINUTES);
+    const siap = Boolean(r.market === 'FUTURES' && r.setup.valid && r.ticket?.actionable && r.gateAlign
+      && tiketMasihSah(r.setup.candle2, now) && ageMin <= STALE_CANDLE_MINUTES && now - r.scannedAt <= 120_000);
     return {
       symbol: r.symbol, side: r.side, price: r.priceNow, gate: r.gate, gateAlign: r.gateAlign,
       siap, basi: Boolean(r.ticket && (!r.ticket.actionable || !tiketMasihSah(r.setup.candle2, now) || ageMin > STALE_CANDLE_MINUTES)),
       entry: r.ticket?.entry ?? null, stop: r.ticket?.stop ?? null, target: r.ticket?.target ?? null,
       sizeCoin: r.ticket?.sizeCoin ?? null, riskPct: r.ticket?.riskPct ?? null,
       garis: r.garis ?? null, ageMin,
+      zones: r.zones ?? null, setup: r.setup, ticket: r.ticket, quoteVolume: r.quoteVolume,
+      rangePct: r.rangePct, jenis: r.jenis ?? 'kripto', scannedAt: r.scannedAt,
       market: r.market ?? 'FUTURES',
     };
   });

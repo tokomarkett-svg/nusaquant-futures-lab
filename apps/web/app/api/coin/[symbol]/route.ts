@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { coinDetail, dataMarket, ticketTimeValid } from '../../../../lib/binance';
-import { demoReadyTicket } from '../../../../lib/demo-readiness';
+import { manualTicket } from '../../../../lib/manual-ticket';
+import { simbolTestnet } from '../../../../lib/testnet';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -13,6 +14,8 @@ export async function GET(request: Request, context: { params: Promise<{ symbol:
   const interval = ALLOWED.has(requested) ? requested : '15m';
   try {
     const detail = await coinDetail(symbol, interval);
+    detail.technicalReadyLong = false;
+    detail.technicalReadyShort = false;
     detail.demoReadyLong = false;
     detail.demoReadyShort = false;
     if (interval === '15m' && dataMarket() === 'FUTURES') {
@@ -22,14 +25,17 @@ export async function GET(request: Request, context: { params: Promise<{ symbol:
         const aligned = side === 'LONG' ? detail.gateAlignLong : detail.gateAlignShort;
         if (!aligned || !setup.valid || !ticket?.actionable || !ticketTimeValid(setup.candle2)) return false;
         try {
-          const verified = await demoReadyTicket(detail.symbol, side);
+          const verified = await manualTicket(detail.symbol, side);
           const same = (a: number, b: number) => Math.abs(a - b) <= Math.max(1e-10, Math.abs(b) * 1e-9);
           return verified.setupKey === `${detail.symbol}:${side}:${setup.candle2}`
             && same(verified.entry, ticket.entry) && same(verified.stop, ticket.stop)
             && same(verified.target, ticket.target);
         } catch { return false; }
       };
-      [detail.demoReadyLong, detail.demoReadyShort] = await Promise.all([check('LONG'), check('SHORT')]);
+      [detail.technicalReadyLong, detail.technicalReadyShort] = await Promise.all([check('LONG'), check('SHORT')]);
+      const symbols = await simbolTestnet().catch(() => new Set<string>());
+      detail.demoReadyLong = Boolean(detail.technicalReadyLong && symbols.has(detail.symbol));
+      detail.demoReadyShort = Boolean(detail.technicalReadyShort && symbols.has(detail.symbol));
     }
     return NextResponse.json({ ok: true, ...detail });
   } catch (error) {

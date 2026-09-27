@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { dataMarket, scanBoard, type Board } from '../../../lib/binance';
+import type { Board } from '../../../lib/binance';
 import { markDemoReadiness } from '../../../lib/board-readiness';
+import { scanBoardFromWorker } from '../../../lib/worker-board';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -16,10 +17,7 @@ export async function GET() {
       return NextResponse.json({ ok: true, cached: true, ...cached.payload });
     }
     if (!inFlight) {
-      inFlight = scanBoard(40).then(async (board) => {
-        board.market = dataMarket();
-        return markDemoReadiness(board);
-      }).finally(() => { inFlight = null; });
+      inFlight = scanBoardFromWorker().then(markDemoReadiness).finally(() => { inFlight = null; });
     }
     const payload = await inFlight;
     cached = { at: Date.now(), payload };

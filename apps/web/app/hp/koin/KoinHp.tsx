@@ -30,6 +30,7 @@ type Detail = {
   zones: { rangePct: number; long: { pintu: number; manis: number; batal: number }; short: { pintu: number; manis: number; batal: number } };
   gate: { gate: 'HIJAU' | 'MERAH' | 'KUNING'; close: number };
   gateAlignLong: boolean; gateAlignShort: boolean;
+  technicalReadyLong?: boolean; technicalReadyShort?: boolean;
   demoReadyLong?: boolean; demoReadyShort?: boolean;
   setupLong: Setup; setupShort: Setup; ticketLong: Ticket | null; ticketShort: Ticket | null;
   last: number; dataAgeMin: number; at: string;
@@ -92,7 +93,7 @@ export default function KoinHp({ symbol }: { symbol: string }) {
   const dataSegar = Boolean(data && sekarang !== null && sekarang - Date.parse(data.at) <= 120_000 &&
     data.dataAgeMin + (sekarang - Date.parse(data.at)) / 60_000 <= 45);
   const tiketLayak = Boolean(data && !error && dataSegar && tf === '15m' && searah &&
-    (pilihan?.sisi === 'LONG' ? data.demoReadyLong : data.demoReadyShort) === true && pilihan?.ticket?.actionable && sekarang !== null &&
+    (pilihan?.sisi === 'LONG' ? data.technicalReadyLong : data.technicalReadyShort) === true && pilihan?.ticket?.actionable && sekarang !== null &&
     pilihan.setup.candle2 !== null && sekarang >= pilihan.setup.candle2 + 900_000 && sekarang <= pilihan.setup.candle2 + 4 * 900_000);
 
   return (
@@ -148,9 +149,9 @@ export default function KoinHp({ symbol }: { symbol: string }) {
                 ))}
               </div>
               {pilihan.ticket.warnings.length > 0 && <div style={{ fontSize: 10.5, color: '#ffd479', marginTop: 8 }}>⚠ {pilihan.ticket.warnings.join(' · ')}</div>}
-              <Link href={`/hp/entri?symbol=${symbol}&side=${pilihan.sisi}`} style={{ display: 'block', textAlign: 'center', width: '100%', borderRadius: 13, padding: '11px 0', fontWeight: 800, fontSize: 13, marginTop: 10, background: WARNA.mint, color: '#06281a', textDecoration: 'none' }}>
-                🧪 TINJAU DEMO · LOGIN & PERIKSA ULANG
-              </Link>
+              {(pilihan.sisi === 'LONG' ? data.demoReadyLong : data.demoReadyShort) ?
+                <Link href={`/hp/entri?symbol=${symbol}&side=${pilihan.sisi}`} style={{ display: 'block', textAlign: 'center', width: '100%', borderRadius: 13, padding: '11px 0', fontWeight: 800, fontSize: 13, marginTop: 10, background: WARNA.mint, color: '#06281a', textDecoration: 'none' }}>🧪 TINJAU DEMO · LOGIN & PERIKSA ULANG</Link>
+                : <div style={{ marginTop: 10, color: '#ffd479' }}>Sinyal Futures sah, tetapi simbol belum TRADING di Testnet. Tidak ada order Demo.</div>}
               <div style={{ textAlign: 'center', fontSize: 9.5, color: '#9fd8bb', marginTop: 7 }}>Alarm saja; tidak ada order otomatis. Jangan salin ke Binance.</div>
             </div>
           ) : (

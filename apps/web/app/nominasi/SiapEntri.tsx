@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import type { BoardRow } from '../../lib/binance';
 
@@ -9,17 +9,7 @@ const digitsFor = (price: number) => (price >= 100 ? 2 : price >= 1 ? 4 : price 
 
 export default function SiapEntri({ rows, prices }: { rows: BoardRow[]; prices: Record<string, number> }) {
   const [buka, setBuka] = useState<Record<string, { state: 'loading' | 'opened' | 'error'; message?: string }>>({});
-  const [testnet, setTestnet] = useState<Set<string> | null>(null);
-  const ready = rows.filter((row) => row.demoReady === true && row.ticket?.actionable && row.gateAlign).slice(0, 3);
-
-  useEffect(() => {
-    let hidup = true;
-    fetch('/api/testnet-simbol')
-      .then((r) => r.json() as Promise<{ ok: boolean; symbols: string[] }>)
-      .then((body) => { if (hidup && body.ok) setTestnet(new Set(body.symbols)); })
-      .catch(() => { /* gagal → tombol demo tetap tampil, server testnet yang menolak */ });
-    return () => { hidup = false; };
-  }, []);
+  const ready = rows.filter((row) => row.technicalReady === true && row.ticket?.actionable && row.gateAlign);
 
   // Hook harus tetap dipanggil pada setiap render, termasuk saat tiket belum ada.
   // Early return sebelum useEffect membuat React crash ketika tiket muncul/hilang.
@@ -80,7 +70,7 @@ export default function SiapEntri({ rows, prices }: { rows: BoardRow[]; prices: 
             </div>
 
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
-              {testnet !== null && !testnet.has(row.symbol) ? (
+              {!row.demoReady ? (
                 <span style={{ fontSize: 11, color: 'var(--muted)', padding: '6px 0' }}>🧪 koin ini belum ada di testnet — latihan pakai PAPER</span>
               ) : (
                 <Link

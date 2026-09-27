@@ -43,7 +43,8 @@ test('bel pintu: hanya dikirim untuk X yang masih segar', () => {
 
 test('tiket siap: pesannya memuat entry, stop, target, ukuran, dan pengingat risiko', () => {
   const text = buildTicketText(candidateTicket, ticket);
-  assert.match(text, /TIKET DEMO SIAP DITINJAU/);
+  assert.match(text, /TIKET FUTURES SAH/);
+  assert.match(text, /TIDAK BISA order Demo/);
   assert.match(text, /ENTRY: 101\.20/);
   assert.match(text, /96\.40/);
   assert.match(text, /110\.80/);
