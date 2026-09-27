@@ -117,6 +117,25 @@ export function createDataProxyHandler(upstreamBase = process.env.WORKER_UPSTREA
     if (route === '/health') return balasJson(200, { ok: true, market: 'FUTURES', at: new Date().toISOString() });
     if (route === '/health/runtime') return balasJson(200, runtimeSnapshot(scanMarketClient().marketUsed()));
     if (route === '/health/testnet' && req.method === 'GET') return balasJson(200, await demoReadiness());
+    if (route === '/health/alert-sync' && req.method === 'GET') {
+      // Cek lintasan token antar layanan TANPA mencari sinyal atau mengirim order:
+      // simbol sengaja invalid; web harus mengembalikan 400 sesudah token diterima.
+      const base = process.env.ALERT_CHECK_BASE_URL ?? 'https://web-gray-eta-79.vercel.app';
+      const token = process.env.EXEC_TOKEN;
+      if (!token || !base.startsWith('https://')) return balasJson(503, { ok: false, reason: 'preflight_not_configured' });
+      try {
+        const upstream = await fetch(new URL('/api/meja/alert-check', base), {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ token, symbol: '', side: 'LONG', setupKey: '' }),
+          signal: AbortSignal.timeout(8_000), cache: 'no-store',
+        });
+        return balasJson(upstream.status === 400 ? 200 : 503, {
+          ok: upstream.status === 400, webAuthenticated: upstream.status === 400,
+          // Hanya status; token dan respons web tidak ditampilkan.
+          webStatus: upstream.status,
+        });
+      } catch { return balasJson(503, { ok: false, reason: 'web_unreachable' }); }
+    }
     // No LIVE execution endpoint exists. A deployment/env change alone cannot unlock mainnet.
     if (route === '/exec/live') return balasJson(423, { ok: false, error: 'Order uang asli dikunci dalam kode. Persetujuan dan verifikasi Testnet diperlukan.' });
 
