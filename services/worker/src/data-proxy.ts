@@ -8,19 +8,22 @@
  * menjadi membaca PASAR YANG SAMA: futures.
  */
 import http from 'node:http';
-import { STALE_CANDLE_MINUTES, gateMatchesSide } from '@nusaquant/core';
 import zlib from 'node:zlib';
 import { bukaDemo, tutupDemo, demoReadiness, tokenSah } from './exec-demo.ts';
-import { sendTelegram, scanAlertCandidatesShared, tiketMasihSah, type AlertScanRow } from './alerts.ts';
+import { sendTelegram, type AlertScanRow } from './alerts.ts';
 import { createSupabaseDeskStore } from './desk.ts';
 import { scanMarketClient } from './market-data.ts';
 import { runtimeSnapshot } from './runtime-status.ts';
-import { championSnapshot } from './champion-live.ts';
+import { championOrderMatches, championSnapshot } from './champion-live.ts';
 
 const INTERVAL_MS: Record<string, number> = {
   '5m': 300_000, '15m': 900_000, '30m': 1_800_000, '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000,
 };
 const SYMBOL_RE = /^[A-Z0-9]{1,30}$/;
+
+type CacheEntry = { at: number; payload: unknown };
+const cache = new Map<string, CacheEntry>();
+let upstreamRetryAt = 0;
 
 const CACHE_TTL_MS: Record<string, number> = {
   '/data/prices': 3_000,
@@ -28,53 +31,10 @@ const CACHE_TTL_MS: Record<string, number> = {
   '/data/klines': 8_000,
 };
 
-/**
- * Papan hanya menampilkan 12 hasil akhir dari pindai bersama ALERT + MEJA.
- * Cache lokal + in-flight lock mencegah setiap HP memicu pemindaian ulang.
- */
-// Semua kandidat yang lolos filter awal dari universe Futures, BUKAN hanya 12 kartu atas.
-// Aplikasi & alarm membaca snapshot scanner yang sama; HP membatasi jumlah kartu tampak sendiri.
-const PAPAN_RESULT_LIMIT = 600;
-const PAPAN_CACHE_MS = 45_000;
-
-type CacheEntry = { at: number; payload: unknown };
-const cache = new Map<string, CacheEntry>();
-let upstreamRetryAt = 0;
-type PapanSnapshot = { at: number; rows: AlertScanRow[]; market: string };
-let papanCache: PapanSnapshot | null = null;
-let papanInFlight: Promise<PapanSnapshot> | null = null;
-
-/** Saat payload cached, status SIAP tetap dihitung dari jam sekarang, bukan status lama. */
-export function papanPayload(snapshot: PapanSnapshot, now = Date.now()) {
-  const rows = snapshot.rows.map((r) => {
-    const ageMin = r.dataAgeMin + Math.max(0, Math.floor((now - r.scannedAt) / 60_000));
-    const siap = Boolean(r.market === 'FUTURES' && r.setup.valid && r.ticket?.actionable && r.gateAlign
-      && gateMatchesSide(r.gate, r.side) && tiketMasihSah(r.setup.candle2, now) && ageMin <= STALE_CANDLE_MINUTES && now - r.scannedAt <= 120_000);
-    return {
-      symbol: r.symbol, side: r.side, price: r.priceNow, gate: r.gate, gateAlign: r.gateAlign,
-      siap, basi: Boolean(r.ticket && (!r.ticket.actionable || !tiketMasihSah(r.setup.candle2, now) || ageMin > STALE_CANDLE_MINUTES)),
-      entry: r.ticket?.entry ?? null, stop: r.ticket?.stop ?? null, target: r.ticket?.target ?? null,
-      sizeCoin: r.ticket?.sizeCoin ?? null, riskPct: r.ticket?.riskPct ?? null,
-      garis: r.garis ?? null, ageMin,
-      zones: r.zones ?? null, setup: r.setup, ticket: r.ticket, quoteVolume: r.quoteVolume,
-      rangePct: r.rangePct, jenis: r.jenis ?? 'kripto', scannedAt: r.scannedAt,
-      market: r.market ?? 'FUTURES',
-    };
-  });
-  return { ok: true, rows, market: snapshot.market, at: new Date(snapshot.at).toISOString() };
-}
-
-async function scanPapanPayload(): Promise<unknown> {
-  if (papanCache && Date.now() - papanCache.at < PAPAN_CACHE_MS) return papanPayload(papanCache);
-  if (!papanInFlight) {
-    papanInFlight = (async () => {
-      const market = scanMarketClient();
-      const rows = await scanAlertCandidatesShared(market, PAPAN_RESULT_LIMIT);
-      papanCache = { at: Date.now(), rows, market: rows[0]?.market ?? market.marketUsed() ?? 'FUTURES' };
-      return papanCache;
-    })().finally(() => { papanInFlight = null; });
-  }
-  return papanPayload(await papanInFlight);
+/** Deprecated legacy endpoint; never expose a PMB/MA ticket after switch. */
+export function papanPayload(snapshot: { at: number; rows: AlertScanRow[]; market: string }, now = Date.now()) {
+  return { ok: true, retired: 'PMB/MA', rows: [], market: snapshot.market,
+    at: new Date(snapshot.at).toISOString(), currentAt: new Date(now).toISOString(), replacement: '/data/champion-json' };
 }
 
 export function validateKlinesQuery(query: URLSearchParams): { ok: true; symbol: string; interval: string; limit: number } | { ok: false; error: string } {
@@ -149,6 +109,12 @@ export function createDataProxyHandler(upstreamBase = process.env.WORKER_UPSTREA
       try {
         const parsed = JSON.parse(body || '{}') as { token?: string; symbol?: string; side?: string; qty?: number; stop?: number; target?: number; expectedEntry?: number; setupKey?: string };
         if (!tokenSah(parsed.token, process.env.EXEC_TOKEN)) return balasJson(401, { ok: false, error: 'token eksekusi salah/kosong.' });
+        if (!championOrderMatches({ symbol: String(parsed.symbol ?? '').toUpperCase(),
+          side: String(parsed.side ?? ''), setupKey: String(parsed.setupKey ?? ''),
+          expectedEntry: Number(parsed.expectedEntry), stop: Number(parsed.stop),
+          target: Number(parsed.target), qty: Number(parsed.qty) })) {
+          return balasJson(409, { ok: false, error: 'Tiket bukan keputusan Chris Futures segar yang sama; tidak ada order.' });
+        }
         const hasil = await bukaDemo({
           symbol: String(parsed.symbol ?? '').toUpperCase(),
           side: parsed.side === 'LONG' ? 'LONG' : 'SHORT',
@@ -217,7 +183,7 @@ export function createDataProxyHandler(upstreamBase = process.env.WORKER_UPSTREA
       res.end(JSON.stringify({
         name: 'NusaQuant — Papan Darurat',
         short_name: 'NusaQuant',
-        description: 'Papan pintu-manis-batal futures via Railway — kebal blokir provider.',
+        description: 'Otak pertarungan Futures di Vercel; Railway hanya jembatan data.',
         start_url: '/papan',
         scope: '/',
         display: 'standalone',
@@ -258,16 +224,15 @@ export function createDataProxyHandler(upstreamBase = process.env.WORKER_UPSTREA
       return;
     }
     if (route === '/papan' && req.method === 'GET') {
-      res.statusCode = 200;
-      res.setHeader('content-type', 'text/html; charset=utf-8');
-      res.setHeader('cache-control', 'no-store');
-      res.end(halamanPapan());
+      res.statusCode = 302;
+      res.setHeader('location', 'https://web-gray-eta-79.vercel.app/hp/siap-chris');
+      res.end();
       return;
     }
     if (route === '/data/papan-json' && req.method === 'GET') {
       try {
         // Futures dulu: papan darurat harus menampilkan garis dari pasar yang sama dengan notif & chart.
-        return balasJson(200, await scanPapanPayload());
+        return balasJson(200, { ok: true, retired: 'PMB/MA', rows: [], market: 'FUTURES', at: new Date().toISOString(), replacement: '/data/champion-json' });
       } catch (error) {
         return balasJson(502, { ok: false, error: error instanceof Error ? error.message : 'pindai gagal' });
       }
@@ -314,57 +279,3 @@ export function startDataProxy(port: number, upstreamBase?: string): http.Server
 
 
 /** Halaman PAPAN DARURAT — dibuka dari domain Railway (umumnya tak tersapu blokir provider). */
-function halamanPapan(): string {
-  return `<!DOCTYPE html>
-<html lang="id"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NusaQuant — Papan Darurat</title>
-<style>
-body{margin:0;background:#f6faf7;color:#16241b;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
-.wrap{max-width:460px;margin:0 auto;padding:16px 14px 40px}
-h1{font-size:19px;margin:6px 0 2px}
-.sub{color:#5c7a67;font-size:12px}
-.kartu{background:linear-gradient(180deg,#f2fbf5,#e9f7ee);border:1px solid #1c5c34;border-radius:14px;padding:14px 16px;margin-top:10px}
-.badge{display:inline-block;font-size:11px;font-weight:800;padding:3px 10px;border-radius:8px;background:#0e2a1d;color:#fff;margin-right:6px}
-.sisi{font-size:11px;font-weight:800;padding:3px 10px;border-radius:8px}
-.long{background:#dff3e6;color:#0e7a3d}.short{background:#fde8e8;color:#b3311e}
-.entry{font-family:ui-monospace,monospace;font-size:30px;font-weight:700;margin-top:4px}
-.baris{font-family:ui-monospace,monospace;font-size:13px;margin-top:6px;color:#3c5747}
-.salintext{font-family:ui-monospace,monospace;font-size:11px;color:#5c7a67;margin-top:8px}
-.baris-list{background:#fff;border:1px solid #dcebe1;border-radius:12px;padding:10px 12px;margin-top:8px;font-size:13px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.muat{color:#5c7a67;font-size:13px;margin-top:14px;text-align:center}
-.gagal{background:#fdeeee;border:1px solid #efc9c9;color:#b3311e;border-radius:12px;padding:12px;margin-top:12px;font-size:13px}
-</style></head><body><div class="wrap">
-<h1>🟢 NusaQuant — Papan Darurat</h1>
-<div class="sub">dibuka lewat domain Railway — jalan walau vercel.app kena sapu provider · segar tiap 60 dtk · <span id="jam">…</span></div>
-<div id="isi"><div class="muat">Memindai futures…</div></div>
-<script>
-function dgt(v){return v>=100?v.toFixed(2):v>=1?v.toFixed(4):v>=0.01?v.toFixed(5):v.toFixed(7)}
-async function muat(){
-  try{
-    const r=await fetch('/data/papan-json',{cache:'no-store'});
-    const b=await r.json();
-    if(!b.ok)throw new Error(b.error||'gagal');
-    document.getElementById('jam').textContent=new Date(b.at).toLocaleTimeString('id-ID',{timeZone:'Asia/Jakarta'})+' WIB';
-    const siap=b.rows.filter(x=>x.siap), lain=b.rows.filter(x=>!x.siap);
-    let h='';
-    if(siap.length===0)h+='<div class="baris-list">🎯 Belum ada tiket segar sekarang — mesin duduk menunggu (itu perilaku benar).</div>';
-    for(const s of siap){
-      const o=s.side==='LONG'?'BUY':'SELL';
-      h+='<div class="kartu"><span class="badge">🎯 SIAP ENTRI</span><b>'+s.symbol+'</b> <span class="sisi '+s.side.toLowerCase()+'">'+s.side+' · '+o+'</span><div>ENTRY</div><div class="entry">'+dgt(s.entry)+'</div>'
-        +'<div class="baris">🛑 SL '+dgt(s.stop)+' · ✅ TP '+dgt(s.target)+' · 📦 '+Number(s.sizeCoin).toLocaleString('id-ID',{maximumFractionDigits:2})+' coin</div>'
-        +'<div class="baris">📏 pintu '+dgt(s.garis.pintu)+' · manis '+dgt(s.garis.manis)+' · batal '+dgt(s.garis.batal)+'</div>'
-        +'<div class="salintext">Salin: '+o+' '+s.symbol+' '+dgt(s.entry)+' SL '+dgt(s.stop)+' TP '+dgt(s.target)+'</div></div>';
-    }
-    h+='<div class="sub" style="margin-top:14px">SIMAKAN · '+lain.length+' kandidat terdekat</div>';
-    for(const s of lain){
-      h+='<div class="baris-list"><b>'+s.symbol+'</b><span class="sisi '+s.side.toLowerCase()+'">'+s.side+'</span><span>'+dgt(s.price)+'</span><span>gate '+s.gate+(s.gateAlign?' ✔':'')+'</span><span style="margin-left:auto;color:#7fa98d">'+(s.basi?'basi':(s.siap?'siap':'simak'))+'</span></div>';
-    }
-    document.getElementById('isi').innerHTML=h;
-  }catch(e){
-    document.getElementById('isi').innerHTML='<div class="gagal">Gagal memindai: '+(e&&e.message?e.message:e)+' — coba lagi 1 menit.</div>';
-  }
-}
-muat(); setInterval(muat,60000);
-</script></div></body></html>`;
-}

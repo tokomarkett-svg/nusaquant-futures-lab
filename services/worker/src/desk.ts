@@ -426,6 +426,10 @@ export async function runDeskCycle(deps: DeskCycleDeps): Promise<DeskCycleResult
     result.closed += 1;
   }
 
+  // Otak PMB dipensiunkan: tetap rawat/keluarkan posisi paper lama di atas,
+  // tetapi JANGAN membuka posisi baru dari scanner/gate MA.
+  if (process.env.RUN_MARKET_WATCH === 'true') return result;
+
   // 2) cari tiket siap baru.
   const candidates = await scanAlertCandidatesShared(deps.market);
   result.scannedCandidates = candidates.length;

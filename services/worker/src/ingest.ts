@@ -4,7 +4,6 @@ import { PaperSessionController, resolveBotSessionIds } from './session-control.
 import { createWorkerSupabaseClient } from './supabase.ts';
 import { watchResearchJobs } from './research-jobs.ts';
 import { watchRadar } from './radar.ts';
-import { watchAlerts } from './alerts.ts';
 import { watchChampion } from './champion-live.ts';
 import { watchDesk } from './desk.ts';
 import { startDataProxy } from './data-proxy.ts';
@@ -136,7 +135,8 @@ async function watch(): Promise<void> {
   if (process.env.RUN_MARKET_INGEST === 'true') tasks.push(watchIngestion());
   if (process.env.RUN_RESEARCH_JOBS === 'true') tasks.push(watchResearchJobs());
   if (process.env.RUN_RADAR === 'true') tasks.push(watchRadar());
-  if (process.env.RUN_ALERTS === 'true') { tasks.push(watchAlerts()); tasks.push(watchChampion()); }
+  // PMB lama tidak lagi boleh mengirim C1/tiket. Satu mesin alarm: Chris Crypto.
+  if (process.env.RUN_ALERTS === 'true') tasks.push(watchChampion());
   if (process.env.RUN_DESK === 'true') tasks.push(watchDesk());
 
   // Jembatan data futures untuk web (bisa dimatikan dengan DATA_PROXY=off).

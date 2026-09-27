@@ -4,7 +4,7 @@
  * CEK SISTEM (mode HP) — satu layar untuk menjawab "apakah semuanya masih jalan?".
  * Diperiksa langsung dari HP pemilik:
  *  · Papan & harga (web API)      · Supabase (via meja & skor)
- *  · Worker Railway (health)      · Mesin PMB (pindai live papan-json + umur data)
+ *  · Worker Railway (health)      · Mesin Pertarungan (aggTrades Futures)
  * Hanya MEMBACA — tidak menyentuh mesin, tidak menulis apa pun.
  */
 
@@ -39,8 +39,8 @@ export default function CekSistem() {
     { nama: 'Supabase — posisi meja', status: 'cek', detail: 'membaca…' },
     { nama: 'Supabase — skor 20 trade', status: 'cek', detail: 'membaca…' },
     { nama: 'Worker Railway', status: 'cek', detail: 'memanggil…' },
-    { nama: 'Mesin PMB (pindai live)', status: 'cek', detail: 'memindai…' },
-    { nama: 'Telegram + Meja Paper', status: 'cek', detail: 'memeriksa siklus…' },
+    { nama: 'Mesin Pertarungan (Futures)', status: 'cek', detail: 'memindai…' },
+    { nama: 'Telegram + Otak Pertarungan', status: 'cek', detail: 'memeriksa siklus…' },
     { nama: 'Binance Demo / Live', status: 'cek', detail: 'memeriksa akun demo baca-saja…' },
   ]);
   const [diuji, setDiuji] = useState(false);
@@ -89,27 +89,27 @@ export default function CekSistem() {
       detail: `hidup · pasar ${w.market ?? '?'} · ${(worker!.ms / 1000).toFixed(1)} dtk`,
     } : { nama: 'Worker Railway', status: 'gagal', detail: 'tidak terjangkau dari HP ini' };
 
-    const pmb = await ukur(`${WORKER}/data/papan-json`, 30000);
-    const j = pmb?.json as { ok?: boolean; rows?: Array<{ symbol: string; siap: boolean; market?: string }>; market?: string; at?: string; error?: string } | undefined;
+    const pmb = await ukur(`${WORKER}/data/champion-json`, 30000);
+    const j = pmb?.json as { ok?: boolean; rows?: Array<{ symbol: string; windows: number; status: string; decision?: { stage: string } | null }>; at?: string; error?: string } | undefined;
     const umurPmb = j?.at ? Math.round((Date.now() - new Date(j.at).getTime()) / 60_000) : null;
     hasil[5] = j?.ok ? {
-      nama: 'Mesin PMB (pindai live)', status: 'ok',
-      detail: `${j.rows?.length ?? 0} kandidat teratas · ${j.rows?.filter((r) => r.siap).length ?? 0} siap · pasar ${j.market ?? j.rows?.[0]?.market ?? '?'} · pindai ${umurPmb ?? '?'} mnt lalu`,
+      nama: 'Mesin Pertarungan (Futures)', status: j.rows?.some(r => r.windows >= 23) ? 'ok' : 'lambat',
+      detail: `${j.rows?.length ?? 0} simbol footprint · ${j.rows?.filter((r) => r.decision?.stage === 'SIAP').length ?? 0} siap · ${j.rows?.map(r => `${r.symbol} ${r.windows}/23: ${r.status}`).join(' | ') ?? 'menunggu'} · pindai ${umurPmb ?? '?'} mnt lalu`,
     } : {
-      nama: 'Mesin PMB (pindai live)', status: worker?.json ? 'lambat' : 'gagal',
-      detail: j?.error ?? 'pindai pasar sedang rate-limit/timeout; worker tetap hidup',
+      nama: 'Mesin Pertarungan (Futures)', status: worker?.json ? 'lambat' : 'gagal',
+      detail: j?.error ?? 'transaksi Futures belum tersedia; tidak ada tiket',
     };
 
     const baru = (tanggal?: string | null) => Boolean(tanggal && Date.now() - new Date(tanggal).getTime() < 6 * 60_000);
     const siap = Boolean(w?.modes?.alerts && w.modes.telegramAllowed && w.modes.telegramConfigured &&
-      w.modes.desk && w.modes.deskStoreConfigured);
-    const siklus = Boolean(baru(w?.alerts?.lastCycleAt) && baru(w?.desk?.lastCycleAt));
+      true);
+    const siklus = Boolean(baru(w?.alerts?.lastCycleAt));
     const sapa = Boolean(w?.alerts?.startupDeliveredAt);
     hasil[6] = !w?.ok ? {
-      nama: 'Telegram + Meja Paper', status: 'gagal', detail: 'Diagnostik worker belum bisa dibaca.',
+      nama: 'Telegram + Otak Pertarungan', status: 'gagal', detail: 'Diagnostik worker belum bisa dibaca.',
     } : {
-      nama: 'Telegram + Meja Paper', status: siap && siklus && sapa ? 'ok' : 'lambat',
-      detail: `Konfigurasi ${siap ? 'aktif' : 'belum lengkap'} · Telegram ${sapa ? 'pesan sapa terkirim' : 'belum terbukti terkirim'} · scan ${w.alerts?.scanned ?? 0} koin · meja ${w.desk?.scanned ?? 0} koin · ${siklus ? 'siklus segar' : 'siklus belum segar'}`,
+      nama: 'Telegram + Otak Pertarungan', status: siap && siklus && sapa ? 'ok' : 'lambat',
+      detail: `Konfigurasi ${siap ? 'aktif' : 'belum lengkap'} · Telegram ${sapa ? 'pesan sapa terkirim' : 'belum terbukti terkirim'} · scan ${w.alerts?.scanned ?? 0} koin · meja paper lama tidak membuka posisi baru · ${siklus ? 'siklus segar' : 'siklus belum segar'}`,
     };
 
     const demo = await ukur(`${WORKER}/health/testnet`);

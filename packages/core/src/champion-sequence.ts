@@ -11,6 +11,9 @@ export type FootprintBar = { candle: Candle; profile: TradeVolumeProfile };
 export type ChampionCandidate = {
   symbol: string; side: 'LONG' | 'SHORT'; entry: number; stop: number; target: number;
   absorptionAt: number; retestAt: number; flipAt: number;
+  /** X = first 0.705 zone touch from outside, using complete 5m Futures bars. */
+  xAt: number;
+  fib: { shallow705: number; mid788: number; invalid886: number };
   /** Informasi GEX crypto belum setara signed dealer GEX NQ/QQQ di video. */
   gammaRegime: 'UNKNOWN';
 };
@@ -70,8 +73,20 @@ export function evaluateChampionSequence(input: ChampionInput): ChampionReview {
   const close = absorption.candle.close;
   const wanted = side === 'LONG' ? 'DISCOUNT' : 'PREMIUM';
   const inFib = side === 'LONG' ? close >= deep && close <= shallow : close >= shallow && close <= deep;
-  if (profileLocation(value, close) !== wanted || !inFib) {
-    return verdict('LOKASI', `Harga absorption harus ${wanted} di luar value area dan dalam pita swing 0,705–0,886.`);
+  const fib = { shallow705: shallow,
+    mid788: side === 'LONG' ? context.swingHigh - range * 0.788 : context.swingLow + range * 0.788,
+    invalid886: deep };
+  const chain = [...participation, absorption];
+  let xAt: number | null = null;
+  for (let j = 1; j < chain.length; j += 1) {
+    const previousOutside = side === 'LONG' ? chain[j - 1].candle.low > shallow : chain[j - 1].candle.high < shallow;
+    const touched = side === 'LONG' ? chain[j].candle.low <= shallow : chain[j].candle.high >= shallow;
+    if (previousOutside && touched) xAt = chain[j].candle.time;
+  }
+  const fromX = chain.filter((b) => xAt !== null && b.candle.time >= xAt);
+  const piercedInvalid = fromX.some((b) => side === 'LONG' ? b.candle.low < deep : b.candle.high > deep);
+  if (profileLocation(value, close) !== wanted || !inFib || xAt === null || piercedInvalid) {
+    return verdict('LOKASI', `Harga absorption harus ${wanted} di luar value area; X masuk 0,705 dari luar, 0,788 level tengah dan tak boleh menyentuh sisi salah 0,886.`);
   }
   const averageVolume = participation.reduce((s, b) => s + b.profile.totalVolume, 0) / 20;
   const abs = absorption.candle;
@@ -103,6 +118,6 @@ export function evaluateChampionSequence(input: ChampionInput): ChampionReview {
   }
   return verdict('KANDIDAT_RISET', 'Urutan harga+flow terukur; GEX/dealer exposure dan edge OOS BELUM terbukti, bukan SIAP.', {
     symbol, side, entry, stop, target, absorptionAt: t, retestAt: t + BAR_MS,
-    flipAt: t + 2 * BAR_MS, gammaRegime: 'UNKNOWN',
+    flipAt: t + 2 * BAR_MS, xAt: xAt!, fib, gammaRegime: 'UNKNOWN',
   });
 }

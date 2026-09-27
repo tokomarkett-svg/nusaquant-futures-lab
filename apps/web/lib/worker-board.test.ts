@@ -26,11 +26,11 @@ test('app menampilkan seluruh ticker Futures tetapi hanya kandidat dari scanner 
   assert.equal(board.funnel.scanned, 3);
   assert.equal(board.rows.length, 3, 'low-volume NOM and other futures are still visible');
   assert.equal(board.rows.find((r) => r.symbol === 'NOMUSDT')?.status, 'DISIMAK');
-  assert.equal(board.rows.find((r) => r.symbol === symbol)?.technicalReady, true);
+  assert.equal(board.rows.find((r) => r.symbol === symbol)?.technicalReady, false, 'PMB no longer authoritative');
   const row = board.rows.find((r) => r.symbol === symbol)!;
   await markDemoReadiness(board, async () => ({ symbol, side: 'LONG', setupKey: `${symbol}:LONG:${c2}`,
     expiresAt: new Date(Date.now() + 900_000).toISOString(), entry: 100, stop: 99, target: 102,
     qty: .31, riskUsdt: .31 }), async () => new Set(['BTCUSDT']));
-  assert.equal(row.technicalReady, true);
+  assert.equal(row.technicalReady, false);
   assert.equal(row.demoReady, false, 'sinyal PHAROS tampil tetapi tidak boleh order Demo');
 });

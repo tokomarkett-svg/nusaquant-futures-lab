@@ -89,7 +89,7 @@ export default function ApprovalClient({ symbol: rawSymbol, side: rawSide }: { s
     <p className="hp-eyebrow">ORDER <b>·</b> TANGAN PEMILIK</p>
     <h1 className="hp-heading">Keputusan ada padamu.</h1>
     <p className="hp-lede">Alarm Telegram hanya pemberitahuan. Tidak ada order tanpa login dan konfirmasi Anda di halaman ini.</p>
-    <div className="hp-card hp-notice"><b>TESTNET (uang virtual) dahulu.</b><p>Order Binance Futures asli terkunci di kode. Tiket harus segar; server menghitung ulang X → C1 → C2 dan gate saat Anda menekan konfirmasi.</p></div>
+    <div className="hp-card hp-notice"><b>TESTNET (uang virtual) dahulu.</b><p>Order Binance Futures asli terkunci di kode. Tiket harus segar; server membaca ulang pertarungan transaksi Futures, X 0,705 → C1 → close C2 dan harga terbaru saat Anda menekan konfirmasi.</p></div>
     {!client ? <div className="hp-error">Login Supabase belum dikonfigurasi. Tidak ada order yang dapat dikirim.</div> : !token ? (
       <div className="hp-card hp-guide" style={{ display: 'grid', gap: 10 }}>
         <b>Login email operator</b>
@@ -100,7 +100,7 @@ export default function ApprovalClient({ symbol: rawSymbol, side: rawSide }: { s
     ) : (
       <>
         <button type="button" className="hp-back" onClick={() => { void client.auth.signOut(); setTicket(null); }}>Keluar dari akun operator</button>
-        <div className="hp-card hp-guide"><b>{symbol || 'Belum ada simbol'} · {side || 'Belum ada arah'}</b><p className="hp-lede">Pratinjau selalu meminta data Futures baru; tidak menggunakan angka alarm lama.</p>
+        <div className="hp-card hp-guide"><b>{symbol || 'Belum ada simbol'} · {side || 'Belum ada arah'}</b><p className="hp-lede">Pratinjau hanya menerima tiket Chris Crypto dari data Futures segar; tidak membaca rumus MA lama.</p>
           <button type="button" className="hp-install-button" disabled={busy || !side || !symbol} onClick={() => void preview()}>Periksa tiket saat ini</button>
         </div>
         {ticket && <div className="hp-ticket" aria-label="Pratinjau tiket Demo">

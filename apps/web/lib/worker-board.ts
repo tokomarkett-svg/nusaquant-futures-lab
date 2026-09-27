@@ -62,7 +62,7 @@ export async function scanBoardFromWorker(options: {
         valid: setup.valid, note: setup.notes.at(-1) ?? null }
         : { x: null, candle1: null, candle2: null, valid: false, note: 'Belum lolos filter awal / data candle belum tersedia.' },
       ticket: validScan ? c!.ticket : null,
-      technicalReady: Boolean(validScan && c!.siap && !padam && scan.market === 'FUTURES'),
+      technicalReady: false, // PMB retired; Chris SIAP only at /api/chris
       demoReady: false,
     });
   }

@@ -21,7 +21,7 @@ export default function RisetHp() {
     <p className="hp-lede">Rumus tanpa MA sudah masuk mesin riset NusaQuant. Hasil di bawah berasal dari arsip transaksi Binance Futures, <b>bukan sinyal langsung</b>.</p>
     <div className="hp-card" style={{ borderLeft: '4px solid #bd7835', marginBottom: 18 }}>
       <strong style={{ display: 'block', fontSize: 15, marginBottom: 7 }}>RISET ARSIP ≠ ALARM LIVE</strong>
-      <p style={{ margin: 0, lineHeight: 1.6, fontSize: 13 }}>Jalur Chris Crypto live memakai transaksi Futures dan konfirmasi close C2; hasil uji arsip di bawah tetap bukan bukti profit. Jika jalur Futures tidak lengkap, alarm Chris ditahan; GEX dealer tidak tersedia. Alarm lama tetap aktif. Order baru Chris belum tersedia.</p>
+      <p style={{ margin: 0, lineHeight: 1.6, fontSize: 13 }}>Jalur Chris Crypto live memakai transaksi Futures dan konfirmasi close C2; hasil uji arsip di bawah tetap bukan bukti profit. Jika jalur Futures tidak lengkap, alarm Chris ditahan; GEX dealer tidak tersedia. Otak PMB/MA lama telah dipensiunkan; order metode Chris hanya bisa ditinjau lewat login dan persetujuan Demo per tiket jika Testnet tersedia.</p>
     </div>
     <div className="hp-section-label">URUTAN RUMUS <small>konteks → bukti → risiko</small></div>
     {langkah.map((step) => <div key={step.n} className="hp-card" style={{ display: 'flex', gap: 14, marginBottom: 9, alignItems: 'flex-start' }}>
