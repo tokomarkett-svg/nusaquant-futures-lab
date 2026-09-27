@@ -192,3 +192,42 @@ test('gerbang arah menolak gate KUNING walau harga sudah >MA99 untuk LONG / <MA9
   assert.equal(gateAlignForSide(m15short, h1red, 'SHORT'), true);
   assert.equal(gateAlignForSide(m15long, h1green, 'SHORT'), false);
 });
+
+test('C1 mengumumkan batas angka; C2 harus TUTUP melewati high/low C1, bukan hanya wick', () => {
+  const beforeLong = detectSetup(longCandles.slice(0, 4), zones, 'LONG');
+  assert.equal(beforeLong.candle1, longCandles[3].time);
+  assert.equal(beforeLong.breakoutPrice, 100.3);
+  assert.equal(beforeLong.candle2, null);
+  const wickOnlyLong = detectSetup([...longCandles.slice(0, 4), mk(4, 99.9, 101.5, 99.5, 100.2)], zones, 'LONG');
+  assert.equal(wickOnlyLong.candle2, T + 4 * 900_000);
+  assert.equal(wickOnlyLong.valid, false);
+  assert.match(wickOnlyLong.notes.join(" "), /C2 GAGAL/);
+  assert.equal(wickOnlyLong.breakoutPrice, 100.3);
+  assert.equal(computeTicket([...longCandles.slice(0, 4), mk(4, 99.9, 101.5, 99.5, 100.2)], zones, 'LONG', 100.2), null);
+  const beforeShort = detectSetup(shortCandles.slice(0, 3), zones, 'SHORT');
+  assert.equal(beforeShort.breakoutPrice, 94.0);
+  const wickOnlyShort = detectSetup([...shortCandles.slice(0, 3), mk(3, 94.3, 94.4, 92.5, 94.1)], zones, 'SHORT');
+  assert.equal(wickOnlyShort.candle2, T + 3 * 900_000);
+  assert.equal(wickOnlyShort.valid, false);
+  assert.equal(wickOnlyShort.breakoutPrice, 94);
+});
+
+test('tiket yang dahulu C2 sah tidak lagi SIAP bila harga terkini kembali melewati batas ke sisi salah', () => {
+  const long = computeTicket(longCandles, zones, 'LONG', 100.3);
+  assert.ok(long);
+  assert.equal(long.breakoutStillValid, false);
+  assert.equal(long.actionable, false);
+  assert.match(long.warnings.join(' '), /sisi salah batas C2/);
+  const short = computeTicket(shortCandles, zones, 'SHORT', 94.1);
+  assert.ok(short);
+  assert.equal(short.breakoutStillValid, false);
+  assert.equal(short.actionable, false);
+});
+
+
+test('C2 gagal tidak dapat ditebus candle berikutnya meski close melewati batas', () => {
+  const gagal = mk(4, 99.9, 101.5, 99.5, 100.2);
+  const terlambat = [...longCandles.slice(0, 4), gagal, mk(5, 100.2, 102, 100, 101.5)];
+  assert.equal(detectSetup(terlambat, zones, 'LONG').valid, false);
+  assert.equal(computeTicket(terlambat, zones, 'LONG', 101.5), null);
+});

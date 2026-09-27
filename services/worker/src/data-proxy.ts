@@ -15,6 +15,7 @@ import { sendTelegram, scanAlertCandidatesShared, tiketMasihSah, type AlertScanR
 import { createSupabaseDeskStore } from './desk.ts';
 import { scanMarketClient } from './market-data.ts';
 import { runtimeSnapshot } from './runtime-status.ts';
+import { championSnapshot } from './champion-live.ts';
 
 const INTERVAL_MS: Record<string, number> = {
   '5m': 300_000, '15m': 900_000, '30m': 1_800_000, '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000,
@@ -114,6 +115,7 @@ export function createDataProxyHandler(upstreamBase = process.env.WORKER_UPSTREA
       res.end(JSON.stringify(payload));
     };
 
+    if (route === '/data/champion-json' && req.method === 'GET') return balasJson(200, championSnapshot());
     if (route === '/health') return balasJson(200, { ok: true, market: 'FUTURES', at: new Date().toISOString() });
     if (route === '/health/runtime') return balasJson(200, runtimeSnapshot(scanMarketClient().marketUsed()));
     if (route === '/health/testnet' && req.method === 'GET') return balasJson(200, await demoReadiness());

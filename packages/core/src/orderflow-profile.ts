@@ -34,6 +34,9 @@ export type TradeVolumeProfile = {
   valueAreaFraction: number;
   /** False if pagination, IDs, time coverage or source market are not certified. */
   complete: true;
+  /** Exact aggregate ID bounds when sourced directly from raw aggTrades. */
+  firstTradeId?: number;
+  lastTradeId?: number;
 };
 
 /**
@@ -101,7 +104,8 @@ export function buildTradeVolumeProfile(input: {
   }
   return { symbol: input.symbol, start, end, levels, totalVolume, totalDelta,
     poc: levels[pocIndex].price, valueAreaLow: levels[left].price,
-    valueAreaHigh: levels[right].price, valueAreaFraction: fraction, complete: true };
+    valueAreaHigh: levels[right].price, valueAreaFraction: fraction, complete: true,
+    firstTradeId: trades[0].id, lastTradeId: trades.at(-1)!.id };
 }
 
 /** Discount/premium as defined relative to the *trade-by-price* value area.

@@ -1,5 +1,5 @@
-/** Research-only closed-candle swing context. No MA, no fabricated gamma,
- * no live alerts. HH/HL vs LH/LL need two CONFIRMED pivot highs and lows. */
+/** Closed-candle swing context shared by research and live Futures monitor.
+ * No MA, no fabricated gamma. HH/HL vs LH/LL need confirmed pivots. */
 import type { Candle } from './index.ts';
 import type { ChampionInput } from './champion-sequence.ts';
 

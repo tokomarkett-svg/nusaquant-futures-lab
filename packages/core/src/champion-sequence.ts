@@ -1,6 +1,7 @@
-/** Riset metode Context→Location→Absorption→Second Failure→Flip tanpa MA.
- * Spesifikasi dibekukan di docs/58-champion-sequence-v0-precommit.md.
- * Ini BUKAN sinyal SIAP, order, atau izin mengirim Telegram. */
+/** Filter orderflow Context→Location→Absorption→Second Failure→Flip tanpa MA.
+ * Research replay also uses this function; its output is NOT a ticket. The live
+ * worker additionally requires complete Futures aggTrades, C1 and CLOSED C2
+ * via decideChrisC2 before an alert. This function never places orders. */
 import type { Candle } from './index.ts';
 import { profileLocation, type TradeVolumeProfile } from './orderflow-profile.ts';
 

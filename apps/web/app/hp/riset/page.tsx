@@ -20,8 +20,8 @@ export default function RisetHp() {
     <h1 className="hp-heading">Baca pertarungan.<br />Bukan menebak arah.</h1>
     <p className="hp-lede">Rumus tanpa MA sudah masuk mesin riset NusaQuant. Hasil di bawah berasal dari arsip transaksi Binance Futures, <b>bukan sinyal langsung</b>.</p>
     <div className="hp-card" style={{ borderLeft: '4px solid #bd7835', marginBottom: 18 }}>
-      <strong style={{ display: 'block', fontSize: 15, marginBottom: 7 }}>⏳ BELUM LAYAK MENJADI ALARM</strong>
-      <p style={{ margin: 0, lineHeight: 1.6, fontSize: 13 }}>Alarm Telegram yang berjalan masih memakai rumus Pintu–C1–C2 lama. Jalur baru belum diuji hasil trading, GEX yang sebanding belum tersedia, dan belum ada kandidat pada sampel singkat ini. Tidak ada order otomatis.</p>
+      <strong style={{ display: 'block', fontSize: 15, marginBottom: 7 }}>RISET ARSIP ≠ ALARM LIVE</strong>
+      <p style={{ margin: 0, lineHeight: 1.6, fontSize: 13 }}>Jalur Chris Crypto live memakai transaksi Futures dan konfirmasi close C2; hasil uji arsip di bawah tetap bukan bukti profit. Jika jalur Futures tidak lengkap, alarm Chris ditahan; GEX dealer tidak tersedia. Alarm lama tetap aktif. Order baru Chris belum tersedia.</p>
     </div>
     <div className="hp-section-label">URUTAN RUMUS <small>konteks → bukti → risiko</small></div>
     {langkah.map((step) => <div key={step.n} className="hp-card" style={{ display: 'flex', gap: 14, marginBottom: 9, alignItems: 'flex-start' }}>
@@ -37,6 +37,7 @@ export default function RisetHp() {
       <p style={{ fontSize: 12, lineHeight: 1.6, marginBottom: 0 }}>{report.sources.reduce((n, day) => n + day.trades, 0).toLocaleString('id-ID')} transaksi · {report.windows.toLocaleString('id-ID')} jendela 5m · {report.evaluated} urutan dengan konteks cukup diperiksa. {report.funnel.KONTEKS} tertahan di konteks, {report.funnel.LOKASI} tertahan di lokasi.</p>
     </div>)}
     <p className="hp-lede">Nol kandidat <b>bukan</b> bukti strategi baik atau buruk. Enam hari dan dua simbol tidak cukup untuk uji luar sampel. Seluruh data arsip dicek checksum dan urutan transaksinya; tanpa data lengkap mesin menolak mengambil keputusan.</p>
+    <Link className="hp-cta hp-cta-secondary" href="/hp/siap-chris">Lihat tahap live &amp; Siap Entri Chris ↗</Link>
     <Link className="hp-cta hp-cta-secondary" href="/hp/papan">← Kembali ke Papan sinyal lama</Link>
   </div>;
 }

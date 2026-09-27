@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { appConfirmsReady, buildBellText, buildStartupText, buildTicketText, collectAlertsForCandidate, createAlertStore, describeTelegramConfig, discoverChatFromUpdates, explainTelegramError, jenisPerpText, resolveAlertMode, scanAlertCandidates, sendTelegram, type AlertCandidate, type AlertScanRow } from './alerts.ts';
+import { appConfirmsReady, buildC1Text, buildBellText, buildStartupText, buildTicketText, collectAlertsForCandidate, createAlertStore, describeTelegramConfig, discoverChatFromUpdates, explainTelegramError, jenisPerpText, resolveAlertMode, scanAlertCandidates, sendTelegram, type AlertCandidate, type AlertScanRow } from './alerts.ts';
 import { jenisPerp } from '@nusaquant/core';
 import type { SetupMarkers, Ticket } from '@nusaquant/core';
 
@@ -315,4 +315,36 @@ test('scanner tidak menandai gateAlign ketika 1H KUNING walau close sudah melewa
   assert.equal(rows[0].side, 'LONG');
   assert.equal(rows[0].gate, 'KUNING');
   assert.equal(rows[0].gateAlign, false, 'jangan ada SIAP ketika gate 1H belum searah');
+});
+
+
+test('C1 Futures baru dikirim pantau bersyarat (tanpa gate / tanpa tiket), dedupe dan kedaluwarsa', () => {
+  const now = Date.now();
+  const c1 = Math.floor(now / 900_000) * 900_000 - 900_000;
+  const row: AlertCandidate = { ...candidateTicket, market: 'FUTURES', gateAlign: false, ticket: null,
+    setup: { ...setupTicket, x: c1 - 900_000, candle1: c1, candle2: null, valid: false,
+      breakoutPrice: 0.06637, entry: null, stop: null, riskDistance: null } };
+  const store = createAlertStore();
+  const messages = collectAlertsForCandidate(row, store, { mode: 'tiketsiap' });
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].kind, 'C1');
+  assert.match(buildC1Text(row), /0\.06637/);
+  assert.match(messages[0].text, /TUTUP DI ATAS/);
+  assert.match(messages[0].text, /BUKAN tiket/);
+  store.add(messages[0].key);
+  assert.equal(collectAlertsForCandidate(row, store, { mode: 'tiketsiap' }).length, 0);
+  assert.equal(collectAlertsForCandidate({ ...row, market: 'SPOT' }, createAlertStore(), { mode: 'tiketsiap' }).length, 0);
+  assert.equal(collectAlertsForCandidate({ ...row, setup: { ...row.setup, candle1: c1 - 2 * 900_000 } }, createAlertStore(), { mode: 'tiketsiap' }).length, 0);
+  assert.equal(collectAlertsForCandidate({ ...row, setup: { ...row.setup, candle2: c1 + 900_000 } }, createAlertStore(), { mode: 'tiketsiap' }).length, 0);
+  const short = { ...row, side: 'SHORT' as const, setup: { ...row.setup, breakoutPrice: 0.06637 } };
+  assert.match(buildC1Text(short), /TUTUP DI BAWAH/);
+});
+
+test('C2 gagal walau high menyentuh pemicu: tidak ada SIAP, C1 tidak dikirim ulang', () => {
+  const c1 = Math.floor(Date.now() / 900_000) * 900_000 - 2 * 900_000;
+  const failed: AlertCandidate = { ...candidateTicket, market: 'FUTURES', ticket: null, setup: {
+    ...setupTicket, candle1: c1, candle2: c1 + 900_000, breakoutPrice: 0.06637,
+    valid: false, entry: null, stop: null, riskDistance: null, notes: ['C2 GAGAL: high sempat 0.06638, close tepat 0.06637'],
+  } };
+  assert.equal(collectAlertsForCandidate(failed, createAlertStore(), { mode: 'tiketsiap' }).length, 0);
 });

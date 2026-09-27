@@ -1,8 +1,6 @@
-/**
- * Research-only, read-only Futures aggTrades collector. Never wired to alarm/order.
- * Binance only exposes REST aggTrades for the last 24 hours. Tick history for
- * year-long OOS validation must be archived separately; no synthetic OHLC fills.
- */
+/** Read-only Futures aggTrades collector shared by research and live watcher.
+ * Binance REST exposes only recent aggTrades. Incomplete pages fail closed;
+ * this collector alone cannot produce an alert or order. */
 import { buildTradeVolumeProfile, type AggressorTrade, type TradeVolumeProfile } from '@nusaquant/core';
 
 export async function collectFuturesFootprint(options: {

@@ -175,6 +175,8 @@ export type SetupMarkers = {
   x: number | null;
   candle1: number | null;
   candle2: number | null;
+  /** LONG harus CLOSE C2 > high C1; SHORT harus CLOSE C2 < low C1. */
+  breakoutPrice?: number | null;
   staleBars: number | null;
   valid: boolean;
   notes: string[];
@@ -275,26 +277,20 @@ export function detectSetup(candles: Candle[], zones: Zones, side: Side): SetupM
   }
 
   const c1 = bars[c1Index];
-  let c2Index: number | null = null;
-  for (let index = c1Index + 1; index <= Math.min(bars.length - 1, c1Index + 3); index += 1) {
-    const candle = bars[index];
-    const broke = side === 'LONG' ? candle.close > c1.high : candle.close < c1.low;
-    if (broke) {
-      c2Index = index;
-      break;
-    }
-  }
+  const breakoutPrice = side === 'LONG' ? c1.high : c1.low;
+  // C2 adalah tepat candle 15m tertutup SESUDAH C1, bukan salah satu dari tiga
+  // candle berikutnya. Wick saja atau close tepat di batas membatalkan paket ini.
+  const c2Index = c1Index + 1;
   const staleBars = bars.length - 1 - xIndex;
-  if (c2Index === null) {
-    const c1Body = Math.max(bodyOf(c1), 1e-12);
-    const c1Wick = side === 'LONG'
-      ? Math.min(c1.open, c1.close) - c1.low
-      : c1.high - Math.max(c1.open, c1.close);
-    notes.push(`Candle 1 SAH (buntut ${(Math.abs(c1Wick) / c1Body).toFixed(2)}× badan). Candle 2 belum lahir: tunggu close di ${side === 'LONG' ? 'atas puncak' : 'bawah dasar'} candle 1 (maks 3 candle).`);
-    if (staleBars > TOUCH_EXPIRY_CANDLES) notes.push(`Sudah ${staleBars} candle sejak X → melewati batas ${TOUCH_EXPIRY_CANDLES} candle (kedaluwarsa).`);
-    return { side, x: x.time, candle1: c1.time, candle2: null, staleBars, valid: false, notes, ...empty };
+  if (c2Index >= bars.length) {
+    notes.push(`Candle 1 SAH. ${side === 'LONG' ? 'LONG hanya sah jika C2 TUTUP DI ATAS' : 'SHORT hanya sah jika C2 TUTUP DI BAWAH'} ${breakoutPrice}. Sentuh ekor saja TIDAK SAH; hanya candle 15m berikutnya.`);
+    return { side, x: x.time, candle1: c1.time, candle2: null, breakoutPrice, staleBars, valid: false, notes, ...empty };
   }
-
+  const c2 = bars[c2Index];
+  if (!(side === 'LONG' ? c2.close > breakoutPrice : c2.close < breakoutPrice)) {
+    notes.push(`C2 GAGAL: tutup ${c2.close} tidak ${side === 'LONG' ? 'di atas' : 'di bawah'} ${breakoutPrice}. Wick/sentuh saja tidak sah; paket batal.`);
+    return { side, x: x.time, candle1: c1.time, candle2: c2.time, breakoutPrice, staleBars, valid: false, notes, ...empty };
+  }
   const candle2 = bars[c2Index];
   // KUALITAS C2 — candle 2 adalah "induk": dari dia kelihatan layak/tidaknya entri (docs/50).
   const merebutPintu = side === 'LONG' ? candle2.close > zone.pintu : candle2.close < zone.pintu;
@@ -306,13 +302,13 @@ export function detectSetup(candles: Candle[], zones: Zones, side: Side): SetupM
     notes.push(!merebutPintu
       ? `C2 tidak layak: close belum merebut kembali garis pintu (${zone.pintu.toPrecision(6)}) — tembusannya belum berkuasa.`
       : 'C2 tidak layak: close tidak di paruh luar candle-nya (buntut lawan masih panjang) — tenaga tembus lemah.');
-    return { side, x: x.time, candle1: c1.time, candle2: candle2.time, staleBars, valid: false, notes, ...empty };
+    return { side, x: x.time, candle1: c1.time, candle2: candle2.time, breakoutPrice, staleBars, valid: false, notes, ...empty };
   }
   const entry = candle2.close;
   const stop = side === 'LONG' ? c1.low : c1.high;
   const riskDistance = Math.abs(entry - stop);
   notes.push(`Paket lengkap: X → candle 1 → candle 2 (close ${side === 'LONG' ? 'di atas puncak' : 'di bawah dasar'} candle 1). Entry ${entry}, stop ${stop}.`);
-  return { side, x: x.time, candle1: c1.time, candle2: candle2.time, staleBars, valid: true, notes, entry, stop, riskDistance };
+  return { side, x: x.time, candle1: c1.time, candle2: candle2.time, breakoutPrice, staleBars, valid: true, notes, entry, stop, riskDistance };
 }
 
 export type Ticket = {
@@ -332,6 +328,8 @@ export type Ticket = {
   priceNow: number;
   distanceNowPct: number;
   chaseRisk: boolean;
+  /** Setelah C2 tutup, harga terkini tidak boleh kembali ke sisi salah batas C1. */
+  breakoutStillValid?: boolean;
   actionable: boolean;
   warnings: string[];
 };
@@ -378,6 +376,9 @@ export function computeTicket(candles: Candle[], zones: Zones, side: Side, price
     targetAkhir = side === 'LONG' ? entry + TARGET_R * riskAkhir : entry - TARGET_R * riskAkhir;
   }
 
+  const breakoutStillValid = setup.breakoutPrice !== null && setup.breakoutPrice !== undefined
+    && (side === 'LONG' ? priceNow > setup.breakoutPrice : priceNow < setup.breakoutPrice);
+  if (!breakoutStillValid) warnings.push(`harga kembali ke sisi salah batas C2 ${setup.breakoutPrice}; tiket ditahan, tunggu paket baru`);
   const distanceNowPct = ((priceNow - entry) / entry) * 100;
   const travelledR = Math.abs(priceNow - entry) / riskAkhir;
   const chaseRisk = travelledR > CHASE_LIMIT_R;
@@ -402,8 +403,9 @@ export function computeTicket(candles: Candle[], zones: Zones, side: Side, price
     priceNow,
     distanceNowPct,
     chaseRisk,
-    // Basi = mati. Umur tiket wajib mematikan actionable — bukan sekadar peringatan.
-    actionable: stopGeometryOk && !chaseRisk && stopVsBatal === 'aman' && !kedaluwarsa,
+    breakoutStillValid,
+    // Harga yang sudah kembali ke sisi salah pemicu C1 tak boleh menjadi alarm SIAP.
+    actionable: breakoutStillValid && stopGeometryOk && !chaseRisk && stopVsBatal === 'aman' && !kedaluwarsa,
     warnings,
   };
 }

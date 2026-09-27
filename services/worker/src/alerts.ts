@@ -39,7 +39,7 @@ export function jenisPerpText(jenis: 'saham' | 'komoditas' | 'kripto' | undefine
   return null;
 }
 
-export type AlertMessage = { key: string; kind: 'X' | 'TIKET' | 'TIKET_TANPA_GATE' | 'TIKET_BASI'; text: string };
+export type AlertMessage = { key: string; kind: 'X' | 'C1' | 'TIKET' | 'TIKET_TANPA_GATE' | 'TIKET_BASI'; text: string };
 
 /**
  * Mode notifikasi:
@@ -109,6 +109,21 @@ export function buildBellText(candidate: AlertCandidate): string {
     '',
     'Langkah: buka papan, lihat candle 1 (buntut ≥2× badan, close paruh atas/bawah).',
     'Belum entry — candle 1 & 2 belum tentu sah.',
+  ].join('\n');
+}
+
+/** C1 bukan tiket: harga pemicu diambil dari high/low candle C1 yang TERTUTUP. */
+export function buildC1Text(candidate: AlertCandidate, papanUrl?: string): string {
+  const limit = candidate.setup.breakoutPrice!;
+  const digits = digitsFor(limit);
+  return [
+    `👀 <b>PANTAU BERSYARAT C1 — ${candidate.symbol} ${candidate.side}</b>`,
+    `Pemicu C2: <b>${limit.toFixed(digits)}</b> (${candidate.side === 'LONG' ? 'high' : 'low'} C1).`,
+    `Hanya jika candle 15 menit BERIKUTNYA TUTUP ${candidate.side === 'LONG' ? 'DI ATAS' : 'DI BAWAH'} ${limit.toFixed(digits)} boleh dipertimbangkan untuk Siap Entri.`,
+    'Wick, sentuh batas, atau close setelah C2 bukan konfirmasi. Jika C2 gagal: batal, jangan kirim Siap.',
+    'Ini PANTAU, BUKAN tiket / perintah order. Verifikasi risiko & harga saat itu tetap wajib.',
+    'Sumber: Futures. Tahap C1 sistem Pintu lama; bukan klaim footprint Chris.',
+    ...(papanUrl ? [`Papan: ${papanUrl}/hp/papan`] : []),
   ].join('\n');
 }
 
@@ -195,6 +210,17 @@ export function collectAlertsForCandidate(
   if (mode === 'semua' && candidate.gateAlign && xSegar && candidate.setup.candle1 === null && candidate.setup.staleBars !== null && candidate.setup.staleBars <= bellAgeBars) {
     const key = `${candidate.symbol}:${candidate.side}:X:${candidate.setup.x}`;
     if (!store.has(key)) messages.push({ key, kind: 'X', text: buildBellText(candidate) });
+  }
+
+  // Pada mode produksi tiketsiap, C1 tetap boleh memberitahu syarat SEBELUM C2.
+  // Tidak pernah menumpang pada TIKET; hanya sekali saat close C1 baru diterima.
+  const c1 = candidate.setup.candle1;
+  if ((mode === 'tiketsiap' || mode === 'semua') && candidate.market === 'FUTURES'
+    && c1 !== null && candidate.setup.candle2 === null
+    && Number.isFinite(candidate.setup.breakoutPrice) && (candidate.setup.breakoutPrice ?? 0) > 0
+    && Date.now() >= c1 + 900_000 && Date.now() < c1 + 2 * 900_000) {
+    const key = `${candidate.symbol}:${candidate.side}:C1:${c1}`;
+    if (!store.has(key)) messages.push({ key, kind: 'C1', text: buildC1Text(candidate, options.papanUrl) });
   }
 
   if (candidate.setup.candle2 !== null) {
@@ -493,7 +519,8 @@ export async function runAlertCycle(
     // BEL PINTU/TIKET_TANPA_GATE tidak menimbulkan alarm entry.
     const pending = collectAlertsForCandidate(row, store, { mode: 'tiketsiap', papanUrl: options.papanUrl ?? normalizePapanUrl() });
     // Pernah mengabarkan tiket? Kirim peringatan BASI saat jendela habis (bukan alarm entry baru).
-    messages.push(...pending.filter((message) => message.kind === 'TIKET_BASI'));
+    messages.push(...pending.filter((message) => message.kind === 'TIKET_BASI' || message.kind === 'C1')
+      .filter((message) => message.kind !== 'C1' || (row.market === 'FUTURES' && row.dataAgeMin <= STALE_CANDLE_MINUTES && Date.now() - row.scannedAt <= 120_000)));
     if (!pending.some((message) => message.kind === 'TIKET')) continue;
     if (!gateMatchesSide(row.gate, row.side)) continue; // pagar juga aktif pada mock/cache dan saat rolling deploy
     if (!(await (options.confirmReady ?? appConfirmsReady)(row))) continue;
@@ -525,6 +552,7 @@ export function buildStartupText(): string {
     'Bot memantau seluruh pasar USDT dengan sistem pintu–manis–batal.',
     'Yang akan kamu terima:',
     '📋 Pintu/C1/C2/Basi/Batal dipantau di Papan aplikasi, bukan alarm entri.',
+    '👀 C1 baru mengabarkan batas close C2 (pantau saja, belum tiket).',
     '🎯 Alarm TIKET FUTURES SIAP — hanya saat rumus aplikasi mengesahkan arah, gate, dan tiket.',
     '',
     'Alarm bukan order. Login di aplikasi, periksa ulang dan setujui sendiri per tiket; Demo terkunci sampai diaktifkan, uang asli selalu terkunci.',

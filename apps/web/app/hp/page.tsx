@@ -79,6 +79,7 @@ export default function BerandaHp() {
       ))}
       <div className="hp-link-grid">
         <Link className="hp-link" href="/hp/cek">◉ Cek sistem</Link>
+        <Link className="hp-link" href="/hp/siap-chris">🎯 Siap Entri Chris · footprint Futures</Link>
         <Link className="hp-link" href="/hp/riset">◇ Riset rumus tanpa MA</Link>
         <Link className="hp-link" href="/hp/pasang">↗ Pasang aplikasi</Link>
       </div>

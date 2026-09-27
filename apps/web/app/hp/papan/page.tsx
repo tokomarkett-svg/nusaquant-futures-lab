@@ -75,7 +75,7 @@ export default function PapanHp() {
         <span className={`hp-live${error || (board && !terkini) ? ' hp-live--error' : ''}`}>{error || (board && !terkini) ? 'TUNDA' : terkini ? 'AKTIF' : 'MEMUAT'}</span>
       </div>
       <label className="hp-search"><span aria-hidden="true">⌕</span><input value={cari} onChange={(e) => setCari(e.target.value)} placeholder="Cari koin, misalnya RUNE" aria-label="Cari koin" /></label>
-      <p className="hp-lede">Alarm Telegram saat ini memakai rumus Pintu → C1 → C2 dengan gate MA. Basi dan Batal dipisahkan; <b>hanya SIAP</b> menghasilkan alarm tiket baru. <Link href="/hp/riset">Lihat riset metode video tanpa MA ↗</Link> (belum menjadi alarm).</p>
+      <p className="hp-lede">Alarm Telegram saat ini memakai rumus Pintu → C1 → C2 dengan gate MA. Basi dan Batal dipisahkan; <b>hanya SIAP</b> menghasilkan alarm tiket baru. <Link href="/hp/riset">Lihat riset metode video tanpa MA ↗</Link> · <Link href="/hp/siap-chris">Siap Entri Chris ↗</Link> (jalur orderflow terpisah).</p>
       <div className="hp-filters" role="group" aria-label="Tahap sinyal" style={{ overflowX: 'auto', flexWrap: 'nowrap', paddingBottom: 6 }}>
         {FILTERS.map(({ id, text }) => <button className="hp-filter" type="button" key={id} onClick={() => setFilter(id)} aria-pressed={filter === id} style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{text} · {jumlah[id]}</button>)}
       </div>

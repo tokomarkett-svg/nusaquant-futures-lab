@@ -394,3 +394,4 @@ export * from './intelligence';
 export * from './opportunity';
 export * from './backtest';
 export * from './diagnostics';
+export * from './champion-live';
