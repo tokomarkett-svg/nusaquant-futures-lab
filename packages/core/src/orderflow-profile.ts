@@ -22,6 +22,7 @@ export type PriceFootprint = {
 };
 
 export type TradeVolumeProfile = {
+  symbol: string;
   start: number;
   end: number;
   levels: PriceFootprint[];
@@ -41,6 +42,7 @@ export type TradeVolumeProfile = {
  * guessed from the first/last timestamp. Missing even one page => fail closed.
  */
 export function buildTradeVolumeProfile(input: {
+  symbol: string;
   trades: AggressorTrade[];
   start: number;
   end: number;
@@ -51,7 +53,8 @@ export function buildTradeVolumeProfile(input: {
 }): TradeVolumeProfile | null {
   const { trades, start, end, tickSize, complete, market } = input;
   const fraction = input.valueAreaFraction ?? 0.7;
-  if (!complete || market !== 'FUTURES' || !Number.isFinite(start) || !Number.isFinite(end) || start >= end
+  if (!/^[A-Z0-9]{2,24}USDT$/.test(input.symbol) || !complete || market !== 'FUTURES'
+    || !Number.isFinite(start) || !Number.isFinite(end) || start >= end
     || !Number.isFinite(tickSize) || tickSize <= 0 || !Number.isFinite(fraction) || fraction <= 0 || fraction > 1
     || trades.length === 0) return null;
 
@@ -96,7 +99,7 @@ export function buildTradeVolumeProfile(input: {
     if (below >= above) areaVolume += levels[--left].volume;
     else areaVolume += levels[++right].volume;
   }
-  return { start, end, levels, totalVolume, totalDelta,
+  return { symbol: input.symbol, start, end, levels, totalVolume, totalDelta,
     poc: levels[pocIndex].price, valueAreaLow: levels[left].price,
     valueAreaHigh: levels[right].price, valueAreaFraction: fraction, complete: true };
 }

@@ -62,5 +62,5 @@ export async function collectFuturesFootprint(options: {
     cursor = Number(last.a) + 1;
     if (!Number.isSafeInteger(cursor)) return null;
   }
-  return buildTradeVolumeProfile({ trades, start, end, tickSize, complete, market: 'FUTURES' });
+  return buildTradeVolumeProfile({ symbol, trades, start, end, tickSize, complete, market: 'FUTURES' });
 }

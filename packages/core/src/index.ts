@@ -388,6 +388,8 @@ export function evaluateSignal({
 
 export * from './zones';
 export * from './orderflow-profile';
+export * from './champion-sequence';
+export * from './champion-context';
 export * from './intelligence';
 export * from './opportunity';
 export * from './backtest';

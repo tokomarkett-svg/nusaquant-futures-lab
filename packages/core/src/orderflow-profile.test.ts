@@ -8,7 +8,7 @@ const trades: AggressorTrade[] = [
   { id: 12, time: 1200, price: 100, quantity: 4, buyerIsMaker: true },
   { id: 13, time: 1300, price: 101, quantity: 5, buyerIsMaker: false },
 ];
-const input = { trades, start: 0, end: 2000, tickSize: 1, market: 'FUTURES' as const, complete: true };
+const input = { symbol: 'BTCUSDT', trades, start: 0, end: 2000, tickSize: 1, market: 'FUTURES' as const, complete: true };
 
 test('footprint membaca m=true sebagai seller agresif; POC dan value area dihitung dari transaksi per harga', () => {
   const profile = buildTradeVolumeProfile(input);
