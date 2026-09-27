@@ -6,6 +6,8 @@ import type { Candle } from './index.ts';
 import { profileLocation, type TradeVolumeProfile } from './orderflow-profile.ts';
 
 const BAR_MS = 300_000;
+/** Operational translation, NOT a bar count quoted by Chris: X must lead the absorption fight by at most 3 closed 5m candles. */
+export const MAX_X_TO_ABSORPTION_BARS = 3;
 type Bias = 'UP' | 'DOWN' | 'BALANCED';
 export type FootprintBar = { candle: Candle; profile: TradeVolumeProfile };
 export type ChampionCandidate = {
@@ -85,8 +87,9 @@ export function evaluateChampionSequence(input: ChampionInput): ChampionReview {
   }
   const fromX = chain.filter((b) => xAt !== null && b.candle.time >= xAt);
   const piercedInvalid = fromX.some((b) => side === 'LONG' ? b.candle.low < deep : b.candle.high > deep);
-  if (profileLocation(value, close) !== wanted || !inFib || xAt === null || piercedInvalid) {
-    return verdict('LOKASI', `Harga absorption harus ${wanted} di luar value area; X masuk 0,705 dari luar, 0,788 level tengah dan tak boleh menyentuh sisi salah 0,886.`);
+  if (profileLocation(value, close) !== wanted || !inFib || xAt === null
+    || t - xAt > MAX_X_TO_ABSORPTION_BARS * BAR_MS || piercedInvalid) {
+    return verdict('LOKASI', `Harga absorption harus ${wanted} di luar value area; X masuk 0,705 dari luar paling lama 3 candle 5m sebelum absorption; 0,788 level tengah dan tak boleh menyentuh sisi salah 0,886.`);
   }
   const averageVolume = participation.reduce((s, b) => s + b.profile.totalVolume, 0) / 20;
   const abs = absorption.candle;

@@ -33,8 +33,15 @@ export function decideChrisC2(input: { candidate: ChampionCandidate; c1: Candle;
       && c1.high <= v.fib.invalid886;
   if (!c1Shape) return { ...base, stage: 'BATAL', c2: null, entry: null, target: null,
     sizeCoin: null, reason: 'C1 15m tidak menunjukkan flip yang berlanjut / menyapu batas 0,886.' };
+  if (!c2 && (v.side === 'LONG' ? priceNow < v.fib.invalid886 : priceNow > v.fib.invalid886)) {
+    return { ...base, stage: 'BATAL', c2: null, entry: null, target: null, sizeCoin: null,
+      reason: 'Harga sudah melewati level batal 0,886 sebelum C2 selesai; jangan pantau entri.' };
+  }
   if (!c2) {
-    if (now >= c1.time + 2 * QUARTER) return null;
+    if (now >= c1.time + 2 * QUARTER) {
+      return { ...base, stage: 'BASI', c2: null, entry: null, target: null, sizeCoin: null,
+        reason: 'C2 seharusnya sudah tertutup tetapi datanya tidak dapat dipastikan. Tidak ada tiket.' };
+    }
     return { ...base, stage: 'C1', c2: null, entry: null, target: null, sizeCoin: null,
       reason: `Pantau: hanya C2 15m berikutnya TUTUP ${v.side === 'LONG' ? 'di atas' : 'di bawah'} ${trigger}. Bukan tiket.` };
   }

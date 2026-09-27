@@ -101,15 +101,13 @@ export default function CekSistem() {
     };
 
     const baru = (tanggal?: string | null) => Boolean(tanggal && Date.now() - new Date(tanggal).getTime() < 6 * 60_000);
-    const siap = Boolean(w?.modes?.alerts && w.modes.telegramAllowed && w.modes.telegramConfigured &&
-      true);
+    const siap = Boolean(w?.modes?.alerts && w.modes.telegramAllowed && w.modes.telegramConfigured);
     const siklus = Boolean(baru(w?.alerts?.lastCycleAt));
-    const sapa = Boolean(w?.alerts?.startupDeliveredAt);
     hasil[6] = !w?.ok ? {
       nama: 'Telegram + Otak Pertarungan', status: 'gagal', detail: 'Diagnostik worker belum bisa dibaca.',
     } : {
-      nama: 'Telegram + Otak Pertarungan', status: siap && siklus && sapa ? 'ok' : 'lambat',
-      detail: `Konfigurasi ${siap ? 'aktif' : 'belum lengkap'} · Telegram ${sapa ? 'pesan sapa terkirim' : 'belum terbukti terkirim'} · scan ${w.alerts?.scanned ?? 0} koin · meja paper lama tidak membuka posisi baru · ${siklus ? 'siklus segar' : 'siklus belum segar'}`,
+      nama: 'Telegram + Otak Pertarungan', status: siap && siklus ? 'ok' : 'lambat',
+      detail: `Konfigurasi ${siap ? 'aktif' : 'belum lengkap'} · Telegram menunggu C2 mulai terbentuk (tidak ada pesan sapa) · scan ${w.alerts?.scanned ?? 0} koin · meja paper lama tidak membuka posisi baru · ${siklus ? 'siklus segar' : 'siklus belum segar'}`,
     };
 
     const demo = await ukur(`${WORKER}/health/testnet`);

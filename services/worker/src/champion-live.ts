@@ -10,7 +10,7 @@ const FUTURES = 'https://fapi.binance.com';
 const FIVE = 300_000;
 const QUARTER = 900_000;
 type State = { bars: FootprintBar[]; candidate: ChampionCandidate | null; decision: ChrisDecision | null;
-  watch: ReturnType<typeof detectChrisX>;
+  watch: ReturnType<typeof detectChrisX>; c2Started: boolean;
   tickSize: number; status: string; lastWindow: number | null; at: number };
 const states = new Map<string, State>();
 let lastPoll = 0;
@@ -34,6 +34,7 @@ export function footprintMatchesKline(reference: { low: number; high: number; vo
 export function championSnapshot(now = Date.now()) {
   const rows = [...states].map(([symbol, state]) => ({ symbol, status: state.status,
     windows: state.bars.length, lastWindow: state.lastWindow,
+    c2Started: state.at && now - state.at <= 100_000 ? state.c2Started : false,
     at: state.at, watch: state.at && now - state.at <= 100_000 && !state.decision ? state.watch : null,
     decision: state.at && now - state.at <= 100_000 ? state.decision : null }));
   return { ok: true, source: 'Binance USD-M aggTrades (executed); 1h rolling trade value area',
@@ -43,9 +44,9 @@ export function championSnapshot(now = Date.now()) {
 export function championMessage(d: ChrisDecision): string {
   if (d.stage === 'BATAL' || d.stage === 'BASI') return `⛔ <b>CHRIS ${d.stage} — ${d.symbol} ${d.side}</b>\n${d.reason}\nC1 ${d.trigger} · C2 ${d.c2 ?? 'belum valid'} · JANGAN entri. Tunggu X → C1 → C2 baru.`;
   if (d.stage === 'C1') return [
-    `👀 <b>CHRIS CRYPTO · PANTAU C1 — ${d.symbol} ${d.side}</b>`,
+    `👀 <b>CHRIS CRYPTO · C2 MULAI TERBENTUK — ${d.symbol} ${d.side}</b>`,
     `X sentuh zona 0,705 pada ${new Date(d.x).toISOString().slice(11,16)} UTC · 0,705: ${d.fib.shallow705} · 0,788: ${d.fib.mid788} · batal 0,886: ${d.fib.invalid886}`,
-    `C1 = candle 15m yang memuat absorption → percobaan kedua gagal → flip; high/low pemicu: <b>${d.trigger}</b>`,
+    `C1 = candle 15m yang memuat flip sesudah absorption → percobaan kedua gagal; high/low pemicu: <b>${d.trigger}</b>`,
     `Siap HANYA bila candle 15m C2 berikutnya TUTUP ${d.side === 'LONG' ? 'DI ATAS' : 'DI BAWAH'} ${d.trigger}. Wick / menyentuh saja GAGAL.`,
     'Ini bukan tiket. Analisis menggunakan transaksi nyata Futures, bukan GEX Nasdaq / MA.',
   ].join('\n');
@@ -55,7 +56,7 @@ export function championMessage(d: ChrisDecision): string {
     `C1 ${d.trigger} · C2 tutup ${d.entry} melewati batas · harga kini ${d.priceNow}`,
     `Entry (close C2): ${d.entry} · SL: ${d.stop} · TP: ${d.target} · ukuran risiko 0,31 USDT: ${d.sizeCoin}`,
     'Adaptasi footprint Futures; GEX Nasdaq tidak tersedia. Tidak ada bukti profitabilitas.',
-    'ALARM BUKAN ORDER. Cek halaman Siap Entri Chris; login dan persetujuan per tiket bila order kelak tersedia. Mainnet dikunci.',
+    'ALARM BUKAN ORDER. Cek tiket yang sama di aplikasi; hanya Demo setelah login, verifikasi ulang dan persetujuan per tiket. Mainnet dikunci.',
   ].join('\n');
 }
 
@@ -70,21 +71,30 @@ async function tickSizeFor(symbol: string): Promise<number> {
   return tick;
 }
 
-/** App displays exactly the same decision; web unavailable means no Telegram SIAP. */
-export async function appSeesReady(decision: ChrisDecision, fetchImpl: typeof fetch = fetch): Promise<boolean> {
+/** Every trade-related Telegram message must match the same fresh app snapshot.
+ * C1 prealert additionally requires evidence that the NEXT 15m C2 has STARTED. */
+export async function appSeesDecision(decision: ChrisDecision, fetchImpl: typeof fetch = fetch): Promise<boolean> {
   const base = process.env.ALERT_CHECK_BASE_URL ?? 'https://web-gray-eta-79.vercel.app';
   if (!base.startsWith('https://')) return false;
   try {
     const res = await fetchImpl(new URL('/api/chris?brief=1', base), { cache: 'no-store', signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return false;
-    const data = await res.json() as { rows?: Array<{ symbol: string; decision: ChrisDecision | null }> };
-    const found = data.rows?.find((r) => r.symbol === decision.symbol)?.decision;
-    return found?.stage === 'SIAP' && found.side === decision.side && found.x === decision.x
+    const data = await res.json() as { ok?: boolean; rows?: Array<{ symbol: string; c2Started?: boolean; decision: ChrisDecision | null }> };
+    if (data.ok !== true) return false;
+    const row = data.rows?.find((r) => r.symbol === decision.symbol);
+    const found = row?.decision;
+    return Boolean(found && found.stage === decision.stage && found.side === decision.side && found.x === decision.x
       && found.fib.shallow705 === decision.fib.shallow705 && found.fib.mid788 === decision.fib.mid788
       && found.fib.invalid886 === decision.fib.invalid886 && found.c1 === decision.c1
       && found.c2 === decision.c2 && found.trigger === decision.trigger && found.entry === decision.entry
-      && found.stop === decision.stop && found.target === decision.target && found.sizeCoin === decision.sizeCoin;
+      && found.stop === decision.stop && found.target === decision.target && found.sizeCoin === decision.sizeCoin
+      && (decision.stage !== 'C1' || row?.c2Started === true));
   } catch { return false; }
+}
+
+/** Backwards-compatible name for the unit-testable SIAP-only preflight. */
+export async function appSeesReady(decision: ChrisDecision, fetchImpl: typeof fetch = fetch): Promise<boolean> {
+  return decision.stage === 'SIAP' && appSeesDecision(decision, fetchImpl);
 }
 
 /** Last worker decision must match the request rechecked by the operator app.
@@ -104,6 +114,36 @@ export function championOrderMatches(input: { symbol: string; side: string; setu
     && same(input.target, d.target) && same(input.qty, d.sizeCoin);
 }
 
+/** Pure Telegram gate: the only permitted notifications are C2-start watch,
+ * closed-C2 SIAP, and a terminal follow-up to a previously delivered watch/ready. */
+export function eligibleChampionNotification(d: ChrisDecision, now: number,
+  c2Started: boolean, seen: ReadonlySet<string>): boolean {
+  if (d.stage === 'C1' && (!c2Started || d.c2 !== null
+    || now < d.c1 + QUARTER || now >= d.c1 + 2 * QUARTER)) return false;
+  const c1Key = `${d.symbol}:${d.side}:C1:${d.c1}:`;
+  const readyKey = `${d.symbol}:${d.side}:SIAP:${d.c1}:${d.c2 ?? ''}`;
+  if (d.stage === 'BATAL' && !seen.has(c1Key)) return false;
+  if (d.stage === 'BASI' && !seen.has(c1Key) && !seen.has(readyKey)) return false;
+  if (d.stage === 'SIAP' && (d.c2 === null || now < d.c2 + QUARTER
+    || now > d.c2 + 4 * QUARTER || d.entry === null || d.sizeCoin === null)) return false;
+  return !seen.has(`${d.symbol}:${d.side}:${d.stage}:${d.c1}:${d.c2 ?? ''}`);
+}
+
+/** Independent last-price guard immediately before a SIAP Telegram send. */
+export function stillReadyAtPrice(d: ChrisDecision, price: number, now: number): boolean {
+  if (d.stage !== 'SIAP' || d.entry === null || d.c2 === null || !(d.stop > 0)
+    || !(price > 0) || now > d.c2 + 4 * QUARTER || now < d.c2 + QUARTER) return false;
+  const risk = Math.abs(d.entry - d.stop);
+  return risk > 0 && (d.side === 'LONG' ? price > d.trigger : price < d.trigger)
+    && Math.abs(price - d.entry) <= risk * .5;
+}
+
+/** No resurrection once a terminal decision was reached on that C1. */
+export function settleChampionDecision(previous: ChrisDecision | null, next: ChrisDecision | null): ChrisDecision | null {
+  return previous && (previous.stage === 'BATAL' || previous.stage === 'BASI')
+    && (!next || previous.c1 === next.c1) ? previous : next;
+}
+
 async function processSymbol(symbol: string, now: number) {
   const s = states.get(symbol)!;
   const client = scanMarketClient();
@@ -111,7 +151,7 @@ async function processSymbol(symbol: string, now: number) {
   const closed = Math.floor((now - 10_000) / FIVE) * FIVE - FIVE;
   if (s.lastWindow !== closed) {
     if (s.lastWindow !== null && closed !== s.lastWindow + FIVE) {
-      s.bars = []; s.candidate = null; s.decision = null; s.watch = null;
+      s.bars = []; s.candidate = null; s.decision = null; s.watch = null; s.c2Started = false;
     }
     const profile = await collectFuturesFootprint({ symbol, start: closed, end: closed + FIVE,
       tickSize: s.tickSize, now, baseUrl: FUTURES, maxPages: 100 });
@@ -170,7 +210,7 @@ async function processSymbol(symbol: string, now: number) {
         const review = evaluateChampionSequence({ symbol, now: t + 3 * FIVE, tickSize: s.tickSize,
           context, value, participation: s.bars.slice(i - 20, i), absorption,
           retest: s.bars[i + 1], flip: s.bars[i + 2] });
-        if (review.candidate) { s.candidate = review.candidate; s.watch = null; }
+        if (review.candidate) { s.candidate = review.candidate; s.watch = null; s.c2Started = false; }
       }
     }
   }
@@ -181,12 +221,23 @@ async function processSymbol(symbol: string, now: number) {
     const c1 = m15.find((bar) => bar.time === c1At);
     if (c1) {
       const c2 = m15.find((bar) => bar.time === c1At + QUARTER) ?? null;
+      // The C1 price is known on close, but NO Telegram watch message until
+      // a genuine FUTURES C2 bar exists and its first trades are visible.
+      if (!c2 && now >= c1At + QUARTER && now < c1At + 2 * QUARTER) {
+        const ongoing = await client.getKlines({ symbol, interval: '15m', limit: 2,
+          closedOnly: false, market: 'FUTURES' });
+        s.c2Started = client.marketUsed() === 'FUTURES'
+          && ongoing.some((bar) => bar.time === c1At + QUARTER && bar.volume > 0);
+      } else s.c2Started = Boolean(c2);
       // lastPrice from Futures ticker, NOT markPrice/Spot. Timestamped at poll time.
       const tickers = await client.get24hTickerDetails();
       if (client.marketUsed() !== 'FUTURES') throw new Error('ticker bukan Futures');
       const priceNow = tickers.find((v) => v.symbol === symbol)?.last;
-      s.decision = priceNow ? decideChrisC2({ candidate: s.candidate, c1, c2, now, priceNow }) : null;
-    } else s.decision = null;
+      const next = priceNow ? decideChrisC2({ candidate: s.candidate, c1, c2, now, priceNow }) : null;
+      // Terminal decision is irreversible for this C1, even if price later
+      // wanders back across the line. A new X/C1 sequence is needed.
+      s.decision = settleChampionDecision(s.decision, next);
+    } else { s.decision = null; s.c2Started = false; }
   }
   s.at = now;
   s.status = s.bars.length < 23 ? `pemanasan ${s.bars.length}/23 jendela 5m lengkap` :
@@ -203,15 +254,20 @@ export async function championCycle(now = Date.now()): Promise<void> {
       await processSymbol(symbol, now);
       const d = state.decision;
       if (!d || now - state.at > 100_000 || jenisPerp(symbol) !== 'kripto') continue;
-      const c1Key = `${symbol}:${d.side}:C1:${d.c1}:`;
-      const readyKey = `${symbol}:${d.side}:SIAP:${d.c1}:${d.c2 ?? ''}`;
-      if (d.stage === 'BATAL' && !delivered.has(c1Key)) continue;
-      if (d.stage === 'BASI' && !delivered.has(readyKey)) continue;
+      if (!eligibleChampionNotification(d, now, state.c2Started, delivered)) continue;
+      if (d.stage === 'C1' && Date.now() >= d.c1 + 2 * QUARTER) continue;
+      if (d.stage === 'SIAP') {
+        const latest = await scanMarketClient().get24hTickerDetails();
+        const price = latest.find((t) => t.symbol === symbol)?.last ?? 0;
+        if (scanMarketClient().marketUsed() !== 'FUTURES' || !stillReadyAtPrice(d, price, Date.now())) {
+          state.decision = { ...d, stage: 'BASI', sizeCoin: null,
+            reason: 'Harga Futures berubah ke sisi salah batas / lebih dari 0,5R / tiket kedaluwarsa sebelum alarm; entri ditahan.' };
+          continue;
+        }
+      }
       const key = `${symbol}:${d.side}:${d.stage}:${d.c1}:${d.c2 ?? ''}`;
-      if (delivered.has(key)) continue;
-      // Do not send historical C1 after C2 closes; enforce fresh decision from this cycle.
-      if (d.stage === 'C1' && now >= d.c1 + 2 * QUARTER) continue;
-      if (d.stage === 'SIAP' && !(await appSeesReady(d))) continue;
+      if (!(await appSeesDecision(d))) continue;
+      if (d.stage === 'C1' && Date.now() >= d.c1 + 2 * QUARTER) continue;
       if (await sendTelegram(championMessage(d))) {
         delivered.add(key);
         runtimeStatus.alerts.delivered += 1;
@@ -219,7 +275,7 @@ export async function championCycle(now = Date.now()): Promise<void> {
       }
     } catch (error) {
       state.at = now; state.decision = null; state.bars = []; state.candidate = null;
-      state.lastWindow = null; state.watch = null;
+      state.lastWindow = null; state.watch = null; state.c2Started = false;
       state.status = `data Futures ditahan: ${error instanceof Error ? error.message : 'gagal'}`;
       runtimeStatus.alerts.lastFailureAt = new Date().toISOString();
       console.warn('[champion-live]', symbol, state.status);
@@ -230,14 +286,9 @@ export async function championCycle(now = Date.now()): Promise<void> {
 export async function watchChampion(): Promise<void> {
   const symbols = (process.env.CHAMPION_SYMBOLS ?? 'BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,DOGEUSDT,ADAUSDT,LINKUSDT,AVAXUSDT,SUIUSDT,LTCUSDT,TRXUSDT').split(',').map((s) => s.trim().toUpperCase())
     .filter((s) => /^[A-Z0-9]{2,24}USDT$/.test(s) && jenisPerp(s) === 'kripto').slice(0, 12);
-  for (const symbol of symbols) states.set(symbol, { bars: [], candidate: null, decision: null, watch: null, tickSize: 0,
+  for (const symbol of symbols) states.set(symbol, { bars: [], candidate: null, decision: null, watch: null, c2Started: false, tickSize: 0,
     status: 'menunggu data transaksi Futures', lastWindow: null, at: 0 });
-  // Handshake is a status notice, NOT a trade alert; never fabricate a setup.
-  if (process.env.PMB_NOTIF === '1') {
-    try { if (await sendTelegram('✅ <b>NusaQuant · otak pertarungan aktif</b>\nPMB/MA lama berhenti mengirim alarm. X 0,705 → 0,788 → batal 0,886; orderflow Futures → C1 pantau → C2 close sah → Siap. Selama data belum lengkap, tidak ada tiket.')) {
-      runtimeStatus.alerts.startupDeliveredAt = new Date().toISOString();
-    } } catch (error) { console.warn('[champion-live] status Telegram gagal:', error instanceof Error ? error.message : 'gagal'); }
-  }
+  // No Telegram startup broadcast. Trade-related messages only after C2 starts.
   for (;;) {
     await championCycle();
     await new Promise((resolve) => setTimeout(resolve, 60_000));

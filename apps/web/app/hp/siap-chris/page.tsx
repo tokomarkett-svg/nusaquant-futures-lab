@@ -9,7 +9,7 @@ type Decision = { symbol: string; side: 'LONG' | 'SHORT'; stage: 'C1' | 'BATAL' 
   stop: number; target: number | null; sizeCoin: number | null; reason: string };
 type Watch = { side: 'LONG' | 'SHORT'; x: number; fib: Fib };
 type Feed = { ok: boolean; at: string; error?: string; source?: string; universe?: string[];
-  rows: Array<{ symbol: string; status: string; windows: number; at: number; watch?: Watch | null; decision: Decision | null }> };
+  rows: Array<{ symbol: string; status: string; windows: number; at: number; c2Started?: boolean; watch?: Watch | null; decision: Decision | null }> };
 const wib = (ms: number) => new Date(ms).toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' });
 const fmt = (n: number) => n.toLocaleString('id-ID', { maximumSignificantDigits: 9 });
 
@@ -71,7 +71,7 @@ export default function ChrisSiap() {
       return <div className="hp-card" style={{ marginBottom: 8, borderLeft: d?.stage === 'C1' ? '4px solid #bd7835' : d ? '4px solid #aa4b4b' : '4px solid #6c9c88' }} key={row.symbol}>
         <b>{d?.stage === 'C1' ? '👀 C1 · PANTAU BERSYARAT' : d?.stage === 'BATAL' ? '✕ C2 GAGAL · BATAL' : d?.stage === 'BASI' ? '⌛ BASI' : '① X · MASUK ZONA'} · {row.symbol} {x.side}</b>
         <p>X {wib(x.x)} WIB · pintu 0,705: {fmt(x.fib.shallow705)} · level tengah 0,788: {fmt(x.fib.mid788)} · batal bila melewati 0,886: {fmt(x.fib.invalid886)}.</p>
-        {d && <p>{d.reason} {d.stage === 'C1' ? `C2 berikutnya harus TUTUP ${d.side === 'LONG' ? 'DI ATAS' : 'DI BAWAH'} ${fmt(d.trigger)}. Ini bukan tiket.` : 'Tidak ada izin entri.'}</p>}
+        {d && <p>{d.stage === 'C1' ? row.c2Started ? 'C2 SEDANG TERBENTUK · pantau, bukan tiket. ' : 'C1 selesai; menunggu transaksi pertama C2. ' : ''}{d.reason} {d.stage === 'C1' ? `C2 berikutnya harus TUTUP ${d.side === 'LONG' ? 'DI ATAS' : 'DI BAWAH'} ${fmt(d.trigger)}. Ini bukan tiket.` : 'Tidak ada izin entri.'}</p>}
       </div>;
     })}
     {feed?.rows.map((r) => <p className="hp-lede" key={r.symbol}><b>{r.symbol}</b> · {r.decision?.stage ?? (r.watch ? 'X' : 'MENUNGGU')} · {r.status}</p>)}

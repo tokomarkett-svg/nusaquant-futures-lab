@@ -71,3 +71,13 @@ test('tidak pakai masa depan, simbol campur, data hilang, konteks salah, lokasi 
   assert.equal(evaluateChampionSequence({ ...x, retest: { ...x.retest, profile: { ...x.retest.profile, totalDelta: 1 } } }).stage, 'TES_ULANG');
   assert.equal(evaluateChampionSequence({ ...x, flip: { ...x.flip, profile: { ...x.flip.profile, totalDelta: -1 } } }).stage, 'FLIP');
 });
+
+test('X terlalu jauh dari absorption tidak boleh ditafsirkan sebagai pertarungan yang sama', () => {
+  const v = longFixture();
+  // X touches 0.705 at t-4x5m; every later 5m bar stays inside, so no newer X.
+  for (let i = 16; i < 20; i += 1) {
+    const t = v.participation[i].candle.time;
+    v.participation[i] = bar(t, 99, 100, 97, 99, true);
+  }
+  assert.equal(evaluateChampionSequence(v).stage, 'LOKASI');
+});

@@ -46,3 +46,14 @@ test('X fib 0.705 dari luar; 0.788 angka tengah; 0.886 invalid, long/short terpi
   assert.equal(short?.side, 'SHORT');
   assert.equal(short?.fib.invalid886, 80 + .886 * 30);
 });
+
+test('C2 hilang sesudah deadline menjadi BASI, bukan Siap yang lahir terlambat', () => {
+  const d = decideChrisC2({ candidate, c1, c2: null, now: t + 2 * q, priceNow: 100.3 });
+  assert.equal(d?.stage, 'BASI');
+  assert.equal(d?.entry, null);
+});
+
+test('0,886 tersapu saat C2 baru berjalan membatalkan pantau sebelum ada tiket', () => {
+  assert.equal(decideChrisC2({ candidate, c1, c2: null, now: t + q,
+    priceNow: candidate.fib.invalid886 - .1 })?.stage, 'BATAL');
+});
