@@ -12,7 +12,6 @@ export default function SiapEntri({ rows, prices }: { rows: BoardRow[]; prices: 
   const [demo, setDemo] = useState<Record<string, { state: 'loading' | 'opened' | 'error'; message?: string }>>({});
   const [testnet, setTestnet] = useState<Set<string> | null>(null);
   const ready = rows.filter((row) => row.ticket?.actionable && row.gateAlign).slice(0, 3);
-  if (ready.length === 0) return null;
 
   useEffect(() => {
     let hidup = true;
@@ -22,6 +21,10 @@ export default function SiapEntri({ rows, prices }: { rows: BoardRow[]; prices: 
       .catch(() => { /* gagal → tombol demo tetap tampil, server testnet yang menolak */ });
     return () => { hidup = false; };
   }, []);
+
+  // Hook harus tetap dipanggil pada setiap render, termasuk saat tiket belum ada.
+  // Early return sebelum useEffect membuat React crash ketika tiket muncul/hilang.
+  if (ready.length === 0) return null;
 
   const entriDemo = async (row: BoardRow) => {
     setDemo((prev) => ({ ...prev, [row.symbol]: { state: 'loading' } }));

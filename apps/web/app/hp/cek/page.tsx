@@ -39,12 +39,13 @@ export default function CekSistem() {
     { nama: 'Supabase — skor 20 trade', status: 'cek', detail: 'membaca…' },
     { nama: 'Worker Railway', status: 'cek', detail: 'memanggil…' },
     { nama: 'Mesin PMB (pindai live)', status: 'cek', detail: 'memindai…' },
+    { nama: 'Telegram + Meja Paper', status: 'cek', detail: 'memeriksa siklus…' },
   ]);
   const [diuji, setDiuji] = useState(false);
 
   const jalankan = useCallback(async () => {
     setDiuji(true);
-    const hasil: Item[] = new Array(6);
+    const hasil: Item[] = new Array(7);
 
     const papan = await ukur('/api/nominasi');
     const p = papan?.json as { ok?: boolean; funnel?: { scanned?: number; board?: number }; market?: string; at?: string } | undefined;
@@ -75,8 +76,12 @@ export default function CekSistem() {
       detail: `${s.total ?? 0} trade disiplin · total ${(s.rTotal ?? 0) >= 0 ? '+' : ''}${s.rTotal ?? 0}R`,
     } : { nama: 'Supabase — skor 20 trade', status: 'gagal', detail: s?.error ?? 'tidak terhubung' };
 
-    const worker = await ukur(`${WORKER}/health`);
-    const w = worker?.json as { ok?: boolean; market?: string } | undefined;
+    const worker = await ukur(`${WORKER}/health/runtime`);
+    const w = worker?.json as {
+      ok?: boolean; market?: string; modes?: { alerts?: boolean; telegramAllowed?: boolean; telegramConfigured?: boolean; desk?: boolean; deskStoreConfigured?: boolean };
+      alerts?: { lastCycleAt?: string | null; startupDeliveredAt?: string | null; lastFailureAt?: string | null; scanned?: number };
+      desk?: { lastCycleAt?: string | null; lastFailureAt?: string | null; scanned?: number };
+    } | undefined;
     hasil[4] = w?.ok ? {
       nama: 'Worker Railway', status: 'ok',
       detail: `hidup · pasar ${w.market ?? '?'} · ${(worker!.ms / 1000).toFixed(1)} dtk`,
@@ -91,6 +96,18 @@ export default function CekSistem() {
     } : {
       nama: 'Mesin PMB (pindai live)', status: worker?.json ? 'lambat' : 'gagal',
       detail: j?.error ?? 'pindai pasar sedang rate-limit/timeout; worker tetap hidup',
+    };
+
+    const baru = (tanggal?: string | null) => Boolean(tanggal && Date.now() - new Date(tanggal).getTime() < 6 * 60_000);
+    const siap = Boolean(w?.modes?.alerts && w.modes.telegramAllowed && w.modes.telegramConfigured &&
+      w.modes.desk && w.modes.deskStoreConfigured);
+    const siklus = Boolean(baru(w?.alerts?.lastCycleAt) && baru(w?.desk?.lastCycleAt));
+    const sapa = Boolean(w?.alerts?.startupDeliveredAt);
+    hasil[6] = !w?.ok ? {
+      nama: 'Telegram + Meja Paper', status: 'gagal', detail: 'Diagnostik worker belum bisa dibaca.',
+    } : {
+      nama: 'Telegram + Meja Paper', status: siap && siklus && sapa ? 'ok' : 'lambat',
+      detail: `Konfigurasi ${siap ? 'aktif' : 'belum lengkap'} · Telegram ${sapa ? 'pesan sapa terkirim' : 'belum terbukti terkirim'} · scan ${w.alerts?.scanned ?? 0} koin · meja ${w.desk?.scanned ?? 0} koin · ${siklus ? 'siklus segar' : 'siklus belum segar'}`,
     };
 
     setItems(hasil);

@@ -540,7 +540,10 @@ export async function watchAlerts(): Promise<void> {
       if (!startupSent && hasToken) {
         try {
           startupSent = await sendTelegram(buildStartupText(), { chatId: effectiveChatId });
-          if (startupSent) console.log(JSON.stringify({ alerts: true, startupMessage: 'sent', at: new Date().toISOString() }));
+          if (startupSent) {
+            runtimeStatus.alerts.startupDeliveredAt = new Date().toISOString();
+            console.log(JSON.stringify({ alerts: true, startupMessage: 'sent', at: new Date().toISOString() }));
+          }
         } catch (error) {
           console.error('[alerts] gagal kirim pesan sapa:', error instanceof Error ? error.message : error);
           console.error('[alerts] diagnosa:', JSON.stringify(describeTelegramConfig()));
@@ -550,6 +553,7 @@ export async function watchAlerts(): Promise<void> {
       runtimeStatus.alerts.lastCycleAt = new Date().toISOString();
       runtimeStatus.alerts.scanned = result.scanned;
       runtimeStatus.alerts.delivered += result.sent;
+      if (result.sent > 0) runtimeStatus.alerts.lastDeliveryAt = new Date().toISOString();
       console.log(JSON.stringify({ alerts: true, scanned: result.scanned, sent: result.sent, seen: store.size(), startupSent, at: new Date().toISOString() }));
     } catch (error) {
       runtimeStatus.alerts.lastFailureAt = new Date().toISOString();

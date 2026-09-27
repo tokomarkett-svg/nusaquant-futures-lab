@@ -1,7 +1,7 @@
 /** Diagnostik baca-saja untuk memastikan worker tidak hanya menjawab /health.
  * Tidak memuat token, chat ID, detail posisi, atau isi pesan Telegram. */
 export const runtimeStatus = {
-  alerts: { lastCycleAt: null as string | null, lastFailureAt: null as string | null, scanned: 0, delivered: 0 },
+  alerts: { lastCycleAt: null as string | null, lastFailureAt: null as string | null, startupDeliveredAt: null as string | null, lastDeliveryAt: null as string | null, scanned: 0, delivered: 0 },
   desk: { lastCycleAt: null as string | null, lastFailureAt: null as string | null, scanned: 0, opened: 0, closed: 0 },
 };
 
