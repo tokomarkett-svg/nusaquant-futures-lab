@@ -8,7 +8,7 @@
  * menjadi membaca PASAR YANG SAMA: futures.
  */
 import http from 'node:http';
-import { STALE_CANDLE_MINUTES } from '@nusaquant/core';
+import { STALE_CANDLE_MINUTES, gateMatchesSide } from '@nusaquant/core';
 import zlib from 'node:zlib';
 import { bukaDemo, tutupDemo, demoReadiness, tokenSah } from './exec-demo.ts';
 import { sendTelegram, scanAlertCandidatesShared, tiketMasihSah, type AlertScanRow } from './alerts.ts';
@@ -48,7 +48,7 @@ export function papanPayload(snapshot: PapanSnapshot, now = Date.now()) {
   const rows = snapshot.rows.map((r) => {
     const ageMin = r.dataAgeMin + Math.max(0, Math.floor((now - r.scannedAt) / 60_000));
     const siap = Boolean(r.market === 'FUTURES' && r.setup.valid && r.ticket?.actionable && r.gateAlign
-      && tiketMasihSah(r.setup.candle2, now) && ageMin <= STALE_CANDLE_MINUTES && now - r.scannedAt <= 120_000);
+      && gateMatchesSide(r.gate, r.side) && tiketMasihSah(r.setup.candle2, now) && ageMin <= STALE_CANDLE_MINUTES && now - r.scannedAt <= 120_000);
     return {
       symbol: r.symbol, side: r.side, price: r.priceNow, gate: r.gate, gateAlign: r.gateAlign,
       siap, basi: Boolean(r.ticket && (!r.ticket.actionable || !tiketMasihSah(r.setup.candle2, now) || ageMin > STALE_CANDLE_MINUTES)),

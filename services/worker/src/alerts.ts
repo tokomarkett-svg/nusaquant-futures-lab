@@ -8,7 +8,7 @@
 
 import {
   MIN_QUOTE_VOLUME, MIN_RANGE_PCT, STALE_CANDLE_MINUTES,
-  computeZones, distanceToPintu, detectSetup, computeTicket, gateFromCandles, jenisPerp,
+  computeZones, distanceToPintu, detectSetup, computeTicket, gateFromCandles, gateAlignForSide, gateMatchesSide, jenisPerp,
   type Candle, type SetupMarkers, type Side, type Ticket, type Zones,
 } from '@nusaquant/core';
 import { BinancePublicMarketDataClient, scanMarketClient, type DataMarket } from './market-data.ts';
@@ -126,9 +126,10 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket, papan
   const lahirText = candidate.setup.candle2
     ? `⏳ Lahir ${jamWib(candidate.setup.candle2)} WIB · SAH sampai ${jamWib(tiketSahSampai(candidate.setup.candle2))} WIB (3 candle ×15m) — lewat itu TIKET BASI, jangan entri.`
     : '';
+  const searah = candidate.gateAlign && gateMatchesSide(candidate.gate, candidate.side);
 
   // Kartu SIAP ENTRI: hanya untuk tiket actionable + gate searah — angka entry jadi hero.
-  if (candidate.gateAlign && ticket.actionable) {
+  if (searah && ticket.actionable) {
     const orderSide = candidate.side === 'LONG' ? 'BUY' : 'SELL';
     return [
       `🎯 <b>TIKET FUTURES SAH — ${candidate.symbol} ${candidate.side}</b>`,
@@ -138,7 +139,7 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket, papan
       `✅ TP     : ${format(ticket.target)}  (+${ticket.rewardUsdt} USDT)`,
       `📦 Ukuran : ${ticket.sizeCoin.toLocaleString('id-ID', { maximumFractionDigits: 4 })} coin`,
       '',
-      `Gate 1H ${candidate.gate} · MA99 searah ✔ · stop ${ticket.riskPct.toFixed(2)}% dari entry · target 2R`,
+      `Gate 1H ${candidate.gate} · MA25/MA99 1H+15m searah ✔ · stop ${ticket.riskPct.toFixed(2)}% dari entry · target 2R`,
       marketText,
       ...(jenisPerpText(candidate.jenis) ? [jenisPerpText(candidate.jenis)!] : []),
       garisText,
@@ -153,12 +154,12 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket, papan
     ].join('\n');
   }
 
-  const status = !candidate.gateAlign
+  const status = !searah
     ? '⚠️ <b>TIKET TERBENTUK TAPI GATE BELUM SEARAH — JANGAN EKSEKUSI</b>'
     : '🟠 <b>TIKET BASI — jangan dikejar</b>';
   return [
     `${status}`,
-    `<b>${candidate.symbol}</b> · ${candidate.side} · gate 1H ${candidate.gate}${candidate.gateAlign ? ' ✔' : ''}`,
+    `<b>${candidate.symbol}</b> · ${candidate.side} · gate 1H ${candidate.gate}${searah ? ' ✔' : ''}`,
     ...(jenisPerpText(candidate.jenis) ? [jenisPerpText(candidate.jenis)!] : []),
     '',
     `Entry  : <b>${format(ticket.entry)}</b>`,
@@ -166,7 +167,7 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket, papan
     `Target : ${format(ticket.target)}  (2R)`,
     `Ukuran : ${ticket.sizeCoin.toLocaleString('id-ID', { maximumFractionDigits: 4 })} coin  (risiko ${ticket.riskUsdt} USDT → imbalan ${ticket.rewardUsdt} USDT)`,
     '',
-    !candidate.gateAlign
+    !searah
       ? `⛔ Gate 1H = ${candidate.gate} — tidak searah dengan ${candidate.side}. Tunggu gate berbalik; tiket ini untuk latihan/jurnal saja.`
       : ticket.warnings.length ? `⚠ ${ticket.warnings.join(' · ')}` : 'Semua pagar lolos: gate searah, stop di sisi benar, harga belum lari.',
     '',
@@ -210,7 +211,7 @@ export function collectAlertsForCandidate(
 
     // SIAP ENTRI hanya untuk tiket MASIH SAH — tiket tua dilarang keras tampil sebagai sinyal segar.
     if (!sudahDikabari && masihSah && candidate.ticket && candidate.ticket.actionable) {
-      const kind = candidate.gateAlign ? 'TIKET' : 'TIKET_TANPA_GATE';
+      const kind = candidate.gateAlign && gateMatchesSide(candidate.gate, candidate.side) ? 'TIKET' : 'TIKET_TANPA_GATE';
       const allowed = mode === 'semua' || (mode === 'tiketsiap' && kind === 'TIKET') || mode === 'tiketsemua';
       if (allowed) messages.push({ key, kind, text: buildTicketText(candidate, candidate.ticket, options.papanUrl) });
     }
@@ -372,26 +373,11 @@ export async function scanAlertCandidates(client: BinancePublicMarketDataClient,
         const candleHariIni = m15.find((c) => c.time === mulaiHariWib);
         if (!candleHariIni || ticker.last === candleHariIni.open) return null;
         const side: Side = ticker.last > candleHariIni.open ? 'LONG' : 'SHORT';
-        // ATURAN UNGU KETAT (pelajaran pemilik): harga harus JELAS di sisi yang benar dari garis
-        // ungu (MA99) — bukan nempel di garis. Margin minimal 0,5%.
-        // Insiden BANK 25/9 22:47 WIB: cuma +0,35% di atas ungu, struktur 15m masih turun → long
-        // bocor. Putusan pemilik benar: itu bukan "trend naik", itu nempel garis.
-        const MARGIN_UNGU = 0.005;
-        // Sebelumnya kandidat yang belum lolos MA99 dihapus total. Akibatnya tahap
-        // PINTU/C1/C2 tidak pernah terlihat di aplikasi, walau rumus sudah diproses.
-        // Kini tetap catat progres, tetapi hanya gateAlign=true bisa menjadi SIAP/alarm.
-        const closes15 = (m15 as Candle[]).map((c) => c.close);
-        const ungu15 = m15.length >= 99
-          ? closes15.slice(-99).reduce((acc, v) => acc + v, 0) / 99 : Number.NaN;
-        const close15 = closes15.at(-1) ?? Number.NaN;
-        const jelas15 = side === 'LONG'
-          ? close15 >= ungu15 * (1 + MARGIN_UNGU)
-          : close15 <= ungu15 * (1 - MARGIN_UNGU);
-        const gateInfo = gateFromCandles(h1);
-        const jelas1h = side === 'LONG'
-          ? gateInfo.close >= gateInfo.ma99 * (1 + MARGIN_UNGU)
-          : gateInfo.close <= gateInfo.ma99 * (1 - MARGIN_UNGU);
-        const gateAlign = jelas15 && jelas1h;
+        // Tahap PINTU/C1/C2 tetap ditampilkan meski gate belum lolos.
+        // Tiket SIAP baru boleh ketika warna gate 1H + 15m benar-benar searah:
+        // MA25 berada di sisi MA99 yang sesuai DAN harga melewati MA99 ≥0,5%.
+        // Fungsi core yang sama dipakai oleh manualTicket aplikasi (alarm tidak beda rumus).
+        const gateAlign = gateAlignForSide(m15 as Candle[], h1 as Candle[], side);
         const setup = detectSetup(m15 as Candle[], zones, side);
         const ticket = computeTicket(m15 as Candle[], zones, side, ticker.last);
         const row: AlertScanRow = {
@@ -468,7 +454,7 @@ export async function scanAlertCandidatesShared(
  * Fail closed: token/koneksi/app/Testnet bermasalah => tidak ada alarm SIAP. */
 export async function appConfirmsReady(row: AlertScanRow, options: { fetchImpl?: typeof fetch; baseUrl?: string; token?: string } = {}): Promise<boolean> {
   const c2 = row.setup.candle2;
-  if (!c2 || !row.setup.valid || !row.ticket?.actionable || !row.gateAlign || row.market !== 'FUTURES'
+  if (!c2 || !row.setup.valid || !row.ticket?.actionable || !row.gateAlign || !gateMatchesSide(row.gate, row.side) || row.market !== 'FUTURES'
     || !tiketMasihSah(c2) || Date.now() - row.scannedAt > 120_000 || row.dataAgeMin > STALE_CANDLE_MINUTES) return false;
   const token = options.token ?? process.env.EXEC_TOKEN;
   const base = options.baseUrl ?? process.env.ALERT_CHECK_BASE_URL ?? 'https://web-gray-eta-79.vercel.app';
@@ -509,6 +495,7 @@ export async function runAlertCycle(
     // Pernah mengabarkan tiket? Kirim peringatan BASI saat jendela habis (bukan alarm entry baru).
     messages.push(...pending.filter((message) => message.kind === 'TIKET_BASI'));
     if (!pending.some((message) => message.kind === 'TIKET')) continue;
+    if (!gateMatchesSide(row.gate, row.side)) continue; // pagar juga aktif pada mock/cache dan saat rolling deploy
     if (!(await (options.confirmReady ?? appConfirmsReady)(row))) continue;
     if (!tiketMasihSah(row.setup.candle2)) continue;
     messages.push(...pending.filter((message) => message.kind === 'TIKET').map((message) => ({
@@ -537,8 +524,8 @@ export function buildStartupText(): string {
     '',
     'Bot memantau seluruh pasar USDT dengan sistem pintu–manis–batal.',
     'Yang akan kamu terima:',
-    '🔔 BEL PINTU — harga menyentuh pintu & gate searah',
-    '🎯 TIKET FUTURES SAH — hanya saat rumus aplikasi mengesahkan sinyal; status order Demo terpisah',
+    '📋 Pintu/C1/C2/Basi/Batal dipantau di Papan aplikasi, bukan alarm entri.',
+    '🎯 Alarm TIKET FUTURES SIAP — hanya saat rumus aplikasi mengesahkan arah, gate, dan tiket.',
     '',
     'Alarm bukan order. Login di aplikasi, periksa ulang dan setujui sendiri per tiket; Demo terkunci sampai diaktifkan, uang asli selalu terkunci.',
   ].join('\n');

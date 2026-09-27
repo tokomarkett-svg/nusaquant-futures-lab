@@ -105,6 +105,23 @@ export function gateFromCandles(h1: Candle[]): { gate: Gate; close: number; ma25
   return { gate: 'KUNING', close, ma25, ma99 };
 }
 
+/** Gerbang arah untuk TIKET SIAP: warna gate 1H dan tren 15m harus benar-benar
+ * searah, termasuk posisi MA25 terhadap MA99. Harga di sisi MA99 saja tidak cukup:
+ * saat MA25 masih berlawanan, gate 1H/15m tetap KUNING dan alarm harus ditolak.
+ * Keduanya memakai candle tertutup (kesegaran & arah open WIB diperiksa pemanggil). */
+export function gateMatchesSide(gate: Gate, side: Side): boolean {
+  return gate === (side === 'LONG' ? 'HIJAU' : 'MERAH');
+}
+
+export function gateAlignForSide(m15: Candle[], h1: Candle[], side: Side): boolean {
+  const fast = gateFromCandles(m15);
+  const slow = gateFromCandles(h1);
+  const margin = 0.005;
+  return gateMatchesSide(fast.gate, side) && gateMatchesSide(slow.gate, side) && (side === 'LONG'
+    ? fast.close >= fast.ma99 * (1 + margin) && slow.close >= slow.ma99 * (1 + margin)
+    : fast.close <= fast.ma99 * (1 - margin) && slow.close <= slow.ma99 * (1 - margin));
+}
+
 export function bucketOf(minutes: number | null): Bucket | null {
   if (minutes === null) return null;
   if (minutes < 60) return '<1 jam';

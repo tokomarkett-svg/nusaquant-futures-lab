@@ -1,4 +1,5 @@
 import type { Board } from './binance';
+import { gateMatchesSide } from '@nusaquant/core';
 import { ticketTimeValid } from './binance';
 import { manualTicket, type ManualTicket } from './manual-ticket';
 import { simbolTestnet } from './testnet';
@@ -16,7 +17,7 @@ export async function markDemoReadiness(
     const candidate = row.technicalReady === true;
     row.technicalReady = false;
     row.demoReady = false;
-    if (!candidate || board.market !== 'FUTURES' || !row.ticket?.actionable || !row.gateAlign || row.status === 'PADAM'
+    if (!candidate || board.market !== 'FUTURES' || !row.ticket?.actionable || !row.gateAlign || !gateMatchesSide(row.gate, row.side) || row.status === 'PADAM'
       || !ticketTimeValid(row.setup.candle2, now) || row.dataAgeMin > 45) return;
     try {
       const verified = await verify(row.symbol, row.side);

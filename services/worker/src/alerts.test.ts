@@ -94,7 +94,8 @@ test('bel pintu tidak dikirim kalau gate belum searah', () => {
 test('pesan sapa startup memuat label aktif dan aturan risiko', () => {
   const text = buildStartupText();
   assert.match(text, /alert aktif/);
-  assert.match(text, /BEL PINTU/);
+  assert.match(text, /Pintu\/C1\/C2\/Basi\/Batal dipantau/);
+  assert.doesNotMatch(text, /🔔 BEL PINTU/);
   assert.match(text, /Alarm bukan order/);
 });
 
@@ -271,6 +272,8 @@ test('alarm SIAP hanya jika app memvalidasi setup yang sama, harga sama, dan bel
   assert.equal(await appConfirmsReady(row, { ...base, fetchImpl: reply({ ...valid, expiresAt: new Date(Date.now() - 1).toISOString() }) }), false);
   assert.equal(await appConfirmsReady(row, { ...base, fetchImpl: reply({ ok: false }, 409) }), false);
   assert.equal(await appConfirmsReady({ ...row, market: 'SPOT' }, { ...base, fetchImpl: reply(valid) }), false);
+  assert.equal(await appConfirmsReady({ ...row, gate: 'KUNING' }, { ...base, fetchImpl: reply(valid) }), false);
+  assert.doesNotMatch(buildTicketText({ ...row, gate: 'KUNING' }, row.ticket!), /TIKET FUTURES SAH/);
   assert.equal(await appConfirmsReady({ ...row, scannedAt: Date.now() - 180_000 }, { ...base, fetchImpl: reply(valid) }), false);
   assert.equal(await appConfirmsReady(row, { ...base, token: '', fetchImpl: reply(valid) }), false);
 });
@@ -292,4 +295,24 @@ test('scanner mempertahankan tahap koin yang belum lolos MA99 agar aplikasi bisa
   assert.equal(rows.length, 1, 'koin belum searah tidak boleh lenyap dari progres scanner');
   assert.equal(rows[0].gateAlign, false, 'tidak akan mengirim alarm SIAP');
   assert.equal(rows[0].symbol, 'TESTUSDT');
+});
+
+test('scanner tidak menandai gateAlign ketika 1H KUNING walau close sudah melewati MA99', async () => {
+  const now = Date.now();
+  const t15 = Math.floor(now / 900_000) * 900_000 - 900_000;
+  const t1h = Math.floor(now / 3_600_000) * 3_600_000 - 3_600_000;
+  const market = {
+    marketUsed: () => 'FUTURES',
+    get24hTickerDetails: async () => [{ symbol: 'TESTUSDT', last: 104, high: 140, low: 80, quoteVolume: 50_000_000 }],
+    getKlines: async ({ interval }: { interval: string }) => interval === '15m'
+      ? Array.from({ length: 140 }, (_, i) => ({ time: t15 - (139 - i) * 900_000,
+        open: 100, high: 105, low: 99, close: i === 139 ? 104 : 100, volume: 1 }))
+      : Array.from({ length: 130 }, (_, i) => ({ time: t1h - (129 - i) * 3_600_000,
+        open: 100, high: 112, low: 89, close: i < 31 ? 100 : i < 80 ? 110 : i === 129 ? 104 : 90, volume: 1 })),
+  } as unknown as import('./market-data.ts').BinancePublicMarketDataClient;
+  const rows = await scanAlertCandidates(market, 10);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].side, 'LONG');
+  assert.equal(rows[0].gate, 'KUNING');
+  assert.equal(rows[0].gateAlign, false, 'jangan ada SIAP ketika gate 1H belum searah');
 });

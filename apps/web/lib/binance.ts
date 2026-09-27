@@ -127,7 +127,7 @@ export async function fetchKlines(symbol: string, interval: string, limit = 200)
 
 export {
   RATIO, MIN_RANGE_PCT, MIN_QUOTE_VOLUME, STALE_CANDLE_MINUTES, TOUCH_EXPIRY_CANDLES, RISK_USDT, TARGET_R,
-  zoneOf, computeZones, smaSeries, gateFromCandles, bucketOf, distanceToPintu, detectTouchAge, detectSetup, computeTicket,
+  zoneOf, computeZones, smaSeries, gateFromCandles, gateAlignForSide, bucketOf, distanceToPintu, detectTouchAge, detectSetup, computeTicket,
 } from '@nusaquant/core';
 export type {
   Side, Gate, Status, Bucket, Zone, Zones, TickerLike, SetupMarkers, Ticket,
@@ -136,7 +136,7 @@ export type {
 // dipakai internal berkas ini juga
 import {
   MIN_QUOTE_VOLUME, MIN_RANGE_PCT, STALE_CANDLE_MINUTES, TOUCH_EXPIRY_CANDLES,
-  computeZones, gateFromCandles, smaSeries, bucketOf, distanceToPintu, detectTouchAge, detectSetup, computeTicket,
+  computeZones, gateFromCandles, gateAlignForSide, smaSeries, bucketOf, distanceToPintu, detectTouchAge, detectSetup, computeTicket,
 } from '@nusaquant/core';
 import type { Side, Gate, Status, Bucket, Zones, SetupMarkers, Ticket } from '@nusaquant/core';
 import { jenisPerp } from '@nusaquant/core';
@@ -192,14 +192,9 @@ export function gateTeknik(m15: Candle[], h1: Candle[], last: number, side: Side
       now - (last1h.time + 3_600_000) > 75 * 60_000) {
     return { ok: false, reason: 'Candle 15m/1H basi; gate tidak boleh dipakai.' };
   }
-  const ma15 = smaSeries(m15.map((c) => c.close), 99).at(-1)!;
-  const ma1h = smaSeries(h1.map((c) => c.close), 99).at(-1)!;
-  const margin = 0.005;
-  const aligns = side === 'LONG'
-    ? last15.close >= ma15 * (1 + margin) && last1h.close >= ma1h * (1 + margin)
-    : last15.close <= ma15 * (1 - margin) && last1h.close <= ma1h * (1 - margin);
-  return aligns ? { ok: true, reason: 'MA99 15m dan 1H searah.' }
-    : { ok: false, reason: 'MA99 15m atau 1H belum searah dengan margin 0,5%.' };
+  return gateAlignForSide(m15, h1, side)
+    ? { ok: true, reason: 'Gate 1H/15m MA25–MA99 searah dengan margin 0,5%.' }
+    : { ok: false, reason: 'Gate 1H/15m belum searah: periksa warna gate, MA25/MA99 dan margin 0,5%.' };
 }
 
 export async function scanBoard(limit = 40): Promise<Board> {

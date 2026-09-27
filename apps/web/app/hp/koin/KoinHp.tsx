@@ -37,12 +37,17 @@ type Detail = {
 };
 
 const TF = ['5m', '15m', '1h', '4h'] as const;
-/** Pilih sisi yang ditonjolkan: yang sah dulu, lalu yang paling jauh progresnya. */
+/** Jangan menonjolkan pola sisi lawan saat alarm aplikasi sudah mengesahkan arah lain.
+ * Prioritas: tiket siap, arah/gate hari WIB, baru progres pola informatif. */
 function pilihSisi(d: Detail): { sisi: 'LONG' | 'SHORT'; setup: Setup; ticket: Ticket | null } {
   const kandidat: Array<['LONG' | 'SHORT', Setup, Ticket | null]> = [
     ['LONG', d.setupLong, d.ticketLong],
     ['SHORT', d.setupShort, d.ticketShort],
   ];
+  const ready = kandidat.find(([s]) => s === 'LONG' ? d.technicalReadyLong : d.technicalReadyShort);
+  if (ready) return { sisi: ready[0], setup: ready[1], ticket: ready[2] };
+  const aligned = kandidat.find(([s]) => s === 'LONG' ? d.gateAlignLong : d.gateAlignShort);
+  if (aligned) return { sisi: aligned[0], setup: aligned[1], ticket: aligned[2] };
   const sah = kandidat.find(([, s]) => s.valid);
   if (sah) return { sisi: sah[0], setup: sah[1], ticket: sah[2] };
   const adaC1 = kandidat.find(([, s]) => s.candle1 !== null);
@@ -120,7 +125,7 @@ export default function KoinHp({ symbol }: { symbol: string }) {
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '8px 0' }}>
             <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 9px', borderRadius: 999, background: pilihan.sisi === 'LONG' ? WARNA.mintSoft : WARNA.redSoft, color: pilihan.sisi === 'LONG' ? WARNA.greenDark : WARNA.red, border: `1px solid ${pilihan.sisi === 'LONG' ? '#bfe8d1' : '#f3cdd6'}` }}>{pilihan.sisi}</span>
             <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 9px', borderRadius: 999, background: searah ? WARNA.mintSoft : WARNA.amberSoft, color: searah ? '#0d7a4b' : '#9a6b00', border: `1px solid ${searah ? '#bfe8d1' : '#ecd9a0'}` }}>
-              Arah hari + MA99 15m/1H {searah ? '· searah ✓' : '· belum searah'}
+              Arah hari + gate MA25/MA99 15m/1H {searah ? '· searah ✓' : '· belum searah'}
             </span>
             <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 9px', borderRadius: 999, background: '#eef1f4', color: '#5d6b76', border: '1px solid #d4dde4' }}>range 24j {data.zones.rangePct.toFixed(1)}%</span>
           </div>
@@ -157,7 +162,7 @@ export default function KoinHp({ symbol }: { symbol: string }) {
           ) : (
             <div className="hp-card hp-empty" style={{ textAlign: 'left', padding: '15px 16px' }}>
               <b>Belum ada tiket yang boleh dieksekusi</b>
-              <p>{tf !== '15m' ? 'Timeframe ini untuk melihat struktur saja. Periksa setup entry pada 15m.' : !searah ? 'Arah hari/MA99 15m dan 1H belum searah — jangan entry.' : !dataSegar ? 'Data belum segar; tunggu pemindaian terbaru.' : pilihan.ticket?.actionable ? 'Pola teknis ada, tetapi gerbang aplikasi/Testnet belum menyatakan tiket siap. Jangan entry.' : pilihan.setup.notes.at(-1) ?? 'Paket X → candle 1 → candle 2 belum lengkap.'}</p>
+              <p>{tf !== '15m' ? 'Timeframe ini untuk melihat struktur saja. Periksa setup entry pada 15m.' : !searah ? 'Arah hari/gate MA25–MA99 15m dan 1H belum searah — jangan entry.' : !dataSegar ? 'Data belum segar; tunggu pemindaian terbaru.' : pilihan.ticket?.actionable ? 'Pola teknis ada, tetapi gerbang aplikasi/Testnet belum menyatakan tiket siap. Jangan entry.' : pilihan.setup.notes.at(-1) ?? 'Paket X → candle 1 → candle 2 belum lengkap.'}</p>
               {pilihan.ticket && !pilihan.ticket.actionable && (
                 <div style={{ fontSize: 11, color: '#9a6b00', marginTop: 6 }}>⚠ Tiket lama ada tapi tidak layak: {pilihan.ticket.warnings.join(' · ') || 'pagar belum lolos'}</div>
               )}

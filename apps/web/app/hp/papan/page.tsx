@@ -59,7 +59,7 @@ export default function PapanHp() {
   const tampil = useMemo(() => {
     const kata = cari.trim().toUpperCase().replace(/USDT$/, '');
     return rows.filter((row) => (!kata || row.symbol.includes(kata))
-      && (sisi === 'SEMUA' || row.side === sisi)
+      && (sisi === 'SEMUA' || (signalStage(row, board?.at ?? '', sekarang ?? Date.now()) !== 'PANTAU' && row.side === sisi))
       && (filter === 'SEMUA' || signalStage(row, board?.at ?? '', sekarang ?? Date.now()) === filter));
   }, [rows, board, filter, sisi, cari, sekarang]);
 
@@ -93,11 +93,13 @@ export default function PapanHp() {
           <Link key={row.symbol} href={`/hp/koin/${row.symbol}`} className={`hp-card hp-market-row${stage === 'BATAL' || stage === 'BASI' ? ' is-off' : ''}`}>
             <div className="hp-market-row-top">
               <span className="hp-market-row-name">{row.symbol.replace('USDT', '')}</span>
-              <span style={badgeSisi(row).style}>{badgeSisi(row).text}</span>
+              {stage === 'PANTAU'
+                ? <span style={{ fontSize: 11, color: '#697c76', fontWeight: 700 }}>ARAH BELUM TERVERIFIKASI</span>
+                : <span style={badgeSisi(row).style}>{badgeSisi(row).text}</span>}
               {badgeJenis(row)}
               <span className="hp-market-row-price">{fmt(row.last)}</span>
             </div>
-            <div className="hp-market-row-status">{label} · Gate 1H {row.gate}{row.gateAlign ? ' · MA99 searah ✓' : ''}{stage === 'SIAP' && !row.demoReady ? ' · belum tersedia di Testnet' : ''}</div>
+            <div className="hp-market-row-status">{label} · Gate 1H {row.gate}{row.gateAlign ? ' · gate MA25/MA99 searah ✓' : ''}{stage === 'SIAP' && !row.demoReady ? ' · belum tersedia di Testnet' : ''}</div>
             <Pita row={row} />
             <div className="hp-market-row-meta">{row.setup.note ?? 'Menunggu bukti candle yang lengkap.'} · range {row.rangePct.toFixed(1)}% · vol {row.volJt}jt</div>
           </Link>

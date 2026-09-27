@@ -49,3 +49,18 @@ test('tombol paper/demo wajib menolak tiket lewat 3 candle sesudah C2 tutup', ()
   assert.equal(ticketTimeValid(c2, c2 + 4 * step + 1), false);
   assert.equal(ticketTimeValid(null, c2 + step), false);
 });
+
+test('verifikasi web tidak boleh menyebut siap LONG/SHORT ketika gate MA25–MA99 1H masih KUNING', () => {
+  const now = Date.now();
+  const last15 = Math.floor(now / step) * step - step;
+  const last1h = Math.floor(now / 3_600_000) * 3_600_000 - 3_600_000;
+  const m15 = Array.from({ length: 140 }, (_, i) => candle(last15 - (139 - i) * step));
+  const h1long = Array.from({ length: 130 }, (_, i) => candle(last1h - (129 - i) * 3_600_000,
+    i < 31 ? 100 : i < 80 ? 110 : i === 129 ? 104 : 90));
+  m15.at(-1)!.close = 104;
+  assert.equal(gateTeknik(m15, h1long, 104, 'LONG', now).ok, false);
+  const h1short = Array.from({ length: 130 }, (_, i) => candle(last1h - (129 - i) * 3_600_000,
+    i < 31 ? 100 : i < 80 ? 90 : i === 129 ? 96 : 110));
+  m15.at(-1)!.close = 96;
+  assert.equal(gateTeknik(m15, h1short, 96, 'SHORT', now).ok, false);
+});

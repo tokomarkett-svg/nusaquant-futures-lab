@@ -171,3 +171,24 @@ test('statusFor: zona padam menang atas semua — bukan MENYALA walau harga di d
   assert.equal(statusFor(true, true, 0, true), 'PADAM');
   assert.equal(statusFor(false, true, 0, false), 'MENYALA');
 });
+
+test('gerbang arah menolak gate KUNING walau harga sudah >MA99 untuk LONG / <MA99 untuk SHORT', async () => {
+  const { gateAlignForSide, gateFromCandles } = await import('./zones.ts');
+  const step = 900_000;
+  const candles = (prices: number[]) => prices.map((close, i) => ({ time: i * step + step, open: close, high: close + 1, low: close - 1, close, volume: 1 }));
+  const m15long = candles([...Array(139).fill(100), 104]);
+  const h1long = candles([...Array(31).fill(100), ...Array(49).fill(110), ...Array(49).fill(90), 104]);
+  assert.equal(gateFromCandles(h1long).gate, 'KUNING');
+  assert.ok(h1long.at(-1)!.close > gateFromCandles(h1long).ma99 * 1.005);
+  assert.equal(gateAlignForSide(m15long, h1long, 'LONG'), false, 'MA25 1H berlawanan: bukan tiket LONG');
+  const m15short = candles([...Array(139).fill(100), 96]);
+  const h1short = candles([...Array(31).fill(100), ...Array(49).fill(90), ...Array(49).fill(110), 96]);
+  assert.equal(gateFromCandles(h1short).gate, 'KUNING');
+  assert.ok(h1short.at(-1)!.close < gateFromCandles(h1short).ma99 * 0.995);
+  assert.equal(gateAlignForSide(m15short, h1short, 'SHORT'), false, 'MA25 1H berlawanan: bukan tiket SHORT');
+  const h1green = candles([...Array(129).fill(100), 104]);
+  const h1red = candles([...Array(129).fill(100), 96]);
+  assert.equal(gateAlignForSide(m15long, h1green, 'LONG'), true);
+  assert.equal(gateAlignForSide(m15short, h1red, 'SHORT'), true);
+  assert.equal(gateAlignForSide(m15long, h1green, 'SHORT'), false);
+});
