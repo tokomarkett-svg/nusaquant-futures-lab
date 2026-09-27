@@ -387,6 +387,7 @@ export function evaluateSignal({
 }
 
 export * from './zones';
+export * from './orderflow-profile';
 export * from './intelligence';
 export * from './opportunity';
 export * from './backtest';
