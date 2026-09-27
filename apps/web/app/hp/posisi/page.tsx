@@ -8,6 +8,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
+import HpHeader from '../HpHeader';
 import { WARNA, digitsFor, fmt, salinTeks, umur } from '../bahan';
 
 type Posisi = {
@@ -30,7 +31,7 @@ export default function PosisiHp() {
     try {
       const r = await fetch('/api/meja', { cache: 'no-store' });
       const p = await r.json();
-      if (!p.ok && !p.open) throw new Error(p.error ?? 'Gagal membaca meja.');
+      if (!p.ok) throw new Error(p.error ?? 'Gagal membaca meja.');
       setData(p as DataMeja);
       setError(null);
     } catch (e) {
@@ -42,9 +43,9 @@ export default function PosisiHp() {
     try {
       const r = await fetch('/api/harga', { cache: 'no-store' });
       const p = await r.json();
-      if (p.ok) setHarga(p.prices as Record<string, number>);
+      setHarga(p.ok ? p.prices as Record<string, number> : {});
     } catch {
-      /* tick gagal = pertahankan harga terakhir */
+      setHarga({});
     }
   }, []);
 
@@ -56,8 +57,8 @@ export default function PosisiHp() {
     return () => { clearInterval(a); clearInterval(b); };
   }, [muatMeja, muatHarga]);
 
-  const open = data?.open ?? [];
-  const today = data?.today;
+  const open = !error ? data?.open ?? [] : [];
+  const today = !error ? data?.today : null;
 
   const salin = async (p: Posisi) => {
     const d = digitsFor(p.entry);
@@ -69,36 +70,35 @@ export default function PosisiHp() {
   };
 
   return (
-    <div style={{ padding: '10px 12px 0' }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 2px 10px' }}>
-        <div style={{ width: 30, height: 30, borderRadius: 9, background: WARNA.gelap, color: WARNA.mint, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 13 }}>N</div>
-        <b style={{ fontSize: 15 }}>Posisi</b>
-        <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, color: '#0d7a4b', background: WARNA.mintSoft, border: '1px solid #bfe8d1', padding: '3px 9px', borderRadius: 999 }}>PAPER · 0,31/trade</span>
-      </header>
-
-      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+    <div className="hp-page">
+      <HpHeader tag="PAPER · 0,31/trade" />
+      <p className="hp-eyebrow">POSISI <b>·</b> RISIKO TETAP TERUKUR</p>
+      <h1 className="hp-heading">Posisi berjalan.</h1>
+      <p className="hp-lede">P/L dalam satuan R. Selalu lihat stop, target dan harga terkini.</p>
+      <div className="hp-metrics">
         {[
           { n: open.length, l: 'BERJALAN', c: WARNA.ink },
           { n: today?.wins ?? 0, l: 'MENANG', c: '#0d7a4b' },
           { n: today?.losses ?? 0, l: 'KALAH', c: WARNA.red },
           { n: `${(today?.rTotal ?? 0) >= 0 ? '+' : ''}${(today?.rTotal ?? 0).toFixed(2)}R`, l: 'HARI INI', c: (today?.rTotal ?? 0) >= 0 ? '#0d7a4b' : WARNA.red },
         ].map((kotak) => (
-          <div key={kotak.l} style={{ flex: 1, background: '#fff', border: '1px solid var(--line)', borderRadius: 14, padding: '9px 6px', textAlign: 'center' }}>
-            <div style={{ fontSize: 18, fontWeight: 800, color: kotak.c }}>{kotak.n}</div>
-            <div style={{ fontSize: 8.5, color: WARNA.muted, fontWeight: 700, letterSpacing: 0.4 }}>{kotak.l}</div>
+          <div key={kotak.l} className="hp-metric">
+            <b style={{ color: kotak.c }}>{kotak.n}</b>
+            <small>{kotak.l}</small>
           </div>
         ))}
       </div>
 
       {error && <div style={{ background: WARNA.redSoft, color: WARNA.red, border: '1px solid #f3cdd6', borderRadius: 12, padding: '10px 12px', fontSize: 12.5, marginBottom: 10 }}>{error}</div>}
       {!error && open.length === 0 && (
-        <div style={{ background: '#fff', border: '1px dashed var(--line)', borderRadius: 16, padding: '18px 14px', textAlign: 'center' }}>
-          <div style={{ fontSize: 24 }}>💼</div>
-          <b style={{ fontSize: 13.5 }}>Tidak ada posisi berjalan</b>
-          <div style={{ fontSize: 12, color: WARNA.muted, marginTop: 4 }}>Meja membuka posisi otomatis saat tiket sah muncul.</div>
+        <div className="hp-card hp-empty">
+          <span className="hp-empty-icon" aria-hidden="true">◫</span>
+          <b>{data ? 'Tidak ada posisi berjalan' : 'Memuat posisi paper…'}</b>
+          <p>{data ? 'Meja hanya membuka posisi saat tiket sah dan pagar risiko terpenuhi.' : 'Menunggu data meja dari Supabase.'}</p>
         </div>
       )}
 
+      {open.length > 0 && <div className="hp-section-label">DIPANTAU MEJA <small>{open.length} posisi paper</small></div>}
       {open.map((p) => {
         const long = p.side === 'LONG';
         const d = digitsFor(p.entry);
@@ -109,7 +109,7 @@ export default function PosisiHp() {
           ? Math.max(0, Math.min(100, (long ? (kini - p.stop) / (p.target - p.stop) : (p.stop - kini) / (p.stop - p.target)) * 100))
           : Math.max(0, Math.min(100, (long ? (p.entry - p.stop) / (p.target - p.stop) : (p.stop - p.entry) / (p.stop - p.target)) * 100));
         return (
-          <div key={p.symbol} style={{ background: '#fff', border: '1px solid var(--line)', borderLeft: `3px solid ${long ? '#0d7a4b' : WARNA.red}`, borderRadius: 14, padding: '11px 12px', marginBottom: 8 }}>
+          <div key={p.symbol} className="hp-card hp-position" style={{ borderLeft: `3px solid ${long ? '#0d7a4b' : WARNA.red}` }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
               <Link href={`/hp/koin/${p.symbol}`} style={{ textDecoration: 'none' }}>
                 <b style={{ fontSize: 14, color: WARNA.ink, borderBottom: '1px dotted #9db3a6' }}>{p.symbol}</b>
@@ -122,7 +122,7 @@ export default function PosisiHp() {
                 {r === null ? '—' : `${r >= 0 ? '+' : ''}${r.toFixed(2)}R`}
               </span>
               <span style={{ fontSize: 11, color: WARNA.muted }}>
-                {r !== null && kini ? `${r >= 0 ? '+' : ''}${(r * 0.31).toFixed(2)} USDT paper · harga ${fmt(kini)}` : 'menunggu harga live…'}
+                {r !== null && kini ? `${r >= 0 ? '+' : ''}${(r * 0.31).toFixed(2)} USDT paper · harga indikatif ${fmt(kini)}` : 'menunggu harga terkini…'}
               </span>
             </div>
             <div style={{ display: 'flex', gap: 10, margin: '7px 0 2px', fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>

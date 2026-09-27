@@ -13,6 +13,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import HpHeader from '../HpHeader';
 import { WARNA } from '../bahan';
 
 type PromptApp = Event & { prompt: () => Promise<void>; userChoice?: Promise<{ outcome: string }> };
@@ -56,55 +57,35 @@ export default function PasangApp() {
     setMenunggu(false);
   };
 
-  const kartu: React.CSSProperties = { background: '#fff', border: '1px solid var(--line)', borderRadius: 16, padding: '13px 14px', marginBottom: 10 };
-
   return (
-    <div style={{ padding: '10px 12px 0' }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 2px 12px' }}>
-        <Link href="/hp" style={{ textDecoration: 'none', color: WARNA.ink, fontSize: 18 }}>‹</Link>
-        <b style={{ fontSize: 15 }}>Pasang Aplikasi</b>
-        <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, color: '#0d7a4b', background: WARNA.mintSoft, border: '1px solid #bfe8d1', padding: '3px 9px', borderRadius: 999 }}>SEKALI KETUK</span>
-      </header>
+    <div className="hp-page">
+      <HpHeader tag="PANDUAN PWA" back />
+      <p className="hp-eyebrow">PASANG APLIKASI <b>·</b> ANDROID</p>
+      <h1 className="hp-heading">Selalu siap di HP.</h1>
+      <p className="hp-lede">Buka NusaQuant lebih cepat dari layar utama, tanpa mencari tab browser.</p>
 
-      <div style={{ background: '#fff6e2', border: '1px solid #ecd9a0', borderRadius: 14, padding: '11px 13px', fontSize: 12, lineHeight: 1.6, color: '#6b4d0a', marginBottom: 12 }}>
-        <b>Kenapa ikon lamamu membuka Chrome?</b> Ikon yang sudah terpasang itu <b>shortcut</b>, bukan aplikasi —
-        dan Android <b>mengunci</b> shortcut: tidak ada web di dunia yang bisa mengubahnya jadi aplikasi.
-        Solusinya cuma satu: pasang <b>aplikasi resminya</b> lewat tombol di bawah — hasilnya ikon baru yang
-        buka full-screen tanpa Chrome, langsung ke Mode HP. Ikon lama tinggal dihapus.
+      <div className="hp-card hp-notice">
+        <b>Ikon lama masih membuka Chrome?</b><p>Itu kemungkinan shortcut browser. Pasang ulang lewat tombol instal atau menu Chrome di bawah, lalu hapus ikon lama jika aplikasi baru terbuka dalam mode layar penuh.</p>
       </div>
 
       {standalone || terpasang ? (
-        <div style={{ background: WARNA.mintSoft, border: '1px solid #bfe8d1', borderRadius: 16, padding: '18px 14px', textAlign: 'center', marginBottom: 12 }}>
-          <div style={{ fontSize: 30 }}>✅</div>
-          <b style={{ fontSize: 15 }}>Kamu sudah di APLIKASI beneran!</b>
-          <div style={{ fontSize: 12, color: WARNA.muted, marginTop: 5, lineHeight: 1.55 }}>
-            Sekarang <b>hapus ikon lama</b> yang membuka Chrome, biar nggak ketuker lagi.<br />
-            Ikon yang sekarang ini sudah benar: full-screen, langsung Mode HP.
-          </div>
+        <div className="hp-card hp-installed">
+          <span className="hp-empty-icon" aria-hidden="true">✓</span>
+          <b>{standalone ? 'NusaQuant terbuka sebagai aplikasi' : 'Instalasi berhasil'}</b>
+          <p>Jika masih ada ikon lama yang membuka tab Chrome, hapus ikon lama itu agar tidak tertukar.</p>
         </div>
       ) : (
         <>
-          <button
-            onClick={() => void pasang()}
-            disabled={!prompt || menunggu}
-            style={{
-              display: 'block', width: '100%', border: 'none', cursor: prompt ? 'pointer' : 'wait',
-              borderRadius: 16, padding: '16px 0', fontWeight: 800, fontSize: 16, marginBottom: 8,
-              background: prompt ? WARNA.mint : '#e4ede6', color: prompt ? '#06281a' : '#7d8ca0',
-            }}
-          >
-            {prompt ? '📲 PASANG APLIKASI — ketuk di sini' : menunggu ? '⏳ lihat popup Chrome…' : '⏳ menyiapkan pemasangan… (2–5 dtk)'}
+          <button type="button" className="hp-install-button" onClick={() => void pasang()} disabled={!prompt || menunggu}>
+            {menunggu ? 'Lihat dialog pemasangan…' : prompt ? 'Pasang aplikasi →' : 'Instal langsung tidak tersedia'}
           </button>
-          <div style={{ fontSize: 11, color: WARNA.muted, textAlign: 'center', marginBottom: 12 }}>
-            {prompt
-              ? 'Popup resmi Chrome akan muncul → pilih "Instal".'
-              : 'Kalau 10 detik tak muncul tombolnya, pakai cara manual di bawah — hasilnya sama.'}
-          </div>
+          <p className="hp-install-hint">{prompt ? 'Dialog resmi browser akan muncul. Pilih “Instal”.' : 'Browser ini belum menawarkan pemasangan langsung. Coba cara manual di bawah.'}</p>
         </>
       )}
 
-      <div style={kartu}>
-        <b style={{ fontSize: 13 }}>Cara manual (kalau tombol di atas tak muncul)</b>
+      <div className="hp-section-label">CARA MANUAL <small>Jika tombol tidak tersedia</small></div>
+      <div className="hp-card hp-guide">
+        <b>Pasang dari Chrome Android</b>
         <ol style={{ margin: '8px 0 0', paddingLeft: 20, fontSize: 12.5, lineHeight: 1.8, color: '#33463c' }}>
           <li>Buka halaman ini di <b>Chrome HP</b> (tanpa centang "Situs desktop").</li>
           <li>Menu <b>⋮</b> kanan atas.</li>
@@ -114,8 +95,8 @@ export default function PasangApp() {
         </ol>
       </div>
 
-      <div style={{ ...kartu, borderLeft: '3px solid #0d7a4b' }}>
-        <b style={{ fontSize: 13 }}>Ciri aplikasi yang BENAR (bandingkan dengan ikon lama):</b>
+      <div className="hp-card hp-guide" style={{ borderLeft: '3px solid #0d7a4b' }}>
+        <b>Periksa setelah terpasang</b>
         <ul style={{ margin: '8px 0 0', paddingLeft: 20, fontSize: 12.5, lineHeight: 1.8, color: '#33463c' }}>
           <li>Membuka <b>full-screen tanpa address bar</b> Chrome.</li>
           <li>Langsung mendarat di <b>Mode HP</b> (Beranda · Papan · Posisi · Meja).</li>

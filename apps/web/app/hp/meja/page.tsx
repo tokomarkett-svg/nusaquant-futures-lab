@@ -7,6 +7,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import HpHeader from '../HpHeader';
 import { WARNA, umur, wib } from '../bahan';
 
 type Skor = {
@@ -56,17 +57,15 @@ export default function MejaHp() {
   const rTotal = skor?.rTotal ?? 0;
 
   return (
-    <div style={{ padding: '10px 12px 0' }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 2px 10px' }}>
-        <div style={{ width: 30, height: 30, borderRadius: 9, background: WARNA.gelap, color: WARNA.mint, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 13 }}>N</div>
-        <b style={{ fontSize: 15 }}>Meja (Jurnal)</b>
-        <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, color: WARNA.greenDark, background: WARNA.mintSoft, border: '1px solid #bfe8d1', padding: '3px 9px', borderRadius: 999 }}>ATURAN ASLI</span>
-      </header>
-
-      <div style={{ background: '#fff', border: '1px solid var(--line)', borderRadius: 16, padding: '16px 14px', textAlign: 'center', marginBottom: 10 }}>
+    <div className="hp-page">
+      <HpHeader tag="PAPER · JURNAL" />
+      <p className="hp-eyebrow">MEJA <b>·</b> CATATAN DISIPLIN</p>
+      <h1 className="hp-heading">Belajar dari proses.</h1>
+      <p className="hp-lede">Dua puluh trade yang jujur lebih berharga daripada satu hasil yang kebetulan.</p>
+      <div className="hp-card hp-score">
         <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 0.6, color: WARNA.muted }}>PROGRES {target} TRADE DISIPLIN</div>
         <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: 38, fontWeight: 800, margin: '4px 0' }}>
-          {total}<span style={{ fontSize: 20, color: WARNA.muted }}>/{target}</span>
+          {skor ? total : '—'}<span style={{ fontSize: 20, color: WARNA.muted }}>/{target}</span>
         </div>
         <div style={{ height: 6, borderRadius: 99, background: '#e4ede6', position: 'relative', overflow: 'hidden' }}>
           <i style={{ display: 'block', height: '100%', width: `${pct}%`, background: WARNA.greenDark, borderRadius: 99 }} />
@@ -92,30 +91,25 @@ export default function MejaHp() {
       {error && <div style={{ background: WARNA.redSoft, color: WARNA.red, border: '1px solid #f3cdd6', borderRadius: 12, padding: '10px 12px', fontSize: 12.5, marginBottom: 10 }}>{error}</div>}
 
       {hariIni && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+        <div className="hp-metrics">
           {[
             { n: hariIni.trades, l: 'TRADE HARI INI' },
             { n: hariIni.wins, l: 'MENANG' },
             { n: hariIni.losses, l: 'KALAH' },
             { n: hariIni.open, l: 'BERJALAN' },
-          ].map((kotak) => (
-            <div key={kotak.l} style={{ flex: 1, background: '#fff', border: '1px solid var(--line)', borderRadius: 14, padding: '9px 6px', textAlign: 'center' }}>
-              <div style={{ fontSize: 18, fontWeight: 800 }}>{kotak.n}</div>
-              <div style={{ fontSize: 8, color: WARNA.muted, fontWeight: 700, letterSpacing: 0.3 }}>{kotak.l}</div>
-            </div>
-          ))}
+          ].map((kotak) => <div key={kotak.l} className="hp-metric"><b>{kotak.n}</b><small>{kotak.l}</small></div>)}
         </div>
       )}
 
-      <div style={{ fontSize: 12, fontWeight: 800, color: '#33463c', margin: '4px 2px 6px' }}>📓 RIWAYAT — {riwayat.length ? `${riwayat.length} trade terakhir` : 'belum ada trade tertutup'}</div>
+      <div className="hp-section-label">RIWAYAT <small>{riwayat.length ? `${riwayat.length} trade terakhir` : 'Belum ada trade tertutup'}</small></div>
       {riwayat.map((trade, index) => {
         const menang = trade.r > 0;
         const emoji = trade.void ? '🗑' : trade.reason === 'TP' ? '✅' : trade.reason === 'SL' ? '❌' : '⏱';
         const label = trade.void ? 'VOID-REGRESI' : trade.reason === 'TP' ? 'TARGET KENA' : trade.reason === 'SL' ? 'STOP KENA' : trade.reason === 'TIMEOUT' ? 'BATAS WAKTU' : trade.reason ?? 'DITUTUP';
         return (
-          <div key={`${trade.symbol}-${trade.closedAt ?? index}`} style={{
-            background: '#fff', border: '1px solid var(--line)', borderLeft: `3px solid ${trade.void ? '#c9d6cd' : menang ? '#0d7a4b' : WARNA.red}`,
-            borderRadius: 14, padding: '10px 11px', marginBottom: 8, opacity: trade.void ? 0.72 : 1,
+          <div key={`${trade.symbol}-${trade.closedAt ?? index}`} className="hp-card hp-history" style={{
+            borderLeft: `3px solid ${trade.void ? '#c9d6cd' : menang ? '#0d7a4b' : WARNA.red}`,
+            opacity: trade.void ? 0.72 : 1,
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
               <span>{emoji}</span>

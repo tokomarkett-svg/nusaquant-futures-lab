@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { jenisPerp } from '@nusaquant/core';
+import HpHeader from '../HpHeader';
 import { WARNA, digitsFor, fmt, salinTeks, wib } from '../bahan';
 
 type Candle = { time: number; open: number; high: number; low: number; close: number };
@@ -28,14 +29,12 @@ type Detail = {
   ok: boolean; error?: string; symbol: string; interval: string; candles: Candle[];
   zones: { rangePct: number; long: { pintu: number; manis: number; batal: number }; short: { pintu: number; manis: number; batal: number } };
   gate: { gate: 'HIJAU' | 'MERAH' | 'KUNING'; close: number };
+  gateAlignLong: boolean; gateAlignShort: boolean;
   setupLong: Setup; setupShort: Setup; ticketLong: Ticket | null; ticketShort: Ticket | null;
-  last: number; dataAgeMin: number;
+  last: number; dataAgeMin: number; at: string;
 };
 
 const TF = ['5m', '15m', '1h', '4h'] as const;
-const CHIP: React.CSSProperties = { fontSize: 10.5, fontWeight: 700, padding: '5px 11px', borderRadius: 999, background: '#fff', border: '1px solid var(--line)', color: WARNA.muted };
-const CHIP_ON: React.CSSProperties = { ...CHIP, background: WARNA.gelap, color: '#fff', borderColor: WARNA.gelap };
-
 /** Pilih sisi yang ditonjolkan: yang sah dulu, lalu yang paling jauh progresnya. */
 function pilihSisi(d: Detail): { sisi: 'LONG' | 'SHORT'; setup: Setup; ticket: Ticket | null } {
   const kandidat: Array<['LONG' | 'SHORT', Setup, Ticket | null]> = [
@@ -58,6 +57,7 @@ export default function KoinHp({ symbol }: { symbol: string }) {
   const [error, setError] = useState<string | null>(null);
   const [memuat, setMemuat] = useState(true);
   const [tersalin, setTersalin] = useState(false);
+  const [sekarang, setSekarang] = useState<number | null>(null);
 
   const muat = useCallback(async () => {
     try {
@@ -79,11 +79,20 @@ export default function KoinHp({ symbol }: { symbol: string }) {
     const timer = setInterval(() => void muat(), 60_000);
     return () => clearInterval(timer);
   }, [muat]);
+  useEffect(() => {
+    setSekarang(Date.now());
+    const timer = setInterval(() => setSekarang(Date.now()), 10_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const jenis = jenisPerp(symbol);
   const pilihan = data ? pilihSisi(data) : null;
   const zona = data ? (pilihan!.sisi === 'LONG' ? data.zones.long : data.zones.short) : null;
-  const searah = data ? (pilihan!.sisi === 'LONG' ? data.gate.gate === 'HIJAU' : data.gate.gate === 'MERAH') : false;
+  const searah = data ? (pilihan!.sisi === 'LONG' ? data.gateAlignLong : data.gateAlignShort) : false;
+  const dataSegar = Boolean(data && sekarang !== null && sekarang - Date.parse(data.at) <= 120_000 &&
+    data.dataAgeMin + (sekarang - Date.parse(data.at)) / 60_000 <= 45);
+  const tiketLayak = Boolean(data && !error && dataSegar && tf === '15m' && searah && pilihan?.ticket?.actionable && sekarang !== null &&
+    pilihan.setup.candle2 !== null && sekarang >= pilihan.setup.candle2 + 900_000 && sekarang <= pilihan.setup.candle2 + 4 * 900_000);
 
   const salin = async () => {
     const t = pilihan?.ticket;
@@ -97,43 +106,36 @@ export default function KoinHp({ symbol }: { symbol: string }) {
   };
 
   return (
-    <div style={{ padding: '10px 12px 0' }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0 10px' }}>
-        <button onClick={() => router.back()} aria-label="kembali" style={{ background: '#fff', border: '1px solid var(--line)', borderRadius: 10, width: 30, height: 30, fontSize: 15, cursor: 'pointer', color: WARNA.ink }}>‹</button>
-        <b style={{ fontSize: 15 }}>{symbol.replace('USDT', '')}</b>
-        {jenis !== 'kripto' && (
-          <span style={{ fontSize: 9.5, fontWeight: 800, padding: '2px 7px', borderRadius: 6, background: WARNA.unguSoft, color: WARNA.ungu, border: '1px solid #d9cdf2' }}>{jenis === 'saham' ? 'SAHAM' : 'KOMODITAS'}</span>
-        )}
-        <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, color: data && data.dataAgeMin <= 45 ? '#0d7a4b' : '#9a6b00', background: data && data.dataAgeMin <= 45 ? WARNA.mintSoft : WARNA.amberSoft, border: '1px solid ' + (data && data.dataAgeMin <= 45 ? '#bfe8d1' : '#ecd9a0'), padding: '3px 9px', borderRadius: 999 }}>
-          FUTURES ✔ · data {data?.dataAgeMin ?? '—'} mnt
-        </span>
-      </header>
-
-      <div style={{ display: 'flex', gap: 6, margin: '0 0 8px' }}>
-        {TF.map((item) => (
-          <button key={item} onClick={() => setTf(item)} style={tf === item ? CHIP_ON : CHIP}>{item}</button>
-        ))}
+    <div className="hp-page">
+      <HpHeader tag="DETAIL KOIN" />
+      <button type="button" className="hp-back" onClick={() => router.back()}>← Kembali</button>
+      <p className="hp-eyebrow">DETAIL KOIN <b>·</b> X → C1 → C2</p>
+      <h1 className="hp-heading">{symbol.replace('USDT', '')}<span style={{ color: WARNA.muted, fontSize: 16, letterSpacing: 0 }}> / USDT</span></h1>
+      <p className="hp-lede">{jenis !== 'kripto' ? `${jenis === 'saham' ? 'Perp saham' : 'Perp komoditas'} · ` : ''}{data && !error ? `Candle tertutup · data ${data.dataAgeMin} mnt lalu` : 'Memuat data pasar…'}</p>
+      <div className="hp-filters" role="group" aria-label="Pilih timeframe">
+        {TF.map((item) => <button type="button" key={item} onClick={() => setTf(item)} className="hp-filter" aria-pressed={tf === item}>{item}</button>)}
       </div>
 
       {error && <div style={{ background: WARNA.redSoft, color: WARNA.red, border: '1px solid #f3cdd6', borderRadius: 12, padding: '10px 12px', fontSize: 12.5, marginBottom: 10 }}>{error}</div>}
       {memuat && !data && <div style={{ textAlign: 'center', color: WARNA.muted, fontSize: 12.5, padding: '30px 0' }}>Memuat chart…</div>}
 
-      {data && pilihan && zona && (
+      {data && pilihan && zona && !error && data.interval === tf && (
         <>
-          <div style={{ background: '#fff', border: '1px solid var(--line)', borderRadius: 16, padding: '10px 8px 4px' }}>
+          <div className="hp-section-label">CHART & ZONA <small>{tf} · Pintu / Manis / Batal</small></div>
+          <div className="hp-card hp-chart">
             <ChartKoin candles={data.candles} zona={zona} sisi={pilihan.sisi} setup={pilihan.setup} last={data.last} />
           </div>
 
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '8px 0' }}>
             <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 9px', borderRadius: 999, background: pilihan.sisi === 'LONG' ? WARNA.mintSoft : WARNA.redSoft, color: pilihan.sisi === 'LONG' ? WARNA.greenDark : WARNA.red, border: `1px solid ${pilihan.sisi === 'LONG' ? '#bfe8d1' : '#f3cdd6'}` }}>{pilihan.sisi}</span>
             <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 9px', borderRadius: 999, background: searah ? WARNA.mintSoft : WARNA.amberSoft, color: searah ? '#0d7a4b' : '#9a6b00', border: `1px solid ${searah ? '#bfe8d1' : '#ecd9a0'}` }}>
-              Gate 1H {data.gate.gate} {searah ? '· searah ✔' : '· belum searah'}
+              Arah hari + MA99 15m/1H {searah ? '· searah ✓' : '· belum searah'}
             </span>
             <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 9px', borderRadius: 999, background: '#eef1f4', color: '#5d6b76', border: '1px solid #d4dde4' }}>range 24j {data.zones.rangePct.toFixed(1)}%</span>
           </div>
 
-          {pilihan.ticket && pilihan.ticket.actionable ? (
-            <div style={{ background: `linear-gradient(160deg,${WARNA.gelap} 0%,#123a28 70%,#155238 100%)`, color: '#eafff4', borderRadius: 18, padding: '14px', marginBottom: 10 }}>
+          {tiketLayak && pilihan.ticket ? (
+            <div className="hp-ticket" style={{ marginBottom: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                 <span style={{ fontSize: 12, fontWeight: 800, color: WARNA.amber }}>🎯 TIKET SAH — {pilihan.sisi}</span>
                 {pilihan.ticket.entryAgeBars !== null && <span style={{ marginLeft: 'auto', fontSize: 10, color: '#9fd8bb' }}>umur {pilihan.ticket.entryAgeBars}/3 candle</span>}
@@ -162,11 +164,9 @@ export default function KoinHp({ symbol }: { symbol: string }) {
               <div style={{ textAlign: 'center', fontSize: 9.5, color: '#9fd8bb', marginTop: 7 }}>1% risiko · maks 2 trade/hari · stop dipasang SEBELUM entry</div>
             </div>
           ) : (
-            <div style={{ background: '#fff', border: '1px dashed var(--line)', borderRadius: 16, padding: '13px 14px', marginBottom: 10 }}>
-              <b style={{ fontSize: 12.5 }}>Belum ada tiket yang boleh dieksekusi</b>
-              <div style={{ fontSize: 11.5, color: WARNA.muted, marginTop: 5, lineHeight: 1.55 }}>
-                {pilihan.setup.notes.at(-1) ?? 'Paket X → candle 1 → candle 2 belum lengkap.'}
-              </div>
+            <div className="hp-card hp-empty" style={{ textAlign: 'left', padding: '15px 16px' }}>
+              <b>Belum ada tiket yang boleh dieksekusi</b>
+              <p>{tf !== '15m' ? 'Timeframe ini untuk melihat struktur saja. Periksa setup entry pada 15m.' : !searah ? 'Arah hari/MA99 15m dan 1H belum searah — jangan entry.' : !dataSegar ? 'Data belum segar; tunggu pemindaian terbaru.' : pilihan.ticket?.actionable ? 'Batas umur tiket sudah lewat. Tunggu setup baru.' : pilihan.setup.notes.at(-1) ?? 'Paket X → candle 1 → candle 2 belum lengkap.'}</p>
               {pilihan.ticket && !pilihan.ticket.actionable && (
                 <div style={{ fontSize: 11, color: '#9a6b00', marginTop: 6 }}>⚠ Tiket lama ada tapi tidak layak: {pilihan.ticket.warnings.join(' · ') || 'pagar belum lolos'}</div>
               )}

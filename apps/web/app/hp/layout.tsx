@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import './hp.css';
 import Tabs from './Tabs';
 import PeringatanMode from './PeringatanMode';
 import PendaftarSw from './PendaftarSw';
@@ -12,11 +13,11 @@ export const metadata = { title: 'NusaQuant — Mode HP' };
  */
 export default function HpLayout({ children }: { children: ReactNode }) {
   return (
-    <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', background: '#f4f9f5' }}>
+    <div className="hp-root" style={{ display: 'flex', flexDirection: 'column' }}>
       <PeringatanMode />
       <PendaftarSw />
-      <div style={{ flex: 1, width: '100%', maxWidth: 520, margin: '0 auto', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ flex: 1, paddingBottom: 8 }}>{children}</div>
+      <div className="hp-frame">
+        <main className="hp-main" id="konten-utama">{children}</main>
         <Tabs />
       </div>
     </div>

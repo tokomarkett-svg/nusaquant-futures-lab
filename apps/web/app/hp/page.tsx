@@ -1,23 +1,16 @@
 'use client';
 
-/**
- * BERANDA (mode HP) — "Satu layar, satu keputusan."
- * Kalau ada tiket sah (actionable + gate searah + zona hidup): kartu gelap besar di atas.
- * Di bawahnya: bel pintu yang masih nonton (X sudah menusuk, C1/C2 belum sah).
- * Sumber data = API papan yang sama dengan web; tidak ada logika teknik baru di sini.
- */
-
+/** Beranda HP: visualisasi tiket dan kandidat dari /api/nominasi saja. Rumus tidak berubah. */
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import {
-  WARNA, badgeJenis, badgeSisi, fmt, salinTeks, teksOrder, tiketSiap, labelSumber, wib,
-  type Board, type BoardRow,
-} from './bahan';
+import HpHeader from './HpHeader';
+import { fmt, salinTeks, teksOrder, tiketSiap, wib, type Board, type BoardRow } from './bahan';
 
 export default function BerandaHp() {
   const [board, setBoard] = useState<Board | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tersalin, setTersalin] = useState(false);
+  const [sekarang, setSekarang] = useState<number | null>(null);
 
   const muat = useCallback(async () => {
     try {
@@ -30,148 +23,99 @@ export default function BerandaHp() {
       setError(e instanceof Error ? e.message : String(e));
     }
   }, []);
-
   useEffect(() => {
     void muat();
     const timer = setInterval(() => void muat(), 60_000);
     return () => clearInterval(timer);
   }, [muat]);
+  useEffect(() => {
+    setSekarang(Date.now());
+    const timer = setInterval(() => setSekarang(Date.now()), 10_000);
+    return () => clearInterval(timer);
+  }, []);
 
-  const rows = board?.rows ?? [];
-  const siap = rows.filter(tiketSiap)
+  const terkini = Boolean(board && !error && sekarang !== null && board.market === 'FUTURES' && sekarang - Date.parse(board.at) <= 120_000);
+  const rows = terkini ? board?.rows ?? [] : [];
+  const siap = rows.filter((row) => tiketSiap(row) && board && sekarang !== null &&
+    row.dataAgeMin + (sekarang - Date.parse(board.at)) / 60_000 <= 45 && row.setup.candle2 !== null &&
+    sekarang >= row.setup.candle2 + 900_000 && sekarang <= row.setup.candle2 + 4 * 900_000)
     .sort((a, b) => (a.ticket?.entryAgeBars ?? 99) - (b.ticket?.entryAgeBars ?? 99));
   const hero = siap[0] ?? null;
-  const bel = rows
-    .filter((r) => r.status !== 'PADAM' && r.setup.x !== null && !r.ticket)
-    .slice(0, 6);
+  const bel = rows.filter((r) => r.status !== 'PADAM' && r.setup.x !== null && !r.ticket).slice(0, 6);
 
   const salin = async (row: BoardRow) => {
     const teks = teksOrder(row);
-    if (!teks) return;
-    if (await salinTeks(teks)) {
+    if (teks && await salinTeks(teks)) {
       setTersalin(true);
       setTimeout(() => setTersalin(false), 2500);
     }
   };
 
   return (
-    <div style={{ padding: '10px 12px 0' }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 2px 10px' }}>
-        <div style={{ width: 30, height: 30, borderRadius: 9, background: WARNA.gelap, color: WARNA.mint, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 13 }}>N</div>
-        <b style={{ fontSize: 15 }}>Beranda</b>
-        <span style={{ marginLeft: 'auto', ...labelSumber(board?.market).style }}>{labelSumber(board?.market).text}</span>
-      </header>
-
-      {error && <div style={{ background: WARNA.redSoft, color: WARNA.red, border: '1px solid #f3cdd6', borderRadius: 12, padding: '10px 12px', fontSize: 12.5, marginBottom: 10 }}>{error}</div>}
-
-      {hero && hero.ticket ? (
+    <div className="hp-page">
+      <HpHeader market={terkini ? board?.market : undefined} />
+      <p className="hp-eyebrow">BERANDA <b>·</b> SATU LAYAR, SATU KEPUTUSAN</p>
+      <h1 className="hp-heading">Pasar bergerak.<br />Kita tetap disiplin.</h1>
+      <p className="hp-lede">Tiket sah ditampilkan di depan. Yang belum sah cukup dipantau.</p>
+      <div className="hp-status-strip" role="status">
+        <span className="hp-status-icon" aria-hidden="true">◉</span>
+        <div className="hp-status-copy">
+          <b>{error ? 'Data belum dapat dipastikan' : terkini ? 'Mesin memantau pasar' : board ? 'Data perlu diperbarui' : 'Menghubungkan ke pasar…'}</b>
+          <small>{error ? 'Jangan gunakan tiket lama. Periksa koneksi.' : terkini && board ? `${board.funnel.scanned} pasar terbaca · sumber ${board.market}` : 'Menunggu data futures yang sah'}</small>
+        </div>
+        <span className={`hp-live${error || (board && !terkini) ? ' hp-live--error' : ''}`}>{error ? 'GANGGUAN' : terkini ? 'AKTIF' : board ? 'TUNDA' : 'MEMUAT'}</span>
+      </div>
+      {error && <div className="hp-error" role="alert"><b>Pemindaian terhenti:</b> {error}</div>}
+      <div className="hp-section-label">TIKET PRIORITAS <small>{hero ? 'Layak menurut data saat ini' : 'Tidak ada tiket siap'}</small></div>
+      {hero?.ticket ? (
         <KartuSiap row={hero} tersalin={tersalin} padaSalin={() => void salin(hero)} />
       ) : (
-        <div style={{ background: '#fff', border: '1px dashed var(--line)', borderRadius: 16, padding: '18px 14px', textAlign: 'center', marginBottom: 10 }}>
-          <div style={{ fontSize: 26 }}>🌙</div>
-          <b style={{ fontSize: 14 }}>Belum ada paket sah</b>
-          <div style={{ fontSize: 12, color: WARNA.muted, marginTop: 4, lineHeight: 1.5 }}>
-            Mesin menunggu X → candle 1 → candle 2 yang benar.<br />Diam = disiplin, bukan rusak.
-          </div>
+        <div className="hp-card hp-empty">
+          <span className="hp-empty-icon" aria-hidden="true">◎</span>
+          <b>{error || (board && !terkini) ? 'Tiket ditahan sampai data pulih' : board ? 'Belum ada paket sah' : 'Memuat kondisi pasar'}</b>
+          <p>{error || (board && !terkini) ? 'Status lama tidak dipakai sebagai sinyal baru.' : 'Mesin menunggu X → candle 1 → candle 2 yang benar. Diam berarti disiplin, bukan rusak.'}</p>
         </div>
       )}
-
-      {siap.length > 1 && (
-        <div style={{ fontSize: 11, color: WARNA.muted, margin: '0 2px 8px' }}>
-          ➕ {siap.length - 1} tiket sah lain — lihat di tab <Link href="/hp/papan" style={{ color: WARNA.greenDark, fontWeight: 700 }}>Papan</Link>
-        </div>
-      )}
-
-      <div style={{ fontSize: 12, fontWeight: 800, color: '#33463c', margin: '10px 2px 6px' }}>🔔 BEL PINTU — nonton (belum sah)</div>
-      {bel.length === 0 && <div style={{ fontSize: 12, color: WARNA.muted, margin: '0 2px' }}>Tidak ada X yang sedang menunggu.</div>}
-      <div style={{ display: 'flex', gap: 8, margin: '10px 0 4px' }}>
-        <a href="/hp/pasang" style={{ flex: 1, textAlign: 'center', textDecoration: 'none', background: '#fff', border: '1px solid var(--line)', borderRadius: 12, padding: '9px 0', fontSize: 11.5, fontWeight: 800, color: WARNA.greenDark }}>📲 Pasang aplikasi beneran</a>
-        <a href="/hp/cek" style={{ flex: 1, textAlign: 'center', textDecoration: 'none', background: '#fff', border: '1px solid var(--line)', borderRadius: 12, padding: '9px 0', fontSize: 11.5, fontWeight: 800, color: WARNA.greenDark }}>🩺 Cek sistem</a>
-      </div>
+      {siap.length > 1 && <p className="hp-lede">Ada {siap.length - 1} tiket sah lain di <Link href="/hp/papan">Papan</Link>.</p>}
+      <div className="hp-section-label">BEL PINTU <small>Belum tentu layak masuk</small></div>
+      {bel.length === 0 && <p className="hp-lede">{terkini ? 'Tidak ada X yang sedang menunggu candle 1.' : 'Daftar pantau muncul setelah data futures segar berhasil dimuat.'}</p>}
       {bel.map((row) => (
-        <Link key={row.symbol} href={`/hp/koin/${row.symbol}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--line)', borderRadius: 14, padding: '10px 11px', marginBottom: 8 }}>
-            <span style={{ fontWeight: 800, fontSize: 13.5 }}>{row.symbol.replace('USDT', '')}</span>
-            <span style={badgeSisi(row).style}>{badgeSisi(row).text}</span>
-            {badgeJenis(row)}
-            <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-              <div style={{ fontSize: 13.5, fontWeight: 800 }}>{fmt(row.last)}</div>
-              <div style={{ fontSize: 9.5, color: WARNA.muted }}>
-                {row.setup.candle1 ? 'C1 sah · nunggu C2' : `X ${row.setup.x ? wib(row.setup.x) : '—'} · nunggu C1`}
-              </div>
-            </div>
-          </div>
+        <Link className="hp-card hp-watch" key={row.symbol} href={`/hp/koin/${row.symbol}`}>
+          <span className="hp-watch-icon" aria-hidden="true">{row.symbol.charAt(0)}</span>
+          <span><b className="hp-watch-title">{row.symbol} · {row.side}</b><small className="hp-watch-meta">{row.setup.candle1 ? 'C1 sah · menunggu C2' : `X ${row.setup.x ? wib(row.setup.x) : '—'} WIB · menunggu C1`}</small></span>
+          <span className="hp-watch-price">{fmt(row.last)}<small>LIHAT KOIN ↗</small></span>
         </Link>
       ))}
+      <div className="hp-link-grid">
+        <Link className="hp-link" href="/hp/cek">◉ Cek sistem</Link>
+        <Link className="hp-link" href="/hp/pasang">↗ Pasang aplikasi</Link>
+      </div>
     </div>
   );
 }
 
 function KartuSiap({ row, tersalin, padaSalin }: { row: BoardRow; tersalin: boolean; padaSalin: () => void }) {
   const t = row.ticket!;
-  const long = row.side === 'LONG';
-  const orderSide = long ? 'BUY' : 'SELL';
-  const umurText = t.entryAgeBars !== null ? `${t.entryAgeBars}/3 candle` : 'baru lahir';
   const lahir = row.setup.candle2 ? wib(row.setup.candle2) : null;
   return (
-    <div style={{ background: `linear-gradient(160deg,${WARNA.gelap} 0%,#123a28 70%,#155238 100%)`, color: '#eafff4', borderRadius: 18, padding: '14px 14px 12px', marginBottom: 10 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
-        <span style={{ fontWeight: 800, fontSize: 16 }}>{row.symbol}</span>
-        <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 6, background: long ? 'rgba(127,240,176,.15)' : 'rgba(255,157,176,.15)', color: long ? WARNA.mint : '#ff9db0', border: `1px solid ${long ? '#2c5a45' : '#5c3a44'}` }}>{row.side}</span>
-        {row.jenis !== 'kripto' && <span style={{ fontSize: 9.5, fontWeight: 800, padding: '2px 7px', borderRadius: 6, background: 'rgba(255,255,255,.1)', color: '#d9cdf2', border: '1px solid #4a3f6b' }}>{row.jenis === 'saham' ? 'SAHAM' : 'KOMODITAS'}</span>}
-        <span style={{ marginLeft: 'auto', fontSize: 10, color: '#9fd8bb' }}>
-          {lahir ? `lahir ${lahir} WIB` : ''}
-        </span>
+    <section className="hp-ticket" aria-label={`Tiket siap ${row.symbol} ${row.side}`}>
+      <div className="hp-ticket-top"><span className="hp-ready">SIAP ENTRI</span><span className="hp-ticket-age">SEGAR · {t.entryAgeBars ?? 0}/3 CANDLE</span></div>
+      <div className="hp-ticket-symbol">
+        <div><strong>{row.symbol.replace('USDT', '')}<small>USDT</small></strong><span>{row.side === 'LONG' ? '↗' : '↘'} {row.side} / {row.side === 'LONG' ? 'BUY' : 'SELL'}</span></div>
+        <span className="hp-gate-tag">15M / 1H SEARAH ✓</span>
       </div>
-
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '9px 0 2px' }}>
-        <span style={{ fontSize: 10, color: '#9fd8bb', fontWeight: 700 }}>ENTRI</span>
-        <span style={{ fontSize: 30, fontWeight: 800, color: WARNA.mint, letterSpacing: 0.5 }}>{fmt(t.entry)}</span>
-        <span style={{ fontSize: 10, color: '#9fd8bb', fontWeight: 700 }}>({orderSide})</span>
+      <div className="hp-entry"><small>ENTRY · CLOSE C2</small><strong>{fmt(t.entry)}</strong></div>
+      <div className="hp-ticket-values">
+        <div><small>STOP · EKOR C1</small><b className="stop">{fmt(t.stop)}</b></div>
+        <div><small>TARGET · 2R</small><b className="target">{fmt(t.target)}</b></div>
       </div>
-
-      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-        {[
-          { s: 'SL (EKOR C1)', v: fmt(t.stop), c: '#ff9db0' },
-          { s: 'TP 2R', v: fmt(t.target), c: WARNA.mint },
-          { s: 'UKURAN', v: t.sizeCoin.toLocaleString('id-ID', { maximumFractionDigits: 4 }), c: '#eafff4' },
-        ].map((sel) => (
-          <div key={sel.s} style={{ flex: 1, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 12, padding: '7px 9px' }}>
-            <div style={{ fontSize: 9, color: '#9fd8bb', fontWeight: 700 }}>{sel.s}</div>
-            <div style={{ fontSize: 14.5, fontWeight: 800, marginTop: 1, color: sel.c, fontFamily: 'ui-monospace, monospace' }}>{sel.v}</div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#9fd8bb', marginTop: 9 }}>
-        <span>gate 1H {row.gate} · MA99 searah ✔</span>
-        <span>umur {umurText}</span>
-      </div>
-      <div style={{ height: 5, background: 'rgba(255,255,255,.14)', borderRadius: 99, marginTop: 4, overflow: 'hidden' }}>
-        <i style={{ display: 'block', height: '100%', width: `${Math.max(8, 100 - ((t.entryAgeBars ?? 0) / 3) * 100)}%`, background: WARNA.amber, borderRadius: 99 }} />
-      </div>
-
-      {t.warnings.length > 0 && (
-        <div style={{ fontSize: 10.5, color: '#ffd479', marginTop: 8 }}>⚠ {t.warnings.join(' · ')}</div>
-      )}
-
-      <button onClick={padaSalin} style={{
-        display: 'block', width: '100%', textAlign: 'center', border: 'none', cursor: 'pointer',
-        borderRadius: 13, padding: '11px 0', fontWeight: 800, fontSize: 13, marginTop: 10,
-        background: WARNA.mint, color: '#06281a',
-      }}>
-        {tersalin ? '✅ TERSALIN — tempel di Binance' : '📋 SALIN ORDER'}
-      </button>
-      <Link href={`/hp/koin/${row.symbol}`} style={{
-        display: 'block', textAlign: 'center', textDecoration: 'none', cursor: 'pointer',
-        borderRadius: 13, padding: '10px 0', fontWeight: 800, fontSize: 12.5, marginTop: 7,
-        border: '1px solid rgba(255,255,255,.25)', color: '#dff7ea',
-      }}>
-        📈 Lihat chart & garis pintu
-      </Link>
-      <div style={{ textAlign: 'center', fontSize: 9.5, color: '#9fd8bb', marginTop: 7 }}>
-        1% risiko · maks 2 trade/hari · stop dipasang SEBELUM entry
-      </div>
-    </div>
+      <div className="hp-ticket-trail"><span><b>X</b> {row.setup.x ? wib(row.setup.x) : '—'}</span><i /><span><b>1</b> {row.setup.candle1 ? wib(row.setup.candle1) : '—'}</span><i /><span><b>2</b> {lahir ?? '—'}</span></div>
+      <div className="hp-expiry"><span>Ukuran {t.sizeCoin.toLocaleString('id-ID', { maximumFractionDigits: 4 })} koin</span><span>Lahir {lahir ?? '—'} WIB</span></div>
+      <div className="hp-expiry-meter" aria-label={`Umur tiket ${t.entryAgeBars ?? 0} dari 3 candle`}><i style={{ width: `${Math.max(7, 100 - ((t.entryAgeBars ?? 0) / 3) * 100)}%` }} /></div>
+      {t.warnings.length > 0 && <div className="hp-ticket-warning">⚠ {t.warnings.join(' · ')}</div>}
+      <button type="button" onClick={padaSalin} className="hp-cta">{tersalin ? '✓ Order tersalin' : '▤ Salin order'} </button>
+      <Link href={`/hp/koin/${row.symbol}`} className="hp-cta hp-cta-secondary">Lihat chart & garis ↗</Link>
+      <div className="hp-ticket-disclaimer">Risiko 0,31 USDT · maks 2 trade/hari · pasang SL sebelum entry</div>
+    </section>
   );
 }

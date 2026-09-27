@@ -1,28 +1,23 @@
 'use client';
 
-/**
- * PAPAN (mode HP) — daftar nonton yang jujur, data dari API papan yang sama dengan web.
- * Filter chip + garis pita posisi harga (kiri = batal, kanan = pintu) + badge konsisten
- * dengan notif: 🎯 SIAP / 🔥 MENYALA / 💀 PADAM / abu = nonton.
- */
-
+/** Papan HP: pemindai dan tiket tetap berasal dari /api/nominasi. */
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  WARNA, badgeJenis, badgeSisi, badgeStatus, fmt, labelSumber, Pita,
-  type Board, type BoardRow,
-} from '../bahan';
+import HpHeader from '../HpHeader';
+import { badgeJenis, badgeSisi, badgeStatus, fmt, Pita, type Board, type BoardRow } from '../bahan';
 
 type Filter = 'SEMUA' | 'LONG' | 'SHORT' | 'SEARAH' | 'SIAP';
-
-const CHIP: React.CSSProperties = { fontSize: 10.5, fontWeight: 700, padding: '5px 11px', borderRadius: 999, background: '#fff', border: '1px solid var(--line)', color: WARNA.muted };
-const CHIP_ON: React.CSSProperties = { ...CHIP, background: WARNA.gelap, color: '#fff', borderColor: WARNA.gelap };
+const FILTERS: ReadonlyArray<{ id: Filter; text: string }> = [
+  { id: 'SEMUA', text: 'Semua' }, { id: 'LONG', text: 'Long' }, { id: 'SHORT', text: 'Short' },
+  { id: 'SEARAH', text: 'Gate searah' }, { id: 'SIAP', text: '◎ Tiket siap' },
+];
 
 export default function PapanHp() {
   const [board, setBoard] = useState<Board | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('SEMUA');
   const [cari, setCari] = useState('');
+  const [sekarang, setSekarang] = useState<number | null>(null);
 
   const muat = useCallback(async () => {
     try {
@@ -35,14 +30,19 @@ export default function PapanHp() {
       setError(e instanceof Error ? e.message : String(e));
     }
   }, []);
-
   useEffect(() => {
     void muat();
     const timer = setInterval(() => void muat(), 60_000);
     return () => clearInterval(timer);
   }, [muat]);
+  useEffect(() => {
+    setSekarang(Date.now());
+    const timer = setInterval(() => setSekarang(Date.now()), 10_000);
+    return () => clearInterval(timer);
+  }, []);
 
-  const rows = board?.rows ?? [];
+  const terkini = Boolean(board && !error && sekarang !== null && board.market === 'FUTURES' && sekarang - Date.parse(board.at) <= 120_000);
+  const rows = terkini ? board?.rows ?? [] : [];
   const tampil = useMemo(() => {
     const kata = cari.trim().toUpperCase().replace(/USDT$/, '');
     const cocok = (r: BoardRow): boolean => {
@@ -50,61 +50,45 @@ export default function PapanHp() {
       if (filter === 'LONG') return r.side === 'LONG';
       if (filter === 'SHORT') return r.side === 'SHORT';
       if (filter === 'SEARAH') return r.gateAlign;
-      if (filter === 'SIAP') return Boolean(r.ticket?.actionable) && r.gateAlign && r.status !== 'PADAM';
+      if (filter === 'SIAP') return Boolean(r.ticket?.actionable) && r.gateAlign && r.status !== 'PADAM' && board !== null && sekarang !== null &&
+        r.dataAgeMin + (sekarang - Date.parse(board.at)) / 60_000 <= 45 && r.setup.candle2 !== null &&
+        sekarang >= r.setup.candle2 + 900_000 && sekarang <= r.setup.candle2 + 4 * 900_000;
       return true;
     };
     return rows.filter(cocok);
-  }, [rows, filter, cari]);
+  }, [rows, board, filter, cari, sekarang]);
 
   return (
-    <div style={{ padding: '10px 12px 0' }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 2px 10px' }}>
-        <div style={{ width: 30, height: 30, borderRadius: 9, background: WARNA.gelap, color: WARNA.mint, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 13 }}>N</div>
-        <b style={{ fontSize: 15 }}>Papan</b>
-        <span style={{ marginLeft: 'auto', ...labelSumber(board?.market).style }}>{labelSumber(board?.market).text}</span>
-      </header>
-
-      <input
-        value={cari}
-        onChange={(e) => setCari(e.target.value)}
-        placeholder="🔎 Cari koin… (ketik tanpa USDT, mis. RUNE)"
-        style={{
-          width: '100%', padding: '10px 12px', marginBottom: 8, fontSize: 12.5,
-          border: '1px solid var(--line)', borderRadius: 12, background: '#fff', color: WARNA.ink, outline: 'none',
-        }}
-      />
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '0 0 10px' }}>
-        {([['SEMUA', 'Semua'], ['LONG', 'LONG'], ['SHORT', 'SHORT'], ['SEARAH', 'Gate searah'], ['SIAP', '🎯 Siap']] as const).map(([nilai, label]) => (
-          <button key={nilai} onClick={() => setFilter(nilai)} style={filter === nilai ? CHIP_ON : CHIP}>{label}</button>
-        ))}
+    <div className="hp-page">
+      <HpHeader market={terkini ? board?.market : undefined} />
+      <p className="hp-eyebrow">PAPAN <b>·</b> PEMANTAUAN PASAR</p>
+      <h1 className="hp-heading">Papan kandidat.</h1>
+      <p className="hp-lede">Saring tanpa terburu-buru. “Menyala” belum berarti siap entri.</p>
+      <div className="hp-status-strip" role="status">
+        <span className="hp-status-icon" aria-hidden="true">▦</span>
+        <div className="hp-status-copy"><b>{error ? 'Pemindaian terganggu' : terkini ? `${rows.length} koin di papan` : board ? 'Data perlu diperbarui' : 'Sedang memindai…'}</b><small>{error ? 'Daftar lama disembunyikan sampai data pulih.' : terkini && board ? `${board.funnel.scanned} pasar terbaca · data ${board.market}` : 'Meminta data futures terkini'}</small></div>
+        <span className={`hp-live${error || (board && !terkini) ? ' hp-live--error' : ''}`}>{error || (board && !terkini) ? 'TUNDA' : terkini ? 'AKTIF' : 'MEMUAT'}</span>
       </div>
-
-      {error && <div style={{ background: WARNA.redSoft, color: WARNA.red, border: '1px solid #f3cdd6', borderRadius: 12, padding: '10px 12px', fontSize: 12.5, marginBottom: 10 }}>{error}</div>}
-      {!error && tampil.length === 0 && (
-        <div style={{ fontSize: 12.5, color: WARNA.muted, textAlign: 'center', padding: '24px 0' }}>Tidak ada koin di filter ini.</div>
-      )}
-
+      <label className="hp-search"><span aria-hidden="true">⌕</span><input value={cari} onChange={(e) => setCari(e.target.value)} placeholder="Cari koin, misalnya RUNE" aria-label="Cari koin" /></label>
+      <div className="hp-filters" role="group" aria-label="Filter koin">
+        {FILTERS.map(({ id, text }) => <button className="hp-filter" type="button" key={id} onClick={() => setFilter(id)} aria-pressed={filter === id}>{text}</button>)}
+      </div>
+      {error && <div className="hp-error" role="alert"><b>Data tidak dapat dipastikan.</b> {error}</div>}
+      <div className="hp-section-label">{filter === 'SIAP' ? 'TIKET SIAP' : 'HASIL PEMINDAIAN'} <small>{tampil.length} koin ditampilkan</small></div>
+      {!error && tampil.length === 0 && <div className="hp-card hp-empty"><span className="hp-empty-icon" aria-hidden="true">⌕</span><b>{board && !terkini ? 'Menunggu data futures segar' : !board ? 'Memuat kandidat…' : 'Belum ada koin di filter ini'}</b><p>{!terkini ? 'Papan muncul setelah pasar berhasil dibaca.' : filter === 'SIAP' ? 'Belum ada tiket sah. Mesin tidak memaksa entri.' : 'Coba kata kunci atau filter yang lain.'}</p></div>}
       {tampil.map((row) => {
         const status = badgeStatus(row);
         return (
-          <Link key={row.symbol} href={`/hp/koin/${row.symbol}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-            <div style={{
-              background: '#fff', border: '1px solid var(--line)', borderRadius: 14, padding: '10px 11px', marginBottom: 8,
-              borderLeft: `3px solid ${row.status === 'MENYALA' ? '#d29125' : row.status === 'PADAM' ? '#5c2330' : '#dce6df'}`,
-              opacity: row.status === 'PADAM' ? 0.8 : 1,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
-                <span style={{ fontWeight: 800, fontSize: 13.5 }}>{row.symbol.replace('USDT', '')}</span>
-                <span style={badgeSisi(row).style}>{badgeSisi(row).text}</span>
-                {badgeJenis(row)}
-                <span style={{ fontSize: 9.5, fontWeight: 800, padding: '2px 8px', borderRadius: 6, ...status.style }}>{status.text}</span>
-                <span style={{ marginLeft: 'auto', textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 800, fontSize: 13.5 }}>{fmt(row.last)}</span>
-              </div>
-              <Pita row={row} />
-              <div style={{ fontSize: 9.5, color: WARNA.muted, marginTop: 5 }}>
-                {row.setup.note ?? (row.gateAlign ? 'gate searah ✔' : `gate ${row.gate}`)} · range {row.rangePct.toFixed(1)}% · vol {row.volJt}jt
-              </div>
+          <Link key={row.symbol} href={`/hp/koin/${row.symbol}`} className={`hp-card hp-market-row${row.status === 'PADAM' ? ' is-off' : ''}`}>
+            <div className="hp-market-row-top">
+              <span className="hp-market-row-name">{row.symbol.replace('USDT', '')}</span>
+              <span style={badgeSisi(row).style}>{badgeSisi(row).text}</span>
+              {badgeJenis(row)}
+              <span className="hp-market-row-price">{fmt(row.last)}</span>
             </div>
+            <div className="hp-market-row-status">{status.text} · Gate 1H {row.gate}{row.gateAlign ? ' · MA99 searah ✓' : ''}</div>
+            <Pita row={row} />
+            <div className="hp-market-row-meta">{row.setup.note ?? 'Menunggu bukti candle yang lengkap.'} · range {row.rangePct.toFixed(1)}% · vol {row.volJt}jt</div>
           </Link>
         );
       })}

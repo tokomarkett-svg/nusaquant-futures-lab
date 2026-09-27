@@ -304,6 +304,9 @@ export type CoinDetail = {
   candles: Candle[];
   zones: Zones;
   gate: { gate: Gate; close: number; ma25: number; ma99: number; interval: '1h' };
+  /** Pagar teknik ketat berlaku pada 15m saja; timeframe lain untuk analisis, bukan sinyal entry. */
+  gateAlignLong: boolean;
+  gateAlignShort: boolean;
   ma25: number[];
   ma99: number[];
   setupLong: SetupMarkers;
@@ -337,6 +340,8 @@ export async function coinDetail(symbol: string, interval: string): Promise<Coin
     candles,
     zones,
     gate: { ...gateInfo, interval: '1h' },
+    gateAlignLong: interval === '15m' && gateTeknik(candles, h1, ticker.last, 'LONG').ok,
+    gateAlignShort: interval === '15m' && gateTeknik(candles, h1, ticker.last, 'SHORT').ok,
     ma25: ma(25),
     ma99: ma(99),
     setupLong: detectSetup(candles, zones, 'LONG'),

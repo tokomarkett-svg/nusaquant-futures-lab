@@ -10,6 +10,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
+import HpHeader from '../HpHeader';
 import { WARNA } from '../bahan';
 
 const WORKER = 'https://nusaquantworker-production.up.railway.app';
@@ -116,28 +117,23 @@ export default function CekSistem() {
 
   useEffect(() => { void jalankan(); }, [jalankan]);
 
-  const semuaOk = items.every((i) => i.status === 'ok');
+  const semuaOk = items.length > 0 && items.every((i) => i.status === 'ok');
 
   return (
-    <div style={{ padding: '10px 12px 0' }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 2px 10px' }}>
-        <Link href="/hp" style={{ textDecoration: 'none', color: WARNA.ink, fontSize: 18 }}>‹</Link>
-        <b style={{ fontSize: 15 }}>Cek Sistem</b>
-        <button onClick={() => void jalankan()} disabled={diuji} style={{ marginLeft: 'auto', border: '1px solid #cfe0d5', background: '#f6fbf7', color: WARNA.greenDark, fontWeight: 800, fontSize: 11, borderRadius: 999, padding: '5px 12px', cursor: 'pointer' }}>
-          {diuji ? '⏳ memeriksa…' : '🔄 periksa ulang'}
-        </button>
-      </header>
+    <div className="hp-page">
+      <HpHeader tag="DIAGNOSTIK" back />
+      <p className="hp-eyebrow">CEK SISTEM <b>·</b> BUKTI HIDUP</p>
+      <h1 className="hp-heading">Semua terhubung?</h1>
+      <p className="hp-lede">Status layanan dibaca langsung. Halaman ini tidak mengirim order atau mengubah mesin.</p>
+      <button type="button" className="hp-link hp-refresh" onClick={() => void jalankan()} disabled={diuji}>{diuji ? '⏳ Memeriksa…' : '↻ Periksa ulang'}</button>
 
-      <div style={{
-        background: semuaOk ? WARNA.mintSoft : '#fff6e2', border: `1px solid ${semuaOk ? '#bfe8d1' : '#ecd9a0'}`,
-        borderRadius: 16, padding: '13px 14px', marginBottom: 10, textAlign: 'center',
-      }}>
-        <div style={{ fontSize: 24 }}>{semuaOk ? '🟢' : '🟡'}</div>
-        <b style={{ fontSize: 13.5 }}>{semuaOk ? 'SEMUA SISTEM JALAN' : diuji ? 'sedang memeriksa…' : 'ADA YANG PERLU DILIHAT'}</b>
+      <div className="hp-card hp-system-summary" style={{ borderLeft: `4px solid ${semuaOk ? WARNA.greenDark : '#bd8b38'}` }}>
+        <span aria-hidden="true" className="hp-system-icon">{diuji ? '◌' : semuaOk ? '✓' : '!'}</span>
+        <div><b>{diuji ? 'Sedang memeriksa…' : semuaOk ? 'Semua sistem jalan' : 'Ada yang perlu dilihat'}</b><p>{diuji ? 'Mengambil status terbaru.' : semuaOk ? 'Seluruh pemeriksaan berhasil.' : 'Baca tiap baris untuk menemukan sumber masalah.'}</p></div>
       </div>
 
       {items.map((item) => (
-        <div key={item.nama} style={{ background: '#fff', border: '1px solid var(--line)', borderLeft: `3px solid ${WARNA_S[item.status]}`, borderRadius: 14, padding: '10px 12px', marginBottom: 8 }}>
+        <div key={item.nama} className="hp-card hp-check" style={{ borderLeft: `3px solid ${WARNA_S[item.status]}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span>{EMOJI[item.status]}</span>
             <b style={{ fontSize: 13 }}>{item.nama}</b>
