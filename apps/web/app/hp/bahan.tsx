@@ -71,7 +71,7 @@ export async function salinTeks(text: string): Promise<boolean> {
 
 /** Tiket sah & boleh dieksekusi: actionable + gate searah + zonanya bukan PADAM. */
 export function tiketSiap(row: BoardRow): boolean {
-  return Boolean(row.ticket?.actionable) && row.gateAlign && row.status !== 'PADAM';
+  return row.demoReady === true && Boolean(row.ticket?.actionable) && row.gateAlign && row.status !== 'PADAM';
 }
 
 /** Posisi harga di pita pintu–batal (0% = batal, 100% = pintu) — untuk garis pita kecil. */

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildBellText, buildStartupText, buildTicketText, collectAlertsForCandidate, createAlertStore, describeTelegramConfig, discoverChatFromUpdates, explainTelegramError, jenisPerpText, resolveAlertMode, sendTelegram, type AlertCandidate } from './alerts.ts';
+import { appConfirmsReady, buildBellText, buildStartupText, buildTicketText, collectAlertsForCandidate, createAlertStore, describeTelegramConfig, discoverChatFromUpdates, explainTelegramError, jenisPerpText, resolveAlertMode, sendTelegram, type AlertCandidate, type AlertScanRow } from './alerts.ts';
 import { jenisPerp } from '@nusaquant/core';
 import type { SetupMarkers, Ticket } from '@nusaquant/core';
 
@@ -43,12 +43,12 @@ test('bel pintu: hanya dikirim untuk X yang masih segar', () => {
 
 test('tiket siap: pesannya memuat entry, stop, target, ukuran, dan pengingat risiko', () => {
   const text = buildTicketText(candidateTicket, ticket);
-  assert.match(text, /SIAP ENTRI/);
+  assert.match(text, /TIKET DEMO SIAP DITINJAU/);
   assert.match(text, /ENTRY: 101\.20/);
-  assert.match(text, /BUY RUNEUSDT 101\.20 SL 96\.40 TP 110\.80/);
   assert.match(text, /96\.40/);
   assert.match(text, /110\.80/);
-  assert.match(text, /1% risiko/);
+  assert.match(text, /jangan salin order ke Binance/);
+  assert.doesNotMatch(text, /Salin persis ke Binance/);
   assert.doesNotMatch(text, /JANGAN EKSEKUSI/);
 
   const denganTautan = buildTicketText(candidateTicket, ticket, 'https://papan.example.app');
@@ -94,7 +94,7 @@ test('pesan sapa startup memuat label aktif dan aturan risiko', () => {
   const text = buildStartupText();
   assert.match(text, /alert aktif/);
   assert.match(text, /BEL PINTU/);
-  assert.match(text, /1% risiko/);
+  assert.match(text, /Alarm bukan order/);
 });
 
 test('penerjemah error Telegram memberi langkah perbaikan yang benar', () => {
@@ -244,10 +244,32 @@ test('siklus notifikasi tidak menandai DRY RUN sebagai terkirim; boleh coba lagi
       return bars;
     },
   } as unknown as import('./market-data.ts').BinancePublicMarketDataClient;
-  const dry = await runAlertCycle(store, market, { mode: 'tiketsiap', send: async () => false });
+  const blocked = await runAlertCycle(store, market, { confirmReady: async () => false, send: async () => { throw new Error('No Telegram when app says no'); } });
+  assert.equal(blocked.sent, 0);
+  assert.equal(store.size(), 0);
+  const dry = await runAlertCycle(store, market, { confirmReady: async () => true, send: async () => false });
   assert.equal(dry.sent, 0);
   assert.equal(store.size(), 0);
-  const live = await runAlertCycle(store, market, { mode: 'tiketsiap', send: async () => true });
+  const live = await runAlertCycle(store, market, { confirmReady: async () => true, send: async () => true });
   assert.equal(live.sent, 1);
   assert.equal(store.size(), 1);
+});
+
+test('alarm SIAP hanya jika app memvalidasi setup yang sama, harga sama, dan belum basi', async () => {
+  const row: AlertScanRow = { ...candidateTicket, market: 'FUTURES', rangePct: 5,
+    quoteVolume: 10_000_000, dataAgeMin: 3, scannedAt: Date.now() };
+  const reply = (payload: Record<string, unknown>, status = 200) =>
+    (async () => ({ ok: status === 200, status, json: async () => payload }) as Response) as typeof fetch;
+  const valid = { ok: true, setupKey: `RUNEUSDT:LONG:${setupTicket.candle2}`,
+    entry: ticket.entry, stop: ticket.stop, target: ticket.target,
+    expiresAt: new Date(Date.now() + 15 * 60_000).toISOString() };
+  const base = { token: 'shared-test-token', baseUrl: 'https://web.example.test' };
+  assert.equal(await appConfirmsReady(row, { ...base, fetchImpl: reply(valid) }), true);
+  assert.equal(await appConfirmsReady(row, { ...base, fetchImpl: reply({ ...valid, setupKey: 'another-setup' }) }), false);
+  assert.equal(await appConfirmsReady(row, { ...base, fetchImpl: reply({ ...valid, target: 999 }) }), false);
+  assert.equal(await appConfirmsReady(row, { ...base, fetchImpl: reply({ ...valid, expiresAt: new Date(Date.now() - 1).toISOString() }) }), false);
+  assert.equal(await appConfirmsReady(row, { ...base, fetchImpl: reply({ ok: false }, 409) }), false);
+  assert.equal(await appConfirmsReady({ ...row, market: 'SPOT' }, { ...base, fetchImpl: reply(valid) }), false);
+  assert.equal(await appConfirmsReady({ ...row, scannedAt: Date.now() - 180_000 }, { ...base, fetchImpl: reply(valid) }), false);
+  assert.equal(await appConfirmsReady(row, { ...base, token: '', fetchImpl: reply(valid) }), false);
 });

@@ -8,10 +8,9 @@ const orderSideOf = (side: 'LONG' | 'SHORT') => (side === 'LONG' ? 'BUY' : 'SELL
 const digitsFor = (price: number) => (price >= 100 ? 2 : price >= 1 ? 4 : price >= 0.01 ? 5 : 7);
 
 export default function SiapEntri({ rows, prices }: { rows: BoardRow[]; prices: Record<string, number> }) {
-  const [copied, setCopied] = useState<string | null>(null);
   const [buka, setBuka] = useState<Record<string, { state: 'loading' | 'opened' | 'error'; message?: string }>>({});
   const [testnet, setTestnet] = useState<Set<string> | null>(null);
-  const ready = rows.filter((row) => row.ticket?.actionable && row.gateAlign).slice(0, 3);
+  const ready = rows.filter((row) => row.demoReady === true && row.ticket?.actionable && row.gateAlign).slice(0, 3);
 
   useEffect(() => {
     let hidup = true;
@@ -25,20 +24,6 @@ export default function SiapEntri({ rows, prices }: { rows: BoardRow[]; prices: 
   // Hook harus tetap dipanggil pada setiap render, termasuk saat tiket belum ada.
   // Early return sebelum useEffect membuat React crash ketika tiket muncul/hilang.
   if (ready.length === 0) return null;
-
-  const salin = async (row: BoardRow) => {
-    const t = row.ticket;
-    if (!t) return;
-    const digits = digitsFor(t.entry);
-    const text = `${orderSideOf(row.side)} ${row.symbol} ${t.entry.toFixed(digits)} SL ${t.stop.toFixed(digits)} TP ${t.target.toFixed(digits)}`;
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(row.symbol);
-      setTimeout(() => setCopied(null), 2000);
-    } catch {
-      /* browser menolak clipboard — abaikan */
-    }
-  };
 
   const entriPaper = async (row: BoardRow) => {
     setBuka((prev) => ({ ...prev, [row.symbol]: { state: 'loading' } }));
@@ -68,7 +53,6 @@ export default function SiapEntri({ rows, prices }: { rows: BoardRow[]; prices: 
         const live = prices[row.symbol] ?? row.last;
         const runR = Math.abs(live - t.entry) / (t.riskDistance || 1);
         const lari = runR > 0.5;
-        const salinText = `${orderSideOf(row.side)} ${row.symbol} ${t.entry.toFixed(digits)} SL ${t.stop.toFixed(digits)} TP ${t.target.toFixed(digits)}`;
         return (
           <div key={row.symbol + String(t.entry)} style={{ border: '1px solid #1c5c34', borderRadius: 14, padding: '14px 16px', background: 'linear-gradient(180deg,#f2fbf5,#e9f7ee)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -96,13 +80,6 @@ export default function SiapEntri({ rows, prices }: { rows: BoardRow[]; prices: 
             </div>
 
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
-              <button
-                onClick={() => void salin(row)}
-                className="control-btn"
-                style={{ fontWeight: 800, borderColor: copied === row.symbol ? 'var(--green-dark)' : undefined, color: copied === row.symbol ? 'var(--green-dark)' : undefined }}
-              >
-                {copied === row.symbol ? 'TERSALIN ✓' : '📋 SALIN TIKET'}
-              </button>
               {testnet !== null && !testnet.has(row.symbol) ? (
                 <span style={{ fontSize: 11, color: 'var(--muted)', padding: '6px 0' }}>🧪 koin ini belum ada di testnet — latihan pakai PAPER</span>
               ) : (
@@ -124,7 +101,7 @@ export default function SiapEntri({ rows, prices }: { rows: BoardRow[]; prices: 
               >
                 {buka[row.symbol]?.state === 'loading' ? 'MEMBUKA…' : buka[row.symbol]?.state === 'opened' ? 'TERBUKA ✓' : '⚡ ENTRI (PAPER)'}
               </button>
-              <span style={{ fontSize: 11, color: 'var(--muted)' }}>{salinText}</span>
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>Alarm saja; tinjau ulang lewat aplikasi, jangan salin order ke Binance.</span>
             </div>
             {buka[row.symbol]?.message && (
               <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: buka[row.symbol].state === 'error' ? 'var(--red)' : 'var(--green-dark)' }}>

@@ -129,7 +129,7 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket, papan
   if (candidate.gateAlign && ticket.actionable) {
     const orderSide = candidate.side === 'LONG' ? 'BUY' : 'SELL';
     return [
-      `🎯 <b>SIAP ENTRI — ${candidate.symbol} ${candidate.side}</b>`,
+      `🎯 <b>TIKET DEMO SIAP DITINJAU — ${candidate.symbol} ${candidate.side}</b>`,
       '',
       `👉 <b>ENTRY: ${format(ticket.entry)}</b>  (${orderSide})`,
       `🛑 SL     : ${format(ticket.stop)}  (−${ticket.riskUsdt} USDT)`,
@@ -143,8 +143,8 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket, papan
       lahirText,
       ticket.warnings.length ? `⚠ ${ticket.warnings.join(' · ')}` : 'Semua pagar lolos — harga masih di dekat pintu.',
       '',
-      `Salin persis ke Binance: <code>${orderSide} ${candidate.symbol} ${format(ticket.entry)} SL ${format(ticket.stop)} TP ${format(ticket.target)}</code>${tautanChart}${tautanIzin}`,
-      '1% risiko · maksimal 2 trade/hari · stop dipasang SEBELUM entry.',
+      `Alarm saja — buka aplikasi untuk periksa ulang; jangan salin order ke Binance.${tautanChart}${tautanIzin}`,
+      'Tidak ada order otomatis. Hanya Testnet, wajib login dan persetujuan per tiket; jika Demo terkunci jangan entry.',
     ].join('\n');
   }
 
@@ -217,7 +217,7 @@ export function collectAlertsForCandidate(
 /** Alamat papan web (tanpa garis miring di ujung) untuk tautan chart pada notif. */
 function normalizePapanUrl(): string | undefined {
   const raw = (process.env.PAPAN_URL ?? '').trim().replace(/\/+$/, '');
-  return raw ? raw : undefined;
+  return raw || 'https://web-gray-eta-79.vercel.app';
 }
 
 /** Baris diagnosa (tanpa membocorkan rahasia) supaya salah ketik langsung ketahuan dari log. */
@@ -454,24 +454,56 @@ export async function scanAlertCandidatesShared(
   return (await state.inFlight!).slice(0, limit);
 }
 
+/** Baca-saja: tanyakan ke gerbang app yang SAMA dengan tombol pratinjau/konfirmasi.
+ * Fail closed: token/koneksi/app/Testnet bermasalah => tidak ada alarm SIAP. */
+export async function appConfirmsReady(row: AlertScanRow, options: { fetchImpl?: typeof fetch; baseUrl?: string; token?: string } = {}): Promise<boolean> {
+  const c2 = row.setup.candle2;
+  if (!c2 || !row.setup.valid || !row.ticket?.actionable || !row.gateAlign || row.market !== 'FUTURES'
+    || !tiketMasihSah(c2) || Date.now() - row.scannedAt > 120_000 || row.dataAgeMin > STALE_CANDLE_MINUTES) return false;
+  const token = options.token ?? process.env.EXEC_TOKEN;
+  const base = options.baseUrl ?? process.env.ALERT_CHECK_BASE_URL ?? 'https://web-gray-eta-79.vercel.app';
+  if (!token || !base.startsWith('https://')) return false;
+  try {
+    const response = await (options.fetchImpl ?? fetch)(new URL('/api/meja/alert-check', base), {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token, symbol: row.symbol, side: row.side,
+        setupKey: `${row.symbol}:${row.side}:${c2}` }),
+      signal: AbortSignal.timeout(12_000), cache: 'no-store',
+    });
+    if (!response.ok) return false;
+    const payload = await response.json() as { ok?: boolean; setupKey?: string; entry?: number; stop?: number; target?: number; expiresAt?: string };
+    const close = (a: number, b: number) => Number.isFinite(a) && Number.isFinite(b)
+      && Math.abs(a - b) <= Math.max(1e-10, Math.abs(b) * 1e-9);
+    return payload.ok === true && payload.setupKey === `${row.symbol}:${row.side}:${c2}`
+      && Date.parse(payload.expiresAt ?? '') > Date.now()
+      && close(Number(payload.entry), row.ticket.entry) && close(Number(payload.stop), row.ticket.stop)
+      && close(Number(payload.target), row.ticket.target);
+  } catch { return false; }
+}
+
 export async function runAlertCycle(
   store: ReturnType<typeof createAlertStore>,
   client?: BinancePublicMarketDataClient,
-  options: { chatId?: string; mode?: AlertMode; papanUrl?: string; send?: typeof sendTelegram } = {},
+  options: { chatId?: string; papanUrl?: string; send?: typeof sendTelegram;
+    confirmReady?: (row: AlertScanRow) => Promise<boolean> } = {},
 ): Promise<{ scanned: number; sent: number; messages: AlertMessage[] }> {
-  // Futures dulu: garis & tiket harus diukur dari pasar yang sama dengan chart murid.
   const market = client ?? scanMarketClient();
   const rows = await scanAlertCandidatesShared(market);
   const messages: AlertMessage[] = [];
   for (const row of rows) {
-    if (!row.gateAlign && row.setup.candle2 === null) continue; // hemat: gate belum searah & belum ada paket = tidak ada yang dikabarkan
-    messages.push(...collectAlertsForCandidate(row, store, { mode: options.mode, papanUrl: options.papanUrl ?? normalizePapanUrl() }));
+    // Hanya alarm dari tiket aplikasi yang lolos SEMUA pagar server + simbol Testnet TRADING.
+    // BEL PINTU/TIKET_TANPA_GATE tidak menimbulkan alarm entry.
+    const pending = collectAlertsForCandidate(row, store, { mode: 'tiketsiap', papanUrl: options.papanUrl ?? normalizePapanUrl() });
+    // Pernah mengabarkan tiket? Kirim peringatan BASI saat jendela habis (bukan alarm entry baru).
+    messages.push(...pending.filter((message) => message.kind === 'TIKET_BASI'));
+    if (!pending.some((message) => message.kind === 'TIKET')) continue;
+    if (!(await (options.confirmReady ?? appConfirmsReady)(row))) continue;
+    if (!tiketMasihSah(row.setup.candle2)) continue;
+    messages.push(...pending.filter((message) => message.kind === 'TIKET'));
   }
   let sent = 0;
   for (const message of messages) {
     try {
-      // Mode bisu/DRY RUN mengembalikan false: jangan cap "terkirim" dan jangan
-      // hilangkan kesempatan mengirim ketika konfigurasi Telegram diperbaiki.
       const delivered = await (options.send ?? sendTelegram)(message.text, { chatId: options.chatId });
       if (delivered) {
         store.add(message.key);
@@ -492,17 +524,16 @@ export function buildStartupText(): string {
     'Bot memantau seluruh pasar USDT dengan sistem pintu–manis–batal.',
     'Yang akan kamu terima:',
     '🔔 BEL PINTU — harga menyentuh pintu & gate searah',
-    '🎯 TIKET SIAP — entry, stop, target 2R, ukuran coin',
-    '⚠️ JANGAN EKSEKUSI — tiket muncul tapi gate melawan',
+    '🎯 TIKET DEMO SIAP DITINJAU — hanya saat aplikasi menyatakan tiket sah dan simbol Testnet TRADING',
     '',
-    'Ingat: 1% risiko · maks 2 trade/hari · stop sebelum entry.',
+    'Alarm bukan order. Login di aplikasi, periksa ulang dan setujui sendiri per tiket; Demo terkunci sampai diaktifkan, uang asli selalu terkunci.',
   ].join('\n');
 }
 
 export async function watchAlerts(): Promise<void> {
   const store = createAlertStore();
   const pollMs = Math.max(Number(process.env.ALERT_POLL_MS ?? 120_000), 60_000);
-  const mode = resolveAlertMode();
+  const mode = 'tiketsiap'; // Keputusan pemilik: Telegram HANYA tiket siap yang diverifikasi app.
   const config = describeTelegramConfig();
   const maskId = (value: string) => (value.length <= 4 ? '****' : `${value.slice(0, 2)}…${value.slice(-2)} (${value.length} digit)`);
   let effectiveChatId = (process.env.TELEGRAM_CHAT_ID ?? '').trim();
@@ -550,7 +581,7 @@ export async function watchAlerts(): Promise<void> {
           console.error('[alerts] diagnosa:', JSON.stringify(describeTelegramConfig()));
         }
       }
-      const result = await runAlertCycle(store, market, { chatId: effectiveChatId, mode });
+      const result = await runAlertCycle(store, market, { chatId: effectiveChatId });
       runtimeStatus.alerts.lastCycleAt = new Date().toISOString();
       runtimeStatus.alerts.scanned = result.scanned;
       runtimeStatus.alerts.delivered += result.sent;

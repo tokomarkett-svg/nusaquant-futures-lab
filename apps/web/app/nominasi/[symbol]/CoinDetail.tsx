@@ -50,7 +50,7 @@ function SetupChecklist({ setup, title, digits }: { setup: SetupMarkers; title: 
   );
 }
 
-function TicketPanel({ ticket, digits, label }: { ticket: Ticket | null; digits: number; label: string }) {
+function TicketPanel({ ticket, digits, label, demoReady }: { ticket: Ticket | null; digits: number; label: string; demoReady?: boolean }) {
   if (!ticket) {
     return (
       <div className="diagnostic-table-wrap">
@@ -61,8 +61,9 @@ function TicketPanel({ ticket, digits, label }: { ticket: Ticket | null; digits:
       </div>
     );
   }
-  const tone = ticket.actionable ? { bg: '#eaf8ef', border: '#c8e9d5', fg: 'var(--green-dark)', text: 'SIAP / MASIH BISA DIEKSEKUSI' }
-    : { bg: '#fff4e8', border: '#f3ddc2', fg: 'var(--amber)', text: 'TIDAK BISA DIEKSEKUSI LAGI — TUNGGU SETUP BARU' };
+  const tone = demoReady && ticket.actionable
+    ? { bg: '#eaf8ef', border: '#c8e9d5', fg: 'var(--green-dark)', text: 'TIKET DEMO SIAP DITINJAU — LOGIN & PERIKSA ULANG' }
+    : { bg: '#fff4e8', border: '#f3ddc2', fg: 'var(--amber)', text: 'BELUM SIAP DEMO — POLA TEKNIS SAJA / TESTNET ATAU GERBANG DITOLAK' };
   return (
     <div className="diagnostic-table-wrap" style={{ background: tone.bg, borderColor: tone.border }}>
       <div className="diagnostic-table-title" style={{ color: tone.fg }}>{label} · {tone.text}</div>
@@ -212,8 +213,8 @@ export default function CoinDetail({ symbol }: { symbol: string }) {
       </section>
 
       <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
-        <TicketPanel ticket={payload.ticketLong} digits={digits} label="TIKET LONG (otomatis)" />
-        <TicketPanel ticket={payload.ticketShort} digits={digits} label="TIKET SHORT (otomatis)" />
+        <TicketPanel ticket={payload.ticketLong} digits={digits} label="TIKET LONG (pemeriksaan)" demoReady={payload.demoReadyLong} />
+        <TicketPanel ticket={payload.ticketShort} digits={digits} label="TIKET SHORT (pemeriksaan)" demoReady={payload.demoReadyShort} />
       </section>
 
       <section className="panel" style={{ padding: '14px 16px', borderRadius: 18 }}>

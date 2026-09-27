@@ -12,7 +12,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { jenisPerp } from '@nusaquant/core';
 import HpHeader from '../HpHeader';
-import { WARNA, digitsFor, fmt, salinTeks, wib } from '../bahan';
+import { WARNA, fmt, wib } from '../bahan';
 
 type Candle = { time: number; open: number; high: number; low: number; close: number };
 type Setup = {
@@ -30,6 +30,7 @@ type Detail = {
   zones: { rangePct: number; long: { pintu: number; manis: number; batal: number }; short: { pintu: number; manis: number; batal: number } };
   gate: { gate: 'HIJAU' | 'MERAH' | 'KUNING'; close: number };
   gateAlignLong: boolean; gateAlignShort: boolean;
+  demoReadyLong?: boolean; demoReadyShort?: boolean;
   setupLong: Setup; setupShort: Setup; ticketLong: Ticket | null; ticketShort: Ticket | null;
   last: number; dataAgeMin: number; at: string;
 };
@@ -56,7 +57,6 @@ export default function KoinHp({ symbol }: { symbol: string }) {
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [memuat, setMemuat] = useState(true);
-  const [tersalin, setTersalin] = useState(false);
   const [sekarang, setSekarang] = useState<number | null>(null);
 
   const muat = useCallback(async () => {
@@ -91,19 +91,9 @@ export default function KoinHp({ symbol }: { symbol: string }) {
   const searah = data ? (pilihan!.sisi === 'LONG' ? data.gateAlignLong : data.gateAlignShort) : false;
   const dataSegar = Boolean(data && sekarang !== null && sekarang - Date.parse(data.at) <= 120_000 &&
     data.dataAgeMin + (sekarang - Date.parse(data.at)) / 60_000 <= 45);
-  const tiketLayak = Boolean(data && !error && dataSegar && tf === '15m' && searah && pilihan?.ticket?.actionable && sekarang !== null &&
+  const tiketLayak = Boolean(data && !error && dataSegar && tf === '15m' && searah &&
+    (pilihan?.sisi === 'LONG' ? data.demoReadyLong : data.demoReadyShort) === true && pilihan?.ticket?.actionable && sekarang !== null &&
     pilihan.setup.candle2 !== null && sekarang >= pilihan.setup.candle2 + 900_000 && sekarang <= pilihan.setup.candle2 + 4 * 900_000);
-
-  const salin = async () => {
-    const t = pilihan?.ticket;
-    if (!t) return;
-    const digit = digitsFor(t.entry);
-    const teks = `${t.side === 'LONG' ? 'BUY' : 'SELL'} ${symbol} ${t.entry.toFixed(digit)} SL ${t.stop.toFixed(digit)} TP ${t.target.toFixed(digit)}`;
-    if (await salinTeks(teks)) {
-      setTersalin(true);
-      setTimeout(() => setTersalin(false), 2500);
-    }
-  };
 
   return (
     <div className="hp-page">
@@ -158,15 +148,15 @@ export default function KoinHp({ symbol }: { symbol: string }) {
                 ))}
               </div>
               {pilihan.ticket.warnings.length > 0 && <div style={{ fontSize: 10.5, color: '#ffd479', marginTop: 8 }}>⚠ {pilihan.ticket.warnings.join(' · ')}</div>}
-              <button onClick={() => void salin()} style={{ display: 'block', width: '100%', border: 'none', cursor: 'pointer', borderRadius: 13, padding: '11px 0', fontWeight: 800, fontSize: 13, marginTop: 10, background: WARNA.mint, color: '#06281a' }}>
-                {tersalin ? '✅ TERSALIN — tempel di Binance' : '📋 SALIN ORDER'}
-              </button>
-              <div style={{ textAlign: 'center', fontSize: 9.5, color: '#9fd8bb', marginTop: 7 }}>1% risiko · maks 2 trade/hari · stop dipasang SEBELUM entry</div>
+              <Link href={`/hp/entri?symbol=${symbol}&side=${pilihan.sisi}`} style={{ display: 'block', textAlign: 'center', width: '100%', borderRadius: 13, padding: '11px 0', fontWeight: 800, fontSize: 13, marginTop: 10, background: WARNA.mint, color: '#06281a', textDecoration: 'none' }}>
+                🧪 TINJAU DEMO · LOGIN & PERIKSA ULANG
+              </Link>
+              <div style={{ textAlign: 'center', fontSize: 9.5, color: '#9fd8bb', marginTop: 7 }}>Alarm saja; tidak ada order otomatis. Jangan salin ke Binance.</div>
             </div>
           ) : (
             <div className="hp-card hp-empty" style={{ textAlign: 'left', padding: '15px 16px' }}>
               <b>Belum ada tiket yang boleh dieksekusi</b>
-              <p>{tf !== '15m' ? 'Timeframe ini untuk melihat struktur saja. Periksa setup entry pada 15m.' : !searah ? 'Arah hari/MA99 15m dan 1H belum searah — jangan entry.' : !dataSegar ? 'Data belum segar; tunggu pemindaian terbaru.' : pilihan.ticket?.actionable ? 'Batas umur tiket sudah lewat. Tunggu setup baru.' : pilihan.setup.notes.at(-1) ?? 'Paket X → candle 1 → candle 2 belum lengkap.'}</p>
+              <p>{tf !== '15m' ? 'Timeframe ini untuk melihat struktur saja. Periksa setup entry pada 15m.' : !searah ? 'Arah hari/MA99 15m dan 1H belum searah — jangan entry.' : !dataSegar ? 'Data belum segar; tunggu pemindaian terbaru.' : pilihan.ticket?.actionable ? 'Pola teknis ada, tetapi gerbang aplikasi/Testnet belum menyatakan tiket siap. Jangan entry.' : pilihan.setup.notes.at(-1) ?? 'Paket X → candle 1 → candle 2 belum lengkap.'}</p>
               {pilihan.ticket && !pilihan.ticket.actionable && (
                 <div style={{ fontSize: 11, color: '#9a6b00', marginTop: 6 }}>⚠ Tiket lama ada tapi tidak layak: {pilihan.ticket.warnings.join(' · ') || 'pagar belum lolos'}</div>
               )}

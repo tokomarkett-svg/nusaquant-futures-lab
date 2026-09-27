@@ -2,8 +2,8 @@ import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { RISK_USDT } from '../../../../lib/binance';
 import { manualTicket } from '../../../../lib/manual-ticket';
+import { demoReadyTicket } from '../../../../lib/demo-readiness';
 import { operatorFrom, sameOrigin } from '../../../../lib/operator';
-import { simbolTestnet } from '../../../../lib/testnet';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -41,10 +41,8 @@ export async function POST(request: Request) {
   }
   let ticket: Awaited<ReturnType<typeof manualTicket>>;
   try {
-    ticket = await manualTicket(symbol, side);
+    ticket = await demoReadyTicket(symbol, side);
     if (body.setupKey !== ticket.setupKey) throw new Error('Tiket telah berubah atau kedaluwarsa. Buka ulang pratinjau.');
-    const symbols = await simbolTestnet();
-    if (!symbols.has(symbol)) throw new Error('Simbol tidak ada di Testnet atau daftar tidak dapat diverifikasi.');
   } catch (e) {
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : 'Tiket tidak sah.' }, { status: 409 });
   }

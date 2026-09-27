@@ -164,6 +164,8 @@ export type BoardRow = {
   jenis: 'saham' | 'komoditas' | 'kripto';
   setup: { x: number | null; candle1: number | null; candle2: number | null; valid: boolean; note: string | null };
   ticket: Ticket | null;
+  /** Satu keputusan dengan pratinjau operator & alarm Telegram; false bila Testnet/gate/data gagal. */
+  demoReady?: boolean;
 };
 
 export type Funnel = { scanned: number; liquid: number; rangeOk: number; board: number; staleDropped: number };
@@ -313,6 +315,8 @@ export type CoinDetail = {
   setupShort: SetupMarkers;
   ticketLong: Ticket | null;
   ticketShort: Ticket | null;
+  demoReadyLong?: boolean;
+  demoReadyShort?: boolean;
   last: number;
   dataAgeMin: number;
   at: string;

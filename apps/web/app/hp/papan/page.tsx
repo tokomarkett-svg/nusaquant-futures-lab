@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import HpHeader from '../HpHeader';
-import { badgeJenis, badgeSisi, badgeStatus, fmt, Pita, type Board, type BoardRow } from '../bahan';
+import { badgeJenis, badgeSisi, badgeStatus, fmt, Pita, tiketSiap, type Board, type BoardRow } from '../bahan';
 
 type Filter = 'SEMUA' | 'LONG' | 'SHORT' | 'SEARAH' | 'SIAP';
 const FILTERS: ReadonlyArray<{ id: Filter; text: string }> = [
@@ -50,7 +50,7 @@ export default function PapanHp() {
       if (filter === 'LONG') return r.side === 'LONG';
       if (filter === 'SHORT') return r.side === 'SHORT';
       if (filter === 'SEARAH') return r.gateAlign;
-      if (filter === 'SIAP') return Boolean(r.ticket?.actionable) && r.gateAlign && r.status !== 'PADAM' && board !== null && sekarang !== null &&
+      if (filter === 'SIAP') return tiketSiap(r) && board !== null && sekarang !== null &&
         r.dataAgeMin + (sekarang - Date.parse(board.at)) / 60_000 <= 45 && r.setup.candle2 !== null &&
         sekarang >= r.setup.candle2 + 900_000 && sekarang <= r.setup.candle2 + 4 * 900_000;
       return true;

@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { dataMarket, scanBoard, type Board } from '../../../lib/binance';
+import { markDemoReadiness } from '../../../lib/board-readiness';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 /** Papan nominasi memindai ratusan pair — simpan hasil 45 detik supaya tidak membanjiri sumber data. */
 const CACHE_MS = 45_000;
@@ -11,14 +13,16 @@ let inFlight: Promise<Board> | null = null;
 export async function GET() {
   try {
     if (cached && Date.now() - cached.at < CACHE_MS) {
-      return NextResponse.json({ ok: true, cached: true, market: dataMarket(), ...cached.payload });
+      return NextResponse.json({ ok: true, cached: true, ...cached.payload });
     }
     if (!inFlight) {
-      inFlight = scanBoard(40).finally(() => { inFlight = null; });
+      inFlight = scanBoard(40).then(async (board) => {
+        board.market = dataMarket();
+        return markDemoReadiness(board);
+      }).finally(() => { inFlight = null; });
     }
     const payload = await inFlight;
     cached = { at: Date.now(), payload };
-    payload.market = dataMarket();
     return NextResponse.json({ ok: true, cached: false, ...payload });
   } catch (error) {
     return NextResponse.json({

@@ -4,12 +4,11 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import HpHeader from './HpHeader';
-import { fmt, salinTeks, teksOrder, tiketSiap, wib, type Board, type BoardRow } from './bahan';
+import { fmt, tiketSiap, wib, type Board, type BoardRow } from './bahan';
 
 export default function BerandaHp() {
   const [board, setBoard] = useState<Board | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tersalin, setTersalin] = useState(false);
   const [sekarang, setSekarang] = useState<number | null>(null);
 
   const muat = useCallback(async () => {
@@ -43,14 +42,6 @@ export default function BerandaHp() {
   const hero = siap[0] ?? null;
   const bel = rows.filter((r) => r.status !== 'PADAM' && r.setup.x !== null && !r.ticket).slice(0, 6);
 
-  const salin = async (row: BoardRow) => {
-    const teks = teksOrder(row);
-    if (teks && await salinTeks(teks)) {
-      setTersalin(true);
-      setTimeout(() => setTersalin(false), 2500);
-    }
-  };
-
   return (
     <div className="hp-page">
       <HpHeader market={terkini ? board?.market : undefined} />
@@ -68,7 +59,7 @@ export default function BerandaHp() {
       {error && <div className="hp-error" role="alert"><b>Pemindaian terhenti:</b> {error}</div>}
       <div className="hp-section-label">TIKET PRIORITAS <small>{hero ? 'Layak menurut data saat ini' : 'Tidak ada tiket siap'}</small></div>
       {hero?.ticket ? (
-        <KartuSiap row={hero} tersalin={tersalin} padaSalin={() => void salin(hero)} />
+        <KartuSiap row={hero} />
       ) : (
         <div className="hp-card hp-empty">
           <span className="hp-empty-icon" aria-hidden="true">◎</span>
@@ -94,7 +85,7 @@ export default function BerandaHp() {
   );
 }
 
-function KartuSiap({ row, tersalin, padaSalin }: { row: BoardRow; tersalin: boolean; padaSalin: () => void }) {
+function KartuSiap({ row }: { row: BoardRow }) {
   const t = row.ticket!;
   const lahir = row.setup.candle2 ? wib(row.setup.candle2) : null;
   return (
@@ -113,10 +104,9 @@ function KartuSiap({ row, tersalin, padaSalin }: { row: BoardRow; tersalin: bool
       <div className="hp-expiry"><span>Ukuran {t.sizeCoin.toLocaleString('id-ID', { maximumFractionDigits: 4 })} koin</span><span>Lahir {lahir ?? '—'} WIB</span></div>
       <div className="hp-expiry-meter" aria-label={`Umur tiket ${t.entryAgeBars ?? 0} dari 3 candle`}><i style={{ width: `${Math.max(7, 100 - ((t.entryAgeBars ?? 0) / 3) * 100)}%` }} /></div>
       {t.warnings.length > 0 && <div className="hp-ticket-warning">⚠ {t.warnings.join(' · ')}</div>}
-      <button type="button" onClick={padaSalin} className="hp-cta">{tersalin ? '✓ Order tersalin' : '▤ Salin order'} </button>
+      <Link href={`/hp/entri?symbol=${row.symbol}&side=${row.side}`} className="hp-cta">🧪 Tinjau Demo · login & periksa ulang</Link>
       <Link href={`/hp/koin/${row.symbol}`} className="hp-cta hp-cta-secondary">Lihat chart & garis ↗</Link>
-      <Link href={`/hp/entri?symbol=${row.symbol}&side=${row.side}`} className="hp-cta hp-cta-secondary">Tinjau persetujuan Demo (manual) ↗</Link>
-      <div className="hp-ticket-disclaimer">Risiko 0,31 USDT · maks 2 trade/hari · pasang SL sebelum entry</div>
+      <div className="hp-ticket-disclaimer">Alarm bukan order · jangan salin tiket langsung ke Binance · Demo perlu persetujuan per tiket.</div>
     </section>
   );
 }

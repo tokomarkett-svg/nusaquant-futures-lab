@@ -66,20 +66,24 @@ Di **Railway → worker → Variables**, saklar yang aman dimatikan (mesin lama 
 
 ```
 RUN_MARKET_INGEST=false   (berhenti menulis candle arsip)
-RUN_MARKET_WATCH=false    (berhenti poll terus-menerus)
+RUN_SESSION_CONTROL=false (jika sesi paper lama tidak digunakan)
 RUN_RADAR=false           (radar lama — kecil, tapi boleh dimatikan)
 RUN_RESEARCH_JOBS=false   (riset belakangan)
+RUN_DESK=false            (jika tidak ada posisi paper terbuka dan pemilik memilih hanya alarm manual)
 ```
 
-**JANGAN disentuh (wajib tetap):**
+**JANGAN disentuh jika alarm harus tetap aktif:**
 
 ```
 RUN_ALERTS=true   (notifikasi PMB)
-RUN_DESK=true     (meja paper otomatis)
-PMB_NOTIF=1       (kalau mau notif nyala)
+PMB_NOTIF=1       (izin pengiriman Telegram)
 ```
 
-Setelah mengubah variabel → Railway redeploy otomatis.
+`RUN_DESK=true` justru membuka/menutup posisi PAPER otomatis. Pemilik memilih alur alarm → persetujuan Demo manual dan sudah mengubah `RUN_DESK=false` setelah posisi paper terbuka dipastikan nol. Jangan menyalakannya kembali tanpa izin.
+
+**PENTING:** Jangan menonaktifkan start command/watch Railway. `railway.json` memakai `npm run ingest:watch`, yang memaksa `RUN_MARKET_WATCH=true` untuk menyalakan API worker dan alarm walaupun variabel Railway menampilkan `false`. Mengubah start command secara ceroboh dapat mematikan Telegram. Sesudah perubahan variabel, verifikasi `/health/runtime` alerts masih berputar.
+
+Egress 17,34 GB / 5 GB pada 27 Sep 2026 adalah pemakaian terakumulasi siklus ini; mematikan polling tidak menurunkan angka tersebut. Masa tenggang sudah habis, sehingga order Demo harus tetap off sampai ledger dapat diandalkan.
 
 ## 5. Langkah 2C — cara paling gampang (berbiaya)
 

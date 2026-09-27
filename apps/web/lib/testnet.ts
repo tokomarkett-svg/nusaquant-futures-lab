@@ -41,12 +41,12 @@ export async function simbolTestnet(): Promise<Set<string>> {
   return sedangAmbil;
 }
 
-/** Ada di testnet? Kalau daftar gagal diambil, anggap ADA (biar tombol tetap tampil & server testnet yang menolak). */
+/** Ada dan TRADING di Testnet? Gagal verifikasi harus menolak, bukan mengizinkan. */
 export async function adaDiTestnet(symbol: string): Promise<boolean> {
   try {
     const set = await simbolTestnet();
-    return set.size === 0 ? true : set.has(symbol);
+    return set.has(symbol);
   } catch {
-    return true;
+    return false;
   }
 }
