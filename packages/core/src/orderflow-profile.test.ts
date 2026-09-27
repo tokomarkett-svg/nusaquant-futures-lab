@@ -38,3 +38,22 @@ test('research-only: fail closed saat dataset parsial, pasar spot, gap ID, futur
   assert.equal(buildTradeVolumeProfile({ ...input, trades: [{ ...trades[0], quantity: -1 }] }), null);
   assert.equal(buildTradeVolumeProfile({ ...input, tickSize: 0 }), null);
 });
+
+test('profil sesi gabungan menjumlah trade-by-price, bukan merata-ratakan POC; gap/mixed-symbol ditolak', async () => {
+  const { mergeTradeVolumeProfiles } = await import('./orderflow-profile.ts');
+  const a = buildTradeVolumeProfile({ ...input, start: 0, end: 1000,
+    trades: [{ id: 1, time: 100, price: 100, quantity: 10, buyerIsMaker: true }] });
+  const b = buildTradeVolumeProfile({ ...input, start: 1000, end: 2000,
+    trades: [{ id: 2, time: 1100, price: 101, quantity: 8, buyerIsMaker: false },
+      { id: 3, time: 1200, price: 101, quantity: 8, buyerIsMaker: false }] });
+  assert.ok(a && b);
+  const merged = mergeTradeVolumeProfiles([a, b], 1);
+  assert.ok(merged);
+  assert.equal(merged.totalVolume, 26);
+  assert.equal(merged.totalDelta, 6);
+  assert.equal(merged.poc, 101);
+  assert.equal(merged.valueAreaLow, 100);
+  assert.equal(merged.valueAreaHigh, 101);
+  assert.equal(mergeTradeVolumeProfiles([a, { ...b, start: 1001 }], 1), null);
+  assert.equal(mergeTradeVolumeProfiles([a, { ...b, symbol: 'ETHUSDT' }], 1), null);
+});

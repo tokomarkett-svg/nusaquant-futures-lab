@@ -1,5 +1,7 @@
 # Fase lanjutan riset Chris — data nyata dan urutan tanpa MA
 
+> **Catatan pembaruan:** pipeline multi-hari dari transaksi riil sekarang sudah dijalankan. Hasil terbaru dan status promosi ada di `docs/60-champion-real-history-audit-2026-09-28.md`. Bagian "belum terhubung" di bawah menggambarkan status fase sebelumnya.
+
 28 Sep 2026 WIB. **Belum siap mengganti Telegram.** Keputusan pemilik tetap: alarm PMB lama boleh aktif sampai metode video terbukti dan siap; riset baru tidak boleh kirim alarm/order. Metode Chris berasal dari MNQ/NQ; translasi ke Binance Futures memerlukan validasi independen dan GEX ala QQQ/NDX tidak boleh diklaim tersedia untuk altcoin.
 
 ## Progres terverifikasi sekarang

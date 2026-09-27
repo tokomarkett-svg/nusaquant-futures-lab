@@ -1,0 +1,52 @@
+{
+  "ok": true,
+  "strategy": "CHAMPION_FOOTPRINT_V0_RESEARCH_ONLY",
+  "ready": false,
+  "symbol": "BTCUSDT",
+  "firstDay": "2026-09-20",
+  "lastDay": "2026-09-25",
+  "tickSize": 0.1,
+  "sources": [
+    {
+      "date": "2026-09-20",
+      "sha256": "6de29ebe9d12edccc043725a25c56b0f70240b3ab5f111ddf9c681eeede1bba5",
+      "trades": 821998
+    },
+    {
+      "date": "2026-09-21",
+      "sha256": "b8db83732da44c167980abad026e3a1da763650c13cb4c9ed44cd483b3710ffb",
+      "trades": 2495145
+    },
+    {
+      "date": "2026-09-22",
+      "sha256": "bfa4afa6e903a16e2ab9eec619b26b8ee53c283c65439247a2c2e285f2316941",
+      "trades": 1606942
+    },
+    {
+      "date": "2026-09-23",
+      "sha256": "b9508f4180567f2903ebcf731b310cc53f0843ecb4727b7da83b9e45df24ee96",
+      "trades": 1572944
+    },
+    {
+      "date": "2026-09-24",
+      "sha256": "82cc559bb7ee31df2613f2f95cd49033f5f80b7e728ef385b4b41aa074d612f4",
+      "trades": 1551249
+    },
+    {
+      "date": "2026-09-25",
+      "sha256": "d7f8555f2c0f80636303dfd5d24fa015227688fa2951ea0ce99af5cfdbd39ee4",
+      "trades": 1253069
+    }
+  ],
+  "windows": 1728,
+  "evaluated": 574,
+  "funnel": {
+    "DATA_KURANG": 864,
+    "KONTEKS": 562,
+    "LOKASI": 12
+  },
+  "candidates": [],
+  "candidateCount": 0,
+  "performance": null,
+  "reason": "Hanya funnel data nyata. Belum ada OOS, GEX dealer, biaya/latency/fill; bukan alarm."
+}

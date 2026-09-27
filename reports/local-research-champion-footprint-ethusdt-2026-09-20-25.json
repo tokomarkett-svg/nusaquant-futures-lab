@@ -1,0 +1,52 @@
+{
+  "ok": true,
+  "strategy": "CHAMPION_FOOTPRINT_V0_RESEARCH_ONLY",
+  "ready": false,
+  "symbol": "ETHUSDT",
+  "firstDay": "2026-09-20",
+  "lastDay": "2026-09-25",
+  "tickSize": 0.01,
+  "sources": [
+    {
+      "date": "2026-09-20",
+      "sha256": "4d47fb6acb717b0feae3cc3ae95d9bc3394299c17d49680c63d2c124bc73b1eb",
+      "trades": 1076973
+    },
+    {
+      "date": "2026-09-21",
+      "sha256": "fb4b153b56b9d7d31431dbdcbda49ac25ba7012093b7a920d56df54b74ae4bf9",
+      "trades": 2561259
+    },
+    {
+      "date": "2026-09-22",
+      "sha256": "43d2aa9029b638a7c2c3350607f0859285fd55f8432cb8140a1e927614236404",
+      "trades": 1427638
+    },
+    {
+      "date": "2026-09-23",
+      "sha256": "a0af5b6e9d8301c1a44cec36a3df8aeea67b07fd0b6bc6ed8653cc6fa60e615a",
+      "trades": 1454434
+    },
+    {
+      "date": "2026-09-24",
+      "sha256": "d3d61dc9cec871a9f8203db48a905b67fb60154795f0623f6e7412cfe4c3a538",
+      "trades": 1291195
+    },
+    {
+      "date": "2026-09-25",
+      "sha256": "583e52d083c439c6df66ce66ed73006419a98d3435757fd1cf66672aaec357b6",
+      "trades": 1157489
+    }
+  ],
+  "windows": 1728,
+  "evaluated": 574,
+  "funnel": {
+    "DATA_KURANG": 864,
+    "KONTEKS": 538,
+    "LOKASI": 36
+  },
+  "candidates": [],
+  "candidateCount": 0,
+  "performance": null,
+  "reason": "Hanya funnel data nyata. Belum ada OOS, GEX dealer, biaya/latency/fill; bukan alarm."
+}
