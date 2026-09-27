@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import {
-  computeZones, detectSetup, computeTicket, gateFromCandles, RISK_USDT,
+  computeZones, detectSetup, computeTicket, gateTeknik, ticketTimeValid, RISK_USDT,
   fetchKlines, fetchTickers,
 } from '../../../../lib/binance';
 import { adaDiTestnet } from '../../../../lib/testnet';
@@ -62,12 +62,12 @@ export async function POST(request: Request) {
     if (!ticker) return NextResponse.json({ ok: false, error: `${symbol} tidak ditemukan di pasar futures.` }, { status: 404 });
     const zones = computeZones(ticker);
     if (!zones) return NextResponse.json({ ok: false, error: 'Data harga tidak lengkap.' }, { status: 409 });
-    const gate = gateFromCandles(h1).gate;
-    const gateAlign = (side === 'LONG' && gate === 'HIJAU') || (side === 'SHORT' && gate === 'MERAH');
-    if (!gateAlign) return NextResponse.json({ ok: false, error: `Gate 1H sekarang ${gate} — belum searah dengan ${side}. Jangan kejar.` }, { status: 409 });
+    const gate = gateTeknik(m15, h1, ticker.last, side);
+    if (!gate.ok) return NextResponse.json({ ok: false, error: `Tiket ditolak: ${gate.reason} Jangan kejar.` }, { status: 409 });
     const setup = detectSetup(m15, zones, side);
     ticket = computeTicket(m15, zones, side, ticker.last);
     if (!setup.valid || !ticket) return NextResponse.json({ ok: false, error: 'Tiket sudah tidak sah (paket tidak lengkap lagi).' }, { status: 409 });
+    if (!ticketTimeValid(setup.candle2)) return NextResponse.json({ ok: false, error: 'Tiket sudah melewati batas 3 candle sejak C2 tutup.' }, { status: 409 });
     if (!ticket.actionable) return NextResponse.json({ ok: false, error: `Tiket basi/nyangkut: ${ticket.warnings.join(' · ') || 'harga sudah jalan'}. Jangan kejar.` }, { status: 409 });
     setupKey = `${symbol}:${side}:${setup.candle2 ?? 0}`;
   } catch (error) {

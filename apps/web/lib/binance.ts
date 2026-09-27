@@ -38,7 +38,7 @@ const RUTE_PROXY: Record<string, string> = {
   '/api/v3/klines': '/data/klines',
 };
 
-async function requestJson(path: string, params: Record<string, string | number> = {}, noStore = true): Promise<unknown> {
+async function requestJson(path: string, params: Record<string, string | number> = {}, noStore = true, requireFutures = false): Promise<unknown> {
   // Utamakan jembatan futures lewat worker (pasar yang sama dengan notif & meja).
   const ruteProxy = RUTE_PROXY[path];
   if (WORKER_DATA_URL && ruteProxy) {
@@ -46,12 +46,14 @@ async function requestJson(path: string, params: Record<string, string | number>
       const url = new URL(ruteProxy, WORKER_DATA_URL);
       for (const [key, value] of Object.entries(params)) url.searchParams.set(key, String(value));
       const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(9_000) });
-      if (response.ok) {
-        sumberTerakhir = 'FUTURES';
-        return await response.json();
-      }
-    } catch {
-      // jatuh ke cermin spot di bawah, dan TANDAI dengan jelas
+      if (!response.ok) throw new Error(`Worker futures HTTP ${response.status}`);
+      const payload: unknown = await response.json();
+      sumberTerakhir = 'FUTURES';
+      return payload;
+    } catch (error) {
+      // Jangan campur ticker FUTURES dengan candle SPOT dalam perhitungan tiket.
+      // Harga tampilan boleh fallback; sinyal/entri WAJIB fail closed.
+      if (requireFutures) throw new Error(`Data futures worker tidak tersedia: ${error instanceof Error ? error.message : 'koneksi gagal'}`);
     }
   }
   sumberTerakhir = 'SPOT';
@@ -79,7 +81,7 @@ function toNumber(value: unknown): number {
 }
 
 export async function fetchTickers(): Promise<Ticker[]> {
-  const payload = await requestJson('/api/v3/ticker/24hr') as Array<Record<string, unknown>>;
+  const payload = await requestJson('/api/v3/ticker/24hr', {}, true, true) as Array<Record<string, unknown>>;
   if (!Array.isArray(payload)) throw new Error('Payload ticker bukan array.');
   const rows: Ticker[] = [];
   for (const row of payload) {
@@ -106,16 +108,24 @@ export async function fetchPrices(): Promise<Record<string, number>> {
   return out;
 }
 
+const KLINE_MS: Record<string, number> = { '5m': 300_000, '15m': 900_000, '1h': 3_600_000, '4h': 14_400_000 };
+
+/** Hanya candle TERTUTUP boleh dipakai menghitung X·1·2, gate, dan tombol entri. */
 export async function fetchKlines(symbol: string, interval: string, limit = 200): Promise<Candle[]> {
-  const payload = await requestJson('/api/v3/klines', { symbol: symbol.toUpperCase(), interval, limit }) as unknown[];
+  const duration = KLINE_MS[interval];
+  if (!duration) throw new Error(`Interval tidak didukung untuk tiket: ${interval}`);
+  const payload = await requestJson('/api/v3/klines', { symbol: symbol.toUpperCase(), interval, limit }, true, true) as unknown[];
   if (!Array.isArray(payload)) throw new Error('Payload kline bukan array.');
+  const now = Date.now();
   return payload.map((raw) => {
     const row = raw as unknown[];
     return {
       time: Number(row[0]), open: Number(row[1]), high: Number(row[2]),
       low: Number(row[3]), close: Number(row[4]), volume: Number(row[5]),
     };
-  }).filter((candle) => Number.isFinite(candle.time) && Number.isFinite(candle.close) && candle.close > 0);
+  }).filter((candle) => Number.isFinite(candle.time) && Number.isFinite(candle.close)
+    && candle.close > 0 && candle.time + duration <= now)
+    .sort((left, right) => left.time - right.time);
 }
 
 export {
@@ -162,6 +172,36 @@ export type Board = { funnel: Funnel; rows: BoardRow[]; at: string; market?: 'FU
 
 const CONCURRENCY = 6;
 
+export function ticketTimeValid(candle2: number | null, now = Date.now()): boolean {
+  return candle2 !== null && now >= candle2 + 900_000 && now <= candle2 + 4 * 900_000;
+}
+
+/** Aturan arah hari WIB + MA99 15m/1h sama seperti pemindai worker; fail closed. */
+export function gateTeknik(m15: Candle[], h1: Candle[], last: number, side: Side, now = Date.now()): { ok: boolean; reason: string } {
+  const todayOpenMs = Math.floor((now - 17 * 3_600_000) / 86_400_000) * 86_400_000 + 17 * 3_600_000;
+  const today = m15.find((c) => c.time === todayOpenMs);
+  if (!today || !(last > 0) || last === today.open) return { ok: false, reason: 'Open hari WIB belum tersedia/arah hari belum jelas.' };
+  if ((side === 'LONG' && last < today.open) || (side === 'SHORT' && last > today.open)) {
+    return { ok: false, reason: `Arah ${side} melawan arah hari WIB.` };
+  }
+  if (m15.length < 99 || h1.length < 99) return { ok: false, reason: 'Data MA99 belum cukup.' };
+  const last15 = m15.at(-1)!;
+  const last1h = h1.at(-1)!;
+  if (last15.time + 900_000 > now || last1h.time + 3_600_000 > now ||
+      now - (last15.time + 900_000) > STALE_CANDLE_MINUTES * 60_000 ||
+      now - (last1h.time + 3_600_000) > 75 * 60_000) {
+    return { ok: false, reason: 'Candle 15m/1H basi; gate tidak boleh dipakai.' };
+  }
+  const ma15 = smaSeries(m15.map((c) => c.close), 99).at(-1)!;
+  const ma1h = smaSeries(h1.map((c) => c.close), 99).at(-1)!;
+  const margin = 0.005;
+  const aligns = side === 'LONG'
+    ? last15.close >= ma15 * (1 + margin) && last1h.close >= ma1h * (1 + margin)
+    : last15.close <= ma15 * (1 - margin) && last1h.close <= ma1h * (1 - margin);
+  return aligns ? { ok: true, reason: 'MA99 15m dan 1H searah.' }
+    : { ok: false, reason: 'MA99 15m atau 1H belum searah dengan margin 0,5%.' };
+}
+
 export async function scanBoard(limit = 40): Promise<Board> {
   const tickers = await fetchTickers();
   const liquid = tickers.filter((t) => t.quoteVolume >= MIN_QUOTE_VOLUME);
@@ -198,7 +238,11 @@ export async function scanBoard(limit = 40): Promise<Board> {
         const insideLong = ticker.last <= zones.long.pintu && ticker.last >= zones.long.batal;
         const insideShort = ticker.last >= zones.short.pintu && ticker.last <= zones.short.batal;
         const longCloser = Math.abs(distLong) <= Math.abs(distShort);
-        const side: Side = insideLong || (longCloser && distLong >= -0.5) ? 'LONG' : 'SHORT';
+        const todayOpenMs = Math.floor((now - 17 * 3_600_000) / 86_400_000) * 86_400_000 + 17 * 3_600_000;
+        const today = m15.find((c) => c.time === todayOpenMs);
+        const side: Side = today && ticker.last !== today.open
+          ? ticker.last > today.open ? 'LONG' : 'SHORT'
+          : insideLong || (longCloser && distLong >= -0.5) ? 'LONG' : 'SHORT';
         const insideBand = side === 'LONG' ? insideLong : insideShort;
         const distPct = side === 'LONG' ? distLong : distShort;
         const touchAgeMin = insideBand ? 0 : detectTouchAge(m15, zones, side, now);
@@ -207,7 +251,7 @@ export async function scanBoard(limit = 40): Promise<Board> {
         // kebetulan balik ke dalam pita (inilah yang bikin kartu mati terlihat seperti sah).
         const zonaPadam = setup.notes.some((note) => note.includes('kena BATAL'));
         const status: Status = zonaPadam ? 'PADAM' : insideBand ? 'MENYALA' : Math.abs(distPct) <= 1.5 ? 'SIMAK' : 'DISIMAK';
-        const gateAlign = (side === 'LONG' && gate === 'HIJAU') || (side === 'SHORT' && gate === 'MERAH');
+        const gateAlign = gateTeknik(m15, h1, ticker.last, side, now).ok;
         const ticket = computeTicket(m15, zones, side, ticker.last);
         const row: BoardRow = {
           symbol: ticker.symbol,

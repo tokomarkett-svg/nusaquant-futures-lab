@@ -12,6 +12,7 @@ import {
   type Candle, type SetupMarkers, type Side, type Ticket, type Zones,
 } from '@nusaquant/core';
 import { BinancePublicMarketDataClient, scanMarketClient, type DataMarket } from './market-data.ts';
+import { runtimeStatus } from './runtime-status.ts';
 
 export type AlertCandidate = {
   symbol: string;
@@ -546,8 +547,12 @@ export async function watchAlerts(): Promise<void> {
         }
       }
       const result = await runAlertCycle(store, market, { chatId: effectiveChatId, mode });
+      runtimeStatus.alerts.lastCycleAt = new Date().toISOString();
+      runtimeStatus.alerts.scanned = result.scanned;
+      runtimeStatus.alerts.delivered += result.sent;
       console.log(JSON.stringify({ alerts: true, scanned: result.scanned, sent: result.sent, seen: store.size(), startupSent, at: new Date().toISOString() }));
     } catch (error) {
+      runtimeStatus.alerts.lastFailureAt = new Date().toISOString();
       console.error('[alerts]', error instanceof Error ? error.message : error);
     }
     await new Promise((resolve) => setTimeout(resolve, pollMs));

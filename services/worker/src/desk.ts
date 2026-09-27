@@ -22,6 +22,7 @@ import { BinancePublicMarketDataClient, scanMarketClient } from './market-data.t
 import { discoverChatFromUpdates, scanAlertCandidatesShared, sendTelegram, tiketMasihSah } from './alerts.ts';
 import { tutupDemo } from './exec-demo.ts';
 import { createWorkerSupabaseClient } from './supabase.ts';
+import { runtimeStatus } from './runtime-status.ts';
 
 export const DESK_SESSION_ID = process.env.DESK_SESSION_ID ?? '00000000-0000-4000-8000-000000000010';
 export const DESK_SESSION_NAME = 'Meja Papan (Pintu–Manis–Batal)';
@@ -495,6 +496,7 @@ export async function watchDesk(): Promise<void> {
   try {
     store = createSupabaseDeskStore();
   } catch (error) {
+    runtimeStatus.desk.lastFailureAt = new Date().toISOString();
     console.error('[desk] tidak bisa menyiapkan penyimpanan:', error instanceof Error ? error.message : error);
     return;
   }
@@ -521,8 +523,13 @@ export async function watchDesk(): Promise<void> {
         notify: async (text) => { await sendTelegram(text, { chatId }); },
         announcedGuards: announcedGuard,
       });
+      runtimeStatus.desk.lastCycleAt = new Date().toISOString();
+      runtimeStatus.desk.scanned = result.scannedCandidates;
+      runtimeStatus.desk.opened += result.opened;
+      runtimeStatus.desk.closed += result.closed;
       console.log(JSON.stringify({ desk: true, ...result, at: new Date().toISOString() }));
     } catch (error) {
+      runtimeStatus.desk.lastFailureAt = new Date().toISOString();
       console.error('[desk]', error instanceof Error ? error.message : error);
     }
     await new Promise((resolve) => setTimeout(resolve, pollMs));
