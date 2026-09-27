@@ -115,6 +115,7 @@ function KartuSiap({ row, tersalin, padaSalin }: { row: BoardRow; tersalin: bool
       {t.warnings.length > 0 && <div className="hp-ticket-warning">⚠ {t.warnings.join(' · ')}</div>}
       <button type="button" onClick={padaSalin} className="hp-cta">{tersalin ? '✓ Order tersalin' : '▤ Salin order'} </button>
       <Link href={`/hp/koin/${row.symbol}`} className="hp-cta hp-cta-secondary">Lihat chart & garis ↗</Link>
+      <Link href={`/hp/entri?symbol=${row.symbol}&side=${row.side}`} className="hp-cta hp-cta-secondary">Tinjau persetujuan Demo (manual) ↗</Link>
       <div className="hp-ticket-disclaimer">Risiko 0,31 USDT · maks 2 trade/hari · pasang SL sebelum entry</div>
     </section>
   );

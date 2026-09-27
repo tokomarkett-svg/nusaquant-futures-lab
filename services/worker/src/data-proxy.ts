@@ -10,7 +10,7 @@
 import http from 'node:http';
 import { STALE_CANDLE_MINUTES } from '@nusaquant/core';
 import zlib from 'node:zlib';
-import { bukaDemo, tutupDemo, tokenSah } from './exec-demo.ts';
+import { bukaDemo, tutupDemo, demoReadiness, tokenSah } from './exec-demo.ts';
 import { sendTelegram, scanAlertCandidatesShared, tiketMasihSah, type AlertScanRow } from './alerts.ts';
 import { createSupabaseDeskStore } from './desk.ts';
 import { scanMarketClient } from './market-data.ts';
@@ -111,6 +111,9 @@ export function createDataProxyHandler(upstreamBase = process.env.WORKER_UPSTREA
 
     if (route === '/health') return balasJson(200, { ok: true, market: 'FUTURES', at: new Date().toISOString() });
     if (route === '/health/runtime') return balasJson(200, runtimeSnapshot(scanMarketClient().marketUsed()));
+    if (route === '/health/testnet' && req.method === 'GET') return balasJson(200, await demoReadiness());
+    // No LIVE execution endpoint exists. A deployment/env change alone cannot unlock mainnet.
+    if (route === '/exec/live') return balasJson(423, { ok: false, error: 'Order uang asli dikunci dalam kode. Persetujuan dan verifikasi Testnet diperlukan.' });
 
     let upstreamPath = '';
     let params: Record<string, string> = {};
@@ -118,16 +121,22 @@ export function createDataProxyHandler(upstreamBase = process.env.WORKER_UPSTREA
       let body = '';
       for await (const chunk of req) body += chunk;
       try {
-        const parsed = JSON.parse(body || '{}') as { token?: string; symbol?: string; side?: string; qty?: number; stop?: number; target?: number };
+        const parsed = JSON.parse(body || '{}') as { token?: string; symbol?: string; side?: string; qty?: number; stop?: number; target?: number; expectedEntry?: number; setupKey?: string };
         if (!tokenSah(parsed.token, process.env.EXEC_TOKEN)) return balasJson(401, { ok: false, error: 'token eksekusi salah/kosong.' });
         const hasil = await bukaDemo({
           symbol: String(parsed.symbol ?? '').toUpperCase(),
           side: parsed.side === 'LONG' ? 'LONG' : 'SHORT',
           qty: Number(parsed.qty), stop: Number(parsed.stop), target: Number(parsed.target),
+          expectedEntry: Number(parsed.expectedEntry), setupKey: String(parsed.setupKey ?? ''),
         });
         return balasJson(200, hasil);
       } catch (error) {
-        return balasJson(502, { ok: false, error: error instanceof Error ? error.message : 'gagal eksekusi demo.' });
+        const message = error instanceof Error ? error.message : 'gagal eksekusi demo.';
+        if (message.includes('DARURAT') || message.includes('Entry demo dibatalkan')) {
+          await sendTelegram(`⚠️ <b>INSIDEN TESTNET</b> ${message.replaceAll('<', '&lt;').replaceAll('>', '&gt;').slice(0, 450)} Periksa posisi dan stop di akun Demo.`,
+            { chatId: (process.env.TELEGRAM_CHAT_ID ?? '').trim() || undefined }).catch(() => undefined);
+        }
+        return balasJson(502, { ok: false, error: message });
       }
     }
     if (route === '/exec/demo-close' && req.method === 'POST') {

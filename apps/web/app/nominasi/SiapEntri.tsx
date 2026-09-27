@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import type { BoardRow } from '../../lib/binance';
 
 const orderSideOf = (side: 'LONG' | 'SHORT') => (side === 'LONG' ? 'BUY' : 'SELL');
@@ -9,7 +10,6 @@ const digitsFor = (price: number) => (price >= 100 ? 2 : price >= 1 ? 4 : price 
 export default function SiapEntri({ rows, prices }: { rows: BoardRow[]; prices: Record<string, number> }) {
   const [copied, setCopied] = useState<string | null>(null);
   const [buka, setBuka] = useState<Record<string, { state: 'loading' | 'opened' | 'error'; message?: string }>>({});
-  const [demo, setDemo] = useState<Record<string, { state: 'loading' | 'opened' | 'error'; message?: string }>>({});
   const [testnet, setTestnet] = useState<Set<string> | null>(null);
   const ready = rows.filter((row) => row.ticket?.actionable && row.gateAlign).slice(0, 3);
 
@@ -25,25 +25,6 @@ export default function SiapEntri({ rows, prices }: { rows: BoardRow[]; prices: 
   // Hook harus tetap dipanggil pada setiap render, termasuk saat tiket belum ada.
   // Early return sebelum useEffect membuat React crash ketika tiket muncul/hilang.
   if (ready.length === 0) return null;
-
-  const entriDemo = async (row: BoardRow) => {
-    setDemo((prev) => ({ ...prev, [row.symbol]: { state: 'loading' } }));
-    try {
-      const response = await fetch('/api/meja/demo', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ symbol: row.symbol, side: row.side }),
-      });
-      const hasil = await response.json() as { ok: boolean; error?: string; position?: { entry: number; qty?: string } };
-      if (!hasil.ok) {
-        setDemo((prev) => ({ ...prev, [row.symbol]: { state: 'error', message: hasil.error ?? 'Gagal mengirim order demo.' } }));
-        return;
-      }
-      setDemo((prev) => ({ ...prev, [row.symbol]: { state: 'opened', message: `ORDER DEMO MASUK KE TESTNET @ ${hasil.position?.entry} (${hasil.position?.qty} coin) — SL/TP terpasang di bursa demo` } }));
-    } catch {
-      setDemo((prev) => ({ ...prev, [row.symbol]: { state: 'error', message: 'Server tidak terjangkau — coba lagi.' } }));
-    }
-  };
 
   const salin = async (row: BoardRow) => {
     const t = row.ticket;
@@ -125,15 +106,15 @@ export default function SiapEntri({ rows, prices }: { rows: BoardRow[]; prices: 
               {testnet !== null && !testnet.has(row.symbol) ? (
                 <span style={{ fontSize: 11, color: 'var(--muted)', padding: '6px 0' }}>🧪 koin ini belum ada di testnet — latihan pakai PAPER</span>
               ) : (
-                <button
-                  onClick={() => void entriDemo(row)}
-                  disabled={lari || demo[row.symbol]?.state === 'loading' || demo[row.symbol]?.state === 'opened'}
+                <Link
+                  href={`/hp/entri?symbol=${row.symbol}&side=${row.side}`}
                   className="control-btn"
-                  style={{ fontWeight: 800, background: 'var(--amber)', borderColor: 'var(--amber)', color: '#241a02', opacity: lari ? 0.45 : 1 }}
-                  title="Kirim order sungguhan-format ke Binance Futures TESTNET (uang pura-pura resmi dari Binance)"
+                  style={{ fontWeight: 800, background: 'var(--amber)', borderColor: 'var(--amber)', color: '#241a02', textDecoration: 'none', opacity: lari ? 0.45 : 1 }}
+                  aria-disabled={lari}
+                  onClick={(event) => { if (lari) event.preventDefault(); }}
                 >
-                  {demo[row.symbol]?.state === 'loading' ? 'MENGIRIM…' : demo[row.symbol]?.state === 'opened' ? 'DEMO MASUK ✓' : '🧪 ENTRI DEMO (TESTNET)'}
-                </button>
+                  🧪 TINJAU DEMO · LOGIN & SETUJUI
+                </Link>
               )}
               <button
                 onClick={() => void entriPaper(row)}
@@ -145,11 +126,6 @@ export default function SiapEntri({ rows, prices }: { rows: BoardRow[]; prices: 
               </button>
               <span style={{ fontSize: 11, color: 'var(--muted)' }}>{salinText}</span>
             </div>
-            {demo[row.symbol]?.message && (
-              <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: demo[row.symbol].state === 'error' ? 'var(--red)' : 'var(--amber)' }}>
-                {demo[row.symbol].state === 'error' ? '⛔ ' : '🧪 '}{demo[row.symbol].message}
-              </div>
-            )}
             {buka[row.symbol]?.message && (
               <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: buka[row.symbol].state === 'error' ? 'var(--red)' : 'var(--green-dark)' }}>
                 {buka[row.symbol].state === 'error' ? '⛔ ' : '✅ '}{buka[row.symbol].message}

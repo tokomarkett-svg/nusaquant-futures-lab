@@ -1,156 +1,128 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-import {
-  computeZones, detectSetup, computeTicket, gateTeknik, ticketTimeValid, RISK_USDT,
-  fetchKlines, fetchTickers,
-} from '../../../../lib/binance';
-import { adaDiTestnet } from '../../../../lib/testnet';
+import { RISK_USDT } from '../../../../lib/binance';
+import { manualTicket } from '../../../../lib/manual-ticket';
+import { operatorFrom, sameOrigin } from '../../../../lib/operator';
+import { simbolTestnet } from '../../../../lib/testnet';
 
 export const dynamic = 'force-dynamic';
-
-/** Sesi meja yang sama dengan worker — posisi demo dicatat di jurnal meja. */
+export const maxDuration = 60;
 const MEJA_SESSION_ID = '00000000-0000-4000-8000-000000000010';
 const MAX_DEMO_PER_DAY = 3;
 
 function startOfJakartaDayIso(now = Date.now()): string {
-  const offsetMs = 7 * 3_600_000;
-  const local = new Date(now + offsetMs);
+  const offset = 7 * 3_600_000;
+  const local = new Date(now + offset);
   local.setUTCHours(0, 0, 0, 0);
-  return new Date(local.getTime() - offsetMs).toISOString();
-}
-
-function clientFromEnv() {
-  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceRoleKey) return null;
-  return createClient(url, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  return new Date(local.getTime() - offset).toISOString();
 }
 
 export async function POST(request: Request) {
+  if (!sameOrigin(request)) return NextResponse.json({ ok: false, error: 'Asal permintaan tidak sesuai.' }, { status: 403 });
+  const operator = await operatorFrom(request);
+  if (operator instanceof NextResponse) return operator;
+  if (process.env.DEMO_EXECUTION_ENABLED !== '1') {
+    return NextResponse.json({ ok: false, error: 'Eksekusi Demo belum diaktifkan; tidak ada order dikirim.' }, { status: 423 });
+  }
   const worker = (process.env.WORKER_DATA_URL ?? '').trim().replace(/\/+$/, '');
   const token = (process.env.WORKER_EXEC_TOKEN ?? '').trim();
-  if (!worker || !token) {
-    return NextResponse.json({ ok: false, error: 'Mode demo belum aktif: perlu WORKER_DATA_URL + WORKER_EXEC_TOKEN di Vercel (dan EXEC_TOKEN di Railway).' }, { status: 500 });
+  const dbUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const dbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!worker || !token || !dbUrl || !dbKey) return NextResponse.json({ ok: false, error: 'Koneksi worker/jurnal belum lengkap.' }, { status: 503 });
+  if (!worker.startsWith('https://') || new URL(worker).username || new URL(worker).password) {
+    return NextResponse.json({ ok: false, error: 'Alamat worker tidak aman.' }, { status: 503 });
   }
-  const client = clientFromEnv();
-  if (!client) {
-    return NextResponse.json({ ok: false, error: 'Supabase belum dikonfigurasi di server.' }, { status: 500 });
+  const client = createClient(dbUrl, dbKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const body = await request.json().catch(() => null) as { symbol?: unknown; side?: unknown; setupKey?: unknown; confirm?: unknown; environment?: unknown } | null;
+  const symbol = typeof body?.symbol === 'string' ? body.symbol.toUpperCase().trim() : '';
+  const side = body?.side;
+  if ((side !== 'LONG' && side !== 'SHORT') || body?.environment !== 'TESTNET' || typeof body?.setupKey !== 'string' || body?.confirm !== `DEMO ${symbol} ${side}`) {
+    return NextResponse.json({ ok: false, error: 'Konfirmasi, lingkungan Demo, atau tiket tidak sesuai.' }, { status: 400 });
   }
-
-  let body: { symbol?: unknown; side?: unknown };
+  let ticket: Awaited<ReturnType<typeof manualTicket>>;
   try {
-    body = await request.json() as { symbol?: unknown; side?: unknown };
-  } catch {
-    return NextResponse.json({ ok: false, error: 'Body bukan JSON yang sah.' }, { status: 400 });
-  }
-  const symbol = typeof body.symbol === 'string' ? body.symbol.toUpperCase().trim() : '';
-  const side = body.side === 'LONG' ? 'LONG' : body.side === 'SHORT' ? 'SHORT' : null;
-  if (!/^[A-Z0-9]+USDT$/.test(symbol) || !side) {
-    return NextResponse.json({ ok: false, error: 'symbol (…USDT) dan side (LONG|SHORT) wajib diisi.' }, { status: 400 });
+    ticket = await manualTicket(symbol, side);
+    if (body.setupKey !== ticket.setupKey) throw new Error('Tiket telah berubah atau kedaluwarsa. Buka ulang pratinjau.');
+    const symbols = await simbolTestnet();
+    if (!symbols.has(symbol)) throw new Error('Simbol tidak ada di Testnet atau daftar tidak dapat diverifikasi.');
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : 'Tiket tidak sah.' }, { status: 409 });
   }
 
-  // 1) Validasi pasar dihitung ULANG: tiket harus segar & gate searah — sama seperti tombol paper.
-  let ticket: ReturnType<typeof computeTicket>;
-  let setupKey = '';
-  try {
-    const [tickers, m15, h1] = await Promise.all([
-      fetchTickers(),
-      fetchKlines(symbol, '15m', 140),
-      fetchKlines(symbol, '1h', 120),
-    ]);
-    const ticker = tickers.find((t) => t.symbol === symbol);
-    if (!ticker) return NextResponse.json({ ok: false, error: `${symbol} tidak ditemukan di pasar futures.` }, { status: 404 });
-    const zones = computeZones(ticker);
-    if (!zones) return NextResponse.json({ ok: false, error: 'Data harga tidak lengkap.' }, { status: 409 });
-    const gate = gateTeknik(m15, h1, ticker.last, side);
-    if (!gate.ok) return NextResponse.json({ ok: false, error: `Tiket ditolak: ${gate.reason} Jangan kejar.` }, { status: 409 });
-    const setup = detectSetup(m15, zones, side);
-    ticket = computeTicket(m15, zones, side, ticker.last);
-    if (!setup.valid || !ticket) return NextResponse.json({ ok: false, error: 'Tiket sudah tidak sah (paket tidak lengkap lagi).' }, { status: 409 });
-    if (!ticketTimeValid(setup.candle2)) return NextResponse.json({ ok: false, error: 'Tiket sudah melewati batas 3 candle sejak C2 tutup.' }, { status: 409 });
-    if (!ticket.actionable) return NextResponse.json({ ok: false, error: `Tiket basi/nyangkut: ${ticket.warnings.join(' · ') || 'harga sudah jalan'}. Jangan kejar.` }, { status: 409 });
-    setupKey = `${symbol}:${side}:${setup.candle2 ?? 0}`;
-  } catch (error) {
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : 'Gagal mengambil data pasar.' }, { status: 502 });
-  }
-
-  // 1b) Koin harus terdaftar di testnet — koin terbaru sering belum ada di sana.
-  if (!(await adaDiTestnet(symbol))) {
-    return NextResponse.json({ ok: false, error: `${symbol} belum terdaftar di testnet Binance — latihan koin ini pakai ENTRI (PAPER).` }, { status: 409 });
-  }
-
-  // 2) Pagar latihan demo: 1 posisi/koin, kuota sendiri 3/hari (jatah robot tidak dipakai).
-  const dayStart = startOfJakartaDayIso();
-  const [openToday, todayRows] = await Promise.all([
+  const [openToday, todayRows, unresolved] = await Promise.all([
     client.from('paper_positions').select('id,symbol').eq('bot_session_id', MEJA_SESSION_ID).eq('status', 'OPEN'),
-    client.from('paper_positions').select('metadata').eq('bot_session_id', MEJA_SESSION_ID).gte('opened_at', dayStart),
+    client.from('paper_positions').select('metadata').eq('bot_session_id', MEJA_SESSION_ID).gte('opened_at', startOfJakartaDayIso()),
+    client.from('manual_execution_approvals').select('id').eq('mode', 'TESTNET').in('status', ['RESERVED', 'REVIEW']).limit(1),
   ]);
-  if (openToday.error || todayRows.error) {
-    return NextResponse.json({ ok: false, error: `Gagal membaca meja: ${(openToday.error ?? todayRows.error)?.message}` }, { status: 500 });
-  }
-  if ((openToday.data ?? []).some((row) => row.symbol === symbol)) {
-    return NextResponse.json({ ok: false, error: 'Sudah ada posisi terbuka di koin ini.' }, { status: 409 });
-  }
-  const demoHariIni = (todayRows.data ?? []).filter((row) => {
-    const meta = (row.metadata ?? {}) as Record<string, unknown>;
+  if (openToday.error || todayRows.error || unresolved.error) return NextResponse.json({ ok: false, error: 'Jurnal/persetujuan tidak dapat diverifikasi. Tidak ada order dikirim.' }, { status: 503 });
+  if (unresolved.data?.length) return NextResponse.json({ ok: false, error: 'Ada eksekusi Demo belum terverifikasi. Rekonsiliasi dengan Binance dahulu; order baru ditahan.' }, { status: 409 });
+  if ((openToday.data ?? []).some((r) => r.symbol === symbol)) return NextResponse.json({ ok: false, error: 'Posisi pada simbol ini sudah terbuka.' }, { status: 409 });
+  const used = (todayRows.data ?? []).filter((r) => {
+    const meta = (r.metadata ?? {}) as Record<string, unknown>;
     return meta.via === 'DEMO' || meta.via === 'TOMBOL';
-  });
-  if (demoHariIni.length >= MAX_DEMO_PER_DAY) {
-    return NextResponse.json({ ok: false, error: `Kuota latihan demo hari ini habis (${demoHariIni.length}/${MAX_DEMO_PER_DAY}) — besok lagi.` }, { status: 409 });
-  }
+  }).length;
+  if (used >= MAX_DEMO_PER_DAY) return NextResponse.json({ ok: false, error: 'Kuota latihan harian habis.' }, { status: 409 });
 
-  // 3) Kirim order ke testnet lewat worker (kunci demo hanya ada di Railway).
-  type HasilExec = { ok?: boolean; error?: string; entryOrderId?: string; slOrderId?: string; tpOrderId?: string; qty?: string };
-  const eksekusi = await fetch(new URL('/exec/demo', worker), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ token, symbol, side, qty: ticket.sizeCoin, stop: ticket.stop, target: ticket.target }),
-    signal: AbortSignal.timeout(20_000),
-  }).then((r) => r.json() as Promise<HasilExec>)
-    .catch((error: unknown): HasilExec => ({ ok: false, error: error instanceof Error ? error.message : 'Worker tidak terjangkau.' }));
-  if (!eksekusi.ok) {
-    return NextResponse.json({ ok: false, error: `Testnet menolak: ${eksekusi.error ?? 'sebab tidak diketahui'}` }, { status: 502 });
+  // An atomic UNIQUE constraint locks each setup AND unresolved symbol across serverless instances.
+  // An ambiguous timeout is deliberately marked REVIEW and may not be retried.
+  const reserved = await client.from('manual_execution_approvals').insert({
+    mode: 'TESTNET', setup_key: ticket.setupKey, symbol, side, operator_id: operator.id, status: 'RESERVED',
+  }).select('id').single();
+  if (reserved.error || !reserved.data) return NextResponse.json({ ok: false, error: 'Tiket sudah pernah dipakai atau ledger persetujuan belum terpasang. Tidak ada order dikirim.' }, { status: 409 });
+  const id = reserved.data.id as string;
+  const mark = async (status: 'REVIEW' | 'VERIFIED', note: string, ids?: { entryOrderId: string; slOrderId: string; tpOrderId: string }) => {
+    await client.from('manual_execution_approvals').update({
+      status, note: note.slice(0, 300), updated_at: new Date().toISOString(),
+      exchange_entry_id: ids?.entryOrderId, exchange_sl_id: ids?.slOrderId, exchange_tp_id: ids?.tpOrderId,
+    }).eq('id', id);
+  };
+  type Exec = { ok?: boolean; error?: string; entryOrderId?: string; slOrderId?: string; tpOrderId?: string; qty?: string; fillPrice?: number };
+  let result: Exec;
+  try {
+    const r = await fetch(new URL('/exec/demo', worker), {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token, symbol, side, qty: ticket.qty, stop: ticket.stop,
+        target: ticket.target, expectedEntry: ticket.entry, setupKey: ticket.setupKey }),
+      signal: AbortSignal.timeout(55_000), cache: 'no-store',
+    });
+    result = await r.json() as Exec;
+  } catch {
+    await mark('REVIEW', 'Worker timeout/network: status order tidak pasti. Cek akun Demo; jangan ulangi.');
+    return NextResponse.json({ ok: false, error: 'Respons worker tidak pasti. PERIKSA POSISI DAN SL/TP DI BINANCE DEMO; tiket ini tidak dapat diulang.' }, { status: 502 });
   }
-
-  // 4) Catat posisi demo ke meja (jurnal tetap rapi; meja mengawasi & menutup di testnet saat waktunya).
-  const openedAt = new Date().toISOString();
-  const metadata = { source: 'MEJA_PAPAN', via: 'DEMO', setupKey, processScore: 6, demoOrderIds: [eksekusi.entryOrderId, eksekusi.slOrderId, eksekusi.tpOrderId].filter(Boolean) };
+  if (!result.ok || !result.entryOrderId || !result.slOrderId || !result.tpOrderId || !result.fillPrice || !result.qty) {
+    await mark('REVIEW', result.error ?? 'Worker tidak membuktikan proteksi SL/TP.');
+    return NextResponse.json({ ok: false, error: `Order belum aman: ${result.error ?? 'SL/TP belum terverifikasi'}. Cek Binance Demo sebelum mencoba lagi.` }, { status: 502 });
+  }
+  const ids = { entryOrderId: result.entryOrderId, slOrderId: result.slOrderId, tpOrderId: result.tpOrderId };
+  // Ledger uses actual Binance fill; planned entry remains stored in metadata for audit.
+  const metadata = { source: 'MEJA_PAPAN', via: 'DEMO', setupKey: ticket.setupKey, processScore: 6,
+    demoOrderIds: Object.values(ids), plannedEntry: ticket.entry, approvalId: id };
   const inserted = await client.from('paper_positions').insert({
-    bot_session_id: MEJA_SESSION_ID, symbol, side, status: 'OPEN',
-    quantity: Number(eksekusi.qty ?? ticket.sizeCoin),
-    entry_price: ticket.entry, stop_loss: ticket.stop, take_profit: ticket.target,
-    opened_at: openedAt, metadata,
+    bot_session_id: MEJA_SESSION_ID, symbol, side, status: 'OPEN', quantity: Number(result.qty),
+    entry_price: result.fillPrice, stop_loss: ticket.stop, take_profit: ticket.target,
+    opened_at: new Date().toISOString(), metadata,
   }).select('id').single();
   if (inserted.error) {
-    return NextResponse.json({ ok: false, error: `Order demo MASUK ke testnet, tapi jurnal gagal: ${inserted.error.message}` }, { status: 500 });
+    // Exchange position may still exist: NEVER claim the trade succeeded or silently remove approval.
+    await mark('REVIEW', `Entry+SL/TP on exchange but journal failed: ${inserted.error.message}`, ids);
+    return NextResponse.json({ ok: false, error: 'DARURAT: posisi Demo di bursa terlindungi, tetapi jurnal gagal. Periksa akun Demo dan meja; jangan ulangi.' }, { status: 500 });
   }
-  await client.from('trade_journal').insert({
-    bot_session_id: MEJA_SESSION_ID, symbol, action: 'DESK_OPEN', reason: 'DEMO',
-    quality_score: 6,
-    payload: { entry: ticket.entry, stop: ticket.stop, target: ticket.target, size: eksekusi.qty ?? ticket.sizeCoin, risk: RISK_USDT, via: 'DEMO', setupKey, orders: metadata.demoOrderIds },
-  }).then((j) => { if (j.error) console.error('[meja] jurnal demo gagal:', j.error.message); });
-
-  // 5) Kabari HP lewat Telegram (tidak memblokir jawaban kalau gagal kirim)
-  const sideOrder = side === 'LONG' ? 'BUY' : 'SELL';
-  const digits = ticket.entry >= 100 ? 2 : ticket.entry >= 1 ? 4 : ticket.entry >= 0.01 ? 5 : 7;
-  void fetch(new URL('/notify/demo', worker), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      token,
-      text: [
-        `🧪 <b>ORDER DEMO (TESTNET)</b> — ${symbol} ${side}`,
-        '',
-        `👉 ENTRY: ${ticket.entry.toFixed(digits)}  (${sideOrder})`,
-        `🛑 SL: ${ticket.stop.toFixed(digits)}  ·  ✅ TP: ${ticket.target.toFixed(digits)}`,
-        `📦 ${eksekusi.qty ?? ''} coin · lewat tombol latihanmu`,
-      ].join('\n'),
-    }),
-    signal: AbortSignal.timeout(9_000),
-  }).catch(() => undefined);
-
-  return NextResponse.json({
-    ok: true, testnet: true,
-    position: { symbol, side, entry: ticket.entry, stop: ticket.stop, target: ticket.target, qty: eksekusi.qty, orders: metadata.demoOrderIds },
+  const journal = await client.from('trade_journal').insert({
+    bot_session_id: MEJA_SESSION_ID, paper_position_id: inserted.data.id, symbol, action: 'DESK_OPEN', reason: 'DEMO', quality_score: 6,
+    payload: { plannedEntry: ticket.entry, fillPrice: result.fillPrice, stop: ticket.stop, target: ticket.target,
+      size: result.qty, risk: RISK_USDT, via: 'DEMO', setupKey: ticket.setupKey, orders: Object.values(ids), approvalId: id },
   });
+  if (journal.error) {
+    await mark('REVIEW', `Posisi di bursa+jurnal posisi OK; trade_journal gagal: ${journal.error.message}`, ids);
+    return NextResponse.json({ ok: false, error: 'Posisi Demo terbuka dan terlindungi, tetapi catatan trade gagal. Periksa Meja; jangan ulangi.' }, { status: 500 });
+  }
+  await mark('VERIFIED', 'Entry, proteksi Algo dan jurnal tercatat.', ids);
+  await fetch(new URL('/notify/demo', worker), {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token, text: `🧪 <b>ORDER DEMO TERLINDUNGI</b> ${symbol} ${side}\nFill ${result.fillPrice} · SL ${ticket.stop} · TP ${ticket.target}\nPeriksa posisi dan order Algo di Binance Demo. LIVE ASLI TETAP TERKUNCI.` }),
+    signal: AbortSignal.timeout(4_000),
+  }).catch(() => undefined);
+  return NextResponse.json({ ok: true, testnet: true, position: { symbol, side, entry: result.fillPrice,
+    plannedEntry: ticket.entry, stop: ticket.stop, target: ticket.target, qty: result.qty, orders: Object.values(ids) } });
 }

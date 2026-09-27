@@ -47,3 +47,9 @@
 .hp-install-hint{text-align:center;color:var(--hp-muted);font-size:11px;line-height:1.55;margin:9px 0 20px}
 .hp-guide{padding:18px;margin-bottom:12px}
 .hp-guide ol,.hp-guide ul{font-size:12px!important;line-height:1.85!important;margin:12px 0 0!important;color:var(--hp-ink)!important}
+.hp-input{width:100%;border:1px solid var(--hp-border);border-radius:11px;padding:12px 13px;background:white;color:var(--hp-ink);font:inherit;font-size:13px;min-height:44px}
+.hp-input:focus-visible{outline:3px solid #9ad1a4;outline-offset:1px}
+.hp-confirm{display:flex;flex-wrap:wrap;align-items:center;gap:7px;font-size:12px;line-height:1.5;margin:14px 0;color:#ecf9ee}
+.hp-confirm input[type="checkbox"]{width:20px;height:20px;accent-color:#bde774}
+.hp-confirm .hp-input{color:var(--hp-ink)}
+.hp-cta:disabled{opacity:.5;cursor:not-allowed}

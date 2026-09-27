@@ -41,12 +41,13 @@ export default function CekSistem() {
     { nama: 'Worker Railway', status: 'cek', detail: 'memanggil…' },
     { nama: 'Mesin PMB (pindai live)', status: 'cek', detail: 'memindai…' },
     { nama: 'Telegram + Meja Paper', status: 'cek', detail: 'memeriksa siklus…' },
+    { nama: 'Binance Demo / Live', status: 'cek', detail: 'memeriksa akun demo baca-saja…' },
   ]);
   const [diuji, setDiuji] = useState(false);
 
   const jalankan = useCallback(async () => {
     setDiuji(true);
-    const hasil: Item[] = new Array(7);
+    const hasil: Item[] = new Array(8);
 
     const papan = await ukur('/api/nominasi');
     const p = papan?.json as { ok?: boolean; funnel?: { scanned?: number; board?: number }; market?: string; at?: string } | undefined;
@@ -109,6 +110,14 @@ export default function CekSistem() {
     } : {
       nama: 'Telegram + Meja Paper', status: siap && siklus && sapa ? 'ok' : 'lambat',
       detail: `Konfigurasi ${siap ? 'aktif' : 'belum lengkap'} · Telegram ${sapa ? 'pesan sapa terkirim' : 'belum terbukti terkirim'} · scan ${w.alerts?.scanned ?? 0} koin · meja ${w.desk?.scanned ?? 0} koin · ${siklus ? 'siklus segar' : 'siklus belum segar'}`,
+    };
+
+    const demo = await ukur(`${WORKER}/health/testnet`);
+    const t = demo?.json as { ok?: boolean; configured?: boolean; authenticated?: boolean; oneWay?: boolean; enabled?: boolean; reason?: string } | undefined;
+    hasil[7] = {
+      nama: 'Binance Demo / Live', status: t?.ok ? 'ok' : 'lambat',
+      detail: t?.ok ? `Kunci Demo terverifikasi baca-saja · akun One-way · order Demo ${t.enabled ? 'diizinkan jika pemilik login & setujui' : 'masih terkunci'} · LIVE ASLI TERKUNCI`
+        : `Demo ${t?.configured ? 'terkonfigurasi tapi belum lolos cek akun' : 'belum dikonfigurasi'} · ${t?.reason ?? 'diagnostik tidak tersedia'} · LIVE ASLI TERKUNCI`,
     };
 
     setItems(hasil);

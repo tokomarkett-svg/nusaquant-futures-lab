@@ -114,6 +114,7 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket, papan
   const digits = digitsFor(ticket.entry);
   const format = (value: number) => value.toFixed(digits);
   const tautanChart = papanUrl ? `\n🔎 Chart live: ${papanUrl}/hp/koin/${candidate.symbol}` : '';
+  const tautanIzin = papanUrl ? `\n🧪 Tinjau tiket DEMO (login & setujui sendiri): ${papanUrl}/hp/entri?symbol=${encodeURIComponent(candidate.symbol)}&side=${candidate.side}` : '';
   const garisText = candidate.garis
     ? `📏 Garis pas bot: pintu ${format(candidate.garis.pintu)} · manis ${format(candidate.garis.manis)} · batal ${format(candidate.garis.batal)}`
     : '';
@@ -142,7 +143,7 @@ export function buildTicketText(candidate: AlertCandidate, ticket: Ticket, papan
       lahirText,
       ticket.warnings.length ? `⚠ ${ticket.warnings.join(' · ')}` : 'Semua pagar lolos — harga masih di dekat pintu.',
       '',
-      `Salin persis ke Binance: <code>${orderSide} ${candidate.symbol} ${format(ticket.entry)} SL ${format(ticket.stop)} TP ${format(ticket.target)}</code>${tautanChart}`,
+      `Salin persis ke Binance: <code>${orderSide} ${candidate.symbol} ${format(ticket.entry)} SL ${format(ticket.stop)} TP ${format(ticket.target)}</code>${tautanChart}${tautanIzin}`,
       '1% risiko · maksimal 2 trade/hari · stop dipasang SEBELUM entry.',
     ].join('\n');
   }

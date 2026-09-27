@@ -352,6 +352,8 @@ export type DeskCycleResult = {
   skipped: Array<{ symbol: string; reason: string }>;
 };
 
+const demoCloseWarned = new Set<string>();
+
 export async function runDeskCycle(deps: DeskCycleDeps): Promise<DeskCycleResult> {
   const now = deps.now ?? Date.now();
   const store = deps.store;
@@ -379,19 +381,27 @@ export async function runDeskCycle(deps: DeskCycleDeps): Promise<DeskCycleResult
     if (evaluation.outcome === 'OPEN' || evaluation.r === null || evaluation.exitPrice === null) continue;
     const realizedPnl = evaluation.r * RISK_USDT;
     const closedAt = new Date(now).toISOString();
+    // Exchange BEFORE ledger. Never mark a Demo position CLOSED while it may remain on Binance.
+    if (position.metadata?.via === 'DEMO') {
+      try {
+        await tutupDemo(position.symbol);
+        demoCloseWarned.delete(position.id);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        console.error(`[desk] posisi demo ${position.symbol} tetap OPEN di jurnal:`, detail);
+        if (!demoCloseWarned.has(position.id)) {
+          await deps.notify(`⚠️ TESTNET ${position.symbol}: gagal verifikasi tutup/bersihkan order. Periksa akun Demo sekarang. ${detail}`).catch(() => undefined);
+          demoCloseWarned.add(position.id);
+        }
+        continue;
+      }
+    }
     await store.closePosition(position.id, {
       exitPrice: evaluation.exitPrice,
       realizedPnl: Number(realizedPnl.toFixed(8)),
       closeReason: evaluation.outcome,
       closedAt,
     });
-    if (position.metadata?.via === 'DEMO') {
-      try {
-        await tutupDemo(position.symbol);
-      } catch (error) {
-        console.error(`[desk] gagal menutup demo ${position.symbol} di testnet:`, error instanceof Error ? error.message : error);
-      }
-    }
     // Snapshot "today" harus diperbarui setelah tiap close: bila dua posisi kena SL
     // pada polling yang sama, pagar 2 loss wajib aktif SEBELUM membuka tiket baru.
     const closedPosition = { ...position, status: 'CLOSED' as const, realizedPnl, closedAt };
