@@ -37,6 +37,8 @@ export type TradeVolumeProfile = {
   /** Exact aggregate ID bounds when sourced directly from raw aggTrades. */
   firstTradeId?: number;
   lastTradeId?: number;
+  firstTradePrice?: number;
+  lastTradePrice?: number;
 };
 
 /**
@@ -105,7 +107,8 @@ export function buildTradeVolumeProfile(input: {
   return { symbol: input.symbol, start, end, levels, totalVolume, totalDelta,
     poc: levels[pocIndex].price, valueAreaLow: levels[left].price,
     valueAreaHigh: levels[right].price, valueAreaFraction: fraction, complete: true,
-    firstTradeId: trades[0].id, lastTradeId: trades.at(-1)!.id };
+    firstTradeId: trades[0].id, lastTradeId: trades.at(-1)!.id,
+    firstTradePrice: trades[0].price, lastTradePrice: trades.at(-1)!.price };
 }
 
 /** Discount/premium as defined relative to the *trade-by-price* value area.

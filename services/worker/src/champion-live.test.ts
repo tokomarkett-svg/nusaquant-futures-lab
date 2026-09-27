@@ -33,3 +33,14 @@ test('worker Testnet path rejects PMB ticket and modified or stale Chris ticket'
   assert.equal(championOrderMatches(input, Date.now(), { ...state, at: Date.now() - 200_000 }), false);
   assert.equal(championOrderMatches(input, Date.now(), { ...state, decision: { ...d, stage: 'BATAL' } }), false);
 });
+
+test('Binance aggTrades order terkompresi bisa beda sedikit dari kline di batas 5m; sumber utama tetap trade asli', async () => {
+  const { footprintMatchesKline } = await import('./champion-live.ts');
+  const reference = { low: 2688.23, high: 2694, volume: 6988.096 };
+  const profile = { levels: [{ price: 2688.23 }, { price: 2694 }], totalVolume: 6988.418,
+    firstTradePrice: 2688.23, lastTradePrice: 2693 };
+  assert.equal(footprintMatchesKline(reference, profile, .01), true);
+  assert.equal(footprintMatchesKline(reference, { ...profile, totalVolume: 7000 }, .01), false);
+  assert.equal(footprintMatchesKline(reference, { ...profile, levels: [{ price: 2688.22 }, { price: 2694 }] }, .01), false);
+  assert.equal(footprintMatchesKline(undefined, profile, .01), false);
+});

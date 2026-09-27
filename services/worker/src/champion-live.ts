@@ -16,6 +16,20 @@ const states = new Map<string, State>();
 let lastPoll = 0;
 const delivered = new Set<string>();
 
+/** Real Binance Futures aggTrades can differ slightly from kline base volume at
+ * compressed-trade window boundaries. Keep a strict discrepancy ceiling and
+ * ALWAYS use aggTrade volume in the orderflow evaluator, not candle volume. */
+export function footprintMatchesKline(reference: { low: number; high: number; volume: number } | undefined,
+  profile: { levels: Array<{ price: number }>; totalVolume: number; firstTradePrice?: number; lastTradePrice?: number }, tickSize: number): boolean {
+  const low = profile.levels.at(0)?.price;
+  const high = profile.levels.at(-1)?.price;
+  return Boolean(reference && low !== undefined && high !== undefined && tickSize > 0
+    && profile.firstTradePrice && profile.lastTradePrice && reference.volume > 0
+    && Math.abs(reference.low - low) <= tickSize * .51
+    && Math.abs(reference.high - high) <= tickSize * .51
+    && Math.abs(reference.volume - profile.totalVolume) <= Math.max(1e-7, reference.volume * .0005));
+}
+
 /** No winner invented while trade feed is unavailable. Never send an alert from cached/error state. */
 export function championSnapshot(now = Date.now()) {
   const rows = [...states].map(([symbol, state]) => ({ symbol, status: state.status,
@@ -105,20 +119,21 @@ async function processSymbol(symbol: string, now: number) {
       || profile.firstTradeId !== (s.bars.at(-1)!.profile.lastTradeId ?? -2) + 1)))
       throw new Error('aggTrades Futures tidak lengkap/ID antarcandle putus');
     const levels = profile.levels;
-    // OHLC must come from the same executed-trades window, not an inferred kline footprint.
-    const first = levels[0].price;
-    const last = levels.at(-1)!.price;
-    // Profile is sorted by price; use 5m Futures kline ONLY for open/close,
-    // then cross-check total volume and extremes with executed trades.
+    // An aggTrade compressed by taker order may straddle a kline boundary,
+    // so sum(q) need not equal the exchange kline volume to the last decimal.
+    // Guard price extremes and a bounded 0.05% discrepancy, then use the
+    // EXECUTED-trade OHLCV for the entire footprint decision (never synthesize flow).
+    const first = profile.levels[0].price;
+    const last = profile.levels.at(-1)!.price;
     const m5 = await client.getKlines({ symbol, interval: '5m', limit: 3, market: 'FUTURES' });
-    const c = m5.find((bar) => bar.time === closed);
-    if (!c || client.marketUsed() !== 'FUTURES' || Math.abs(c.low - first) > s.tickSize * .51
-      || Math.abs(c.high - last) > s.tickSize * .51
-      || Math.abs(c.volume - profile.totalVolume) > Math.max(1e-7, c.volume * 1e-5)) {
-      const k = c ? `${c.low}/${c.high}/${c.volume.toPrecision(8)}` : 'missing';
+    const reference = m5.find((bar) => bar.time === closed);
+    if (client.marketUsed() !== 'FUTURES' || !footprintMatchesKline(reference, profile, s.tickSize)) {
+      const k = reference ? `${reference.low}/${reference.high}/${reference.volume.toPrecision(8)}` : 'missing';
       const p = `${first}/${last}/${profile.totalVolume.toPrecision(8)}`;
       throw new Error(`Futures kline tidak cocok dengan footprint pada ${closed}: kline=${k} trade=${p}; semua sinyal ditahan`);
     }
+    const c = { time: closed, open: profile.firstTradePrice!, high: last, low: first,
+      close: profile.lastTradePrice!, volume: profile.totalVolume };
     if (s.bars.length && profile.start !== s.bars.at(-1)!.profile.end) throw new Error('jendela 5m hilang');
     s.bars.push({ candle: c, profile });
     s.bars = s.bars.slice(-26);
