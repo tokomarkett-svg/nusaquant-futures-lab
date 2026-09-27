@@ -61,8 +61,6 @@ export class BinancePublicMarketDataClient {
   private readonly timeoutMs: number;
   private readonly fallbackBaseUrl: string | null;
   private fallbackAnnounced = false;
-  /** Host terakhir yang TERBUKTI berhasil — dipakai lebih dulu supaya tidak menghantam host mati berulang-ulang. */
-  private stickyBase: string | null = null;
   private marketTerakhir: DataMarket | null = null;
   /** Setelah 418/429/451, jangan pukul host utama terus-menerus dan memperpanjang ban IP. */
   private primaryRetryAt = 0;
@@ -116,21 +114,21 @@ export class BinancePublicMarketDataClient {
   private async fetchJson(
     pickPath: (paths: ReturnType<BinancePublicMarketDataClient['pathsFor']>) => string,
     params: Record<string, string>,
+    requiredMarket?: DataMarket,
   ): Promise<unknown> {
-    const bases = [this.baseUrl, ...(this.fallbackBaseUrl ? [this.fallbackBaseUrl] : [])];
+    // Satu scan tidak boleh mencampur ticker FUTURES dengan candle SPOT.
+    const bases = [this.baseUrl, ...(this.fallbackBaseUrl ? [this.fallbackBaseUrl] : [])]
+      .filter((base) => !requiredMarket || marketOfBase(base) === requiredMarket);
+    if (!bases.length) throw new Error(`Pasar ${requiredMarket} tidak tersedia pada klien Binance ini.`);
     const primaryCoolingDown = Boolean(this.fallbackBaseUrl && Date.now() < this.primaryRetryAt);
     // Saat host utama sedang diban, jangan menyentuhnya sama sekali. Setelah cooldown,
     // coba futures lagi agar fallback SPOT tidak menjadi permanen.
-    const ordered = primaryCoolingDown
-      ? [this.fallbackBaseUrl!]
-      : this.stickyBase === this.baseUrl
-        ? [this.baseUrl, ...bases.filter((base) => base !== this.baseUrl)]
-        : bases;
+    const ordered = primaryCoolingDown ? bases.filter((base) => base !== this.baseUrl) : bases;
+    if (!ordered.length) throw new Error(`Pasar ${requiredMarket ?? 'FUTURES'} sedang cooldown; tidak memakai candle pasar lain.`);
     let lastError: unknown = new Error('Binance request gagal tanpa percobaan.');
     for (const base of ordered) {
       try {
         const payload = await this.attempt(base, pickPath(this.pathsFor(base)), params);
-        this.stickyBase = base;
         if (base === this.baseUrl) this.primaryRetryAt = 0;
         this.marketTerakhir = marketOfBase(base);
         if (base !== this.baseUrl && !this.fallbackAnnounced) {
@@ -151,12 +149,14 @@ export class BinancePublicMarketDataClient {
     throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
-  async getKlines({ symbol, interval, limit = 500, endTime, closedOnly = true }: {
+  async getKlines({ symbol, interval, limit = 500, endTime, closedOnly = true, market }: {
     symbol: string;
     interval: string;
     limit?: number;
     endTime?: number;
     closedOnly?: boolean;
+    /** Kunci pasar satu batch scan; tanpa ini failover biasa tetap berlaku. */
+    market?: DataMarket;
   }): Promise<Candle[]> {
     const duration = getIntervalMs(interval);
     const params: Record<string, string> = {
@@ -166,7 +166,7 @@ export class BinancePublicMarketDataClient {
     };
     if (endTime !== undefined) params.endTime = String(Math.floor(endTime));
 
-    const payload = await this.fetchJson((paths) => paths.klines, params);
+    const payload = await this.fetchJson((paths) => paths.klines, params, market);
     if (!Array.isArray(payload)) throw new Error('Binance market data payload bukan array.');
     const now = Date.now();
     return payload.map((row): Candle => {
@@ -278,7 +278,13 @@ export class CandlePollingLoop {
  * tidak cocok dengan chart futures.
  * Atur ulang lewat env SCAN_BINANCE_BASE_URL bila jaringan menuntut hal lain.
  */
+const scanClients = new Map<string, BinancePublicMarketDataClient>();
 export function scanMarketClient(): BinancePublicMarketDataClient {
   const base = (process.env.SCAN_BINANCE_BASE_URL ?? FUTURES_BASE_DEFAULT).trim() || FUTURES_BASE_DEFAULT;
-  return new BinancePublicMarketDataClient({ baseUrl: base });
+  let client = scanClients.get(base);
+  if (!client) {
+    client = new BinancePublicMarketDataClient({ baseUrl: base });
+    scanClients.set(base, client);
+  }
+  return client;
 }

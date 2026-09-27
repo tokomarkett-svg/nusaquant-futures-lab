@@ -8,9 +8,10 @@
  * menjadi membaca PASAR YANG SAMA: futures.
  */
 import http from 'node:http';
+import { STALE_CANDLE_MINUTES } from '@nusaquant/core';
 import zlib from 'node:zlib';
 import { bukaDemo, tutupDemo, tokenSah } from './exec-demo.ts';
-import { sendTelegram, scanAlertCandidatesShared } from './alerts.ts';
+import { sendTelegram, scanAlertCandidatesShared, tiketMasihSah, type AlertScanRow } from './alerts.ts';
 import { createSupabaseDeskStore } from './desk.ts';
 import { scanMarketClient } from './market-data.ts';
 
@@ -35,30 +36,38 @@ const PAPAN_CACHE_MS = 45_000;
 type CacheEntry = { at: number; payload: unknown };
 const cache = new Map<string, CacheEntry>();
 let upstreamRetryAt = 0;
-let papanCache: CacheEntry | null = null;
-let papanInFlight: Promise<unknown> | null = null;
+type PapanSnapshot = { at: number; rows: AlertScanRow[]; market: string };
+let papanCache: PapanSnapshot | null = null;
+let papanInFlight: Promise<PapanSnapshot> | null = null;
+
+/** Saat payload cached, status SIAP tetap dihitung dari jam sekarang, bukan status lama. */
+export function papanPayload(snapshot: PapanSnapshot, now = Date.now()) {
+  const rows = snapshot.rows.map((r) => {
+    const ageMin = r.dataAgeMin + Math.max(0, Math.floor((now - r.scannedAt) / 60_000));
+    const siap = Boolean(r.ticket?.actionable && r.gateAlign && tiketMasihSah(r.setup.candle2, now) && ageMin <= STALE_CANDLE_MINUTES);
+    return {
+      symbol: r.symbol, side: r.side, price: r.priceNow, gate: r.gate, gateAlign: r.gateAlign,
+      siap, basi: Boolean(r.ticket && (!r.ticket.actionable || !tiketMasihSah(r.setup.candle2, now) || ageMin > STALE_CANDLE_MINUTES)),
+      entry: r.ticket?.entry ?? null, stop: r.ticket?.stop ?? null, target: r.ticket?.target ?? null,
+      sizeCoin: r.ticket?.sizeCoin ?? null, riskPct: r.ticket?.riskPct ?? null,
+      garis: r.garis ?? null, ageMin,
+      market: r.market ?? 'FUTURES',
+    };
+  });
+  return { ok: true, rows, market: snapshot.market, at: new Date(snapshot.at).toISOString() };
+}
 
 async function scanPapanPayload(): Promise<unknown> {
-  if (papanCache && Date.now() - papanCache.at < PAPAN_CACHE_MS) return papanCache.payload;
+  if (papanCache && Date.now() - papanCache.at < PAPAN_CACHE_MS) return papanPayload(papanCache);
   if (!papanInFlight) {
     papanInFlight = (async () => {
       const market = scanMarketClient();
       const rows = await scanAlertCandidatesShared(market, PAPAN_RESULT_LIMIT);
-      const payload = rows.map((r) => ({
-        symbol: r.symbol, side: r.side, price: r.priceNow, gate: r.gate, gateAlign: r.gateAlign,
-        siap: Boolean(r.ticket?.actionable && r.gateAlign),
-        basi: Boolean(r.ticket && !r.ticket.actionable),
-        entry: r.ticket?.entry ?? null, stop: r.ticket?.stop ?? null, target: r.ticket?.target ?? null,
-        sizeCoin: r.ticket?.sizeCoin ?? null, riskPct: r.ticket?.riskPct ?? null,
-        garis: r.garis ?? null, ageMin: r.dataAgeMin,
-        market: r.market ?? 'FUTURES',
-      }));
-      const result = { ok: true, rows: payload, market: market.marketUsed() ?? 'FUTURES', at: new Date().toISOString() };
-      papanCache = { at: Date.now(), payload: result };
-      return result;
+      papanCache = { at: Date.now(), rows, market: rows[0]?.market ?? market.marketUsed() ?? 'FUTURES' };
+      return papanCache;
     })().finally(() => { papanInFlight = null; });
   }
-  return papanInFlight;
+  return papanPayload(await papanInFlight);
 }
 
 export function validateKlinesQuery(query: URLSearchParams): { ok: true; symbol: string; interval: string; limit: number } | { ok: false; error: string } {

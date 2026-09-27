@@ -7,6 +7,7 @@ import {
   type DeskPosition, type DeskStore,
 } from './desk.ts';
 import type { BinancePublicMarketDataClient } from './market-data.ts';
+import { scanAlertCandidates } from './alerts.ts';
 
 // ------------------------------------------------------------------ alat bantu
 
@@ -24,7 +25,9 @@ function quietCandle(time: number): Candle {
  * Entry 96,85 · stop 95,00 · target 100,55 (2R).
  */
 function seriesWithSetup(extra: Candle[] = []): Candle[] {
-  const total = 40;
+  // Sertakan midnight WIB agar arah hari dibaca dari open yang benar (bukan
+  // dari candle tertua yang kebetulan ada di snapshot).
+  const total = 140;
   const candles: Candle[] = [];
   for (let index = 0; index < total; index += 1) candles.push(quietCandle(lastClosed - (total - 1 - index) * STEP));
   candles[total - 4] = { time: lastClosed - 3 * STEP, open: 96.3, high: 96.4, low: 95.5, close: 96.25, volume: 1 };  // X
@@ -275,4 +278,52 @@ test('siklus: posisi terbuka kena SL → −1R dan tercatat di jurnal', async ()
 test('kunci setup: symbol + arah + waktu candle 2 (tidak ada dobel untuk setup yang sama)', () => {
   assert.equal(deskSetupKey('RUNEUSDT', 'LONG', 1_790_301_600_000), 'RUNEUSDT:LONG:1790301600000');
   assert.notEqual(deskSetupKey('RUNEUSDT', 'LONG', 1), deskSetupKey('RUNEUSDT', 'LONG', 2));
+});
+
+test('arah hari WIB dipilih dulu: hari turun tetap memindai SHORT meski lebih dekat pintu LONG', async () => {
+  const total = 140;
+  const midnightWib = Math.floor((Date.now() - 17 * 3_600_000) / 86_400_000) * 86_400_000 + 17 * 3_600_000;
+  const candles: Candle[] = Array.from({ length: total }, (_, i) => ({
+    time: lastClosed - (total - 1 - i) * STEP,
+    open: 100, high: 101, low: 94, close: 100, volume: 1,
+  }));
+  const today = candles.find((c) => c.time === midnightWib);
+  assert.ok(today, 'snapshot harus memuat open WIB');
+  today.open = 110;
+  today.high = 111;
+  candles.at(-1)!.close = 95;
+  const market = makeMarket(candles, { symbol: 'TESTUSDT', last: 95, high: 110, low: 90, quoteVolume: 50_000_000 });
+  const rows = await scanAlertCandidates(market);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].side, 'SHORT');
+});
+
+test('meja tidak membuka tiket dari snapshot walau bar C2 tampak segar tetapi jam nyata sudah basi', async () => {
+  const result = await runDeskCycle({
+    store: makeStore(), market: makeMarket(seriesWithSetup()),
+    now: Date.now() + 90 * 60_000,
+    notify: async () => {},
+  });
+  assert.equal(result.readyTickets, 0);
+  assert.equal(result.opened, 0);
+});
+
+test('dua SL bersamaan dari database snapshot terpisah menutup meja sebelum entry baru', async () => {
+  const openedAt = new Date(lastClosed - 4 * STEP).toISOString();
+  const store = makeStore([
+    openPositionFixture({ id: 'a', symbol: 'AAAUSDT', openedAt }),
+    openPositionFixture({ id: 'b', symbol: 'BBBUSDT', openedAt }),
+  ]);
+  // Supabase memetakan setiap query ke objek baru (berbeda dengan store memori yang berbagi referensi).
+  const originalSince = store.positionsSince.bind(store);
+  const originalOpen = store.openPositions.bind(store);
+  store.positionsSince = async (start) => (await originalSince(start)).map((p) => ({ ...p }));
+  store.openPositions = async () => (await originalOpen()).map((p) => ({ ...p }));
+  const result = await runDeskCycle({
+    store, market: makeMarket(seriesWithSetup()), notify: async () => {},
+    limits: { maxTradesPerDay: 3, maxConsecutiveLosses: 2 },
+  });
+  assert.equal(result.closed, 2);
+  assert.equal(result.opened, 0);
+  assert.match(result.skipped.map((r) => r.reason).join(' '), /2 loss beruntun/);
 });

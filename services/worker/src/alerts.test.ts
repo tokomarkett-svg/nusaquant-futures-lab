@@ -8,7 +8,7 @@ import type { SetupMarkers, Ticket } from '@nusaquant/core';
 const KINI = Date.now();
 
 const setupNoC1: SetupMarkers = {
-  side: 'LONG', x: 1_700_000_000_000, candle1: null, candle2: null,
+  side: 'LONG', x: Math.floor(KINI / 900_000) * 900_000 - 900_000, candle1: null, candle2: null,
   staleBars: 1, valid: false, notes: ['X ada, candle 1 belum sah'],
   entry: null, stop: null, riskDistance: null,
 };
@@ -214,4 +214,40 @@ test('jenisPerp: perp saham & komoditas ditandai, koin kripto tidak', () => {
   assert.match(jenisPerpText('komoditas') ?? '', /KOMODITAS/);
   assert.equal(jenisPerpText('kripto'), null);
   assert.equal(jenisPerpText(undefined), null);
+});
+
+test('X lama tidak boleh menjadi bel baru walau snapshot masih mengatakan staleBars=1', () => {
+  const store = createAlertStore();
+  const oldX = { ...candidateBell, setup: { ...setupNoC1, x: KINI - 3 * 3_600_000 } };
+  assert.equal(collectAlertsForCandidate(oldX, store).length, 0);
+});
+
+test('siklus notifikasi tidak menandai DRY RUN sebagai terkirim; boleh coba lagi setelah aktif', async () => {
+  const { runAlertCycle } = await import('./alerts.ts');
+  const store = createAlertStore();
+  const now = Date.now();
+  const market = {
+    get24hTickerDetails: async () => [{ symbol: 'TESTUSDT', last: 96.85, high: 110, low: 90, quoteVolume: 50_000_000 }],
+    getKlines: async ({ interval }: { interval: string }) => {
+      if (interval === '1h') return Array.from({ length: 130 }, (_, i) => ({
+        time: now - (130 - i) * 3_600_000, open: 80 + i * 0.15, high: 81 + i * 0.15,
+        low: 79 + i * 0.15, close: 80.1 + i * 0.15, volume: 1,
+      }));
+      const step = 900_000;
+      const latest = Math.floor(now / step) * step - step;
+      const bars = Array.from({ length: 140 }, (_, i) => ({
+        time: latest - (139 - i) * step, open: 96.2, high: 96.4, low: 96.1, close: 96.3, volume: 1,
+      }));
+      bars[137] = { ...bars[137], open: 96.3, high: 96.4, low: 95.5, close: 96.25 };
+      bars[138] = { ...bars[138], open: 96.6, high: 96.8, low: 95, close: 96.4 };
+      bars[139] = { ...bars[139], open: 96.45, high: 96.9, low: 96.4, close: 96.85 };
+      return bars;
+    },
+  } as unknown as import('./market-data.ts').BinancePublicMarketDataClient;
+  const dry = await runAlertCycle(store, market, { mode: 'tiketsiap', send: async () => false });
+  assert.equal(dry.sent, 0);
+  assert.equal(store.size(), 0);
+  const live = await runAlertCycle(store, market, { mode: 'tiketsiap', send: async () => true });
+  assert.equal(live.sent, 1);
+  assert.equal(store.size(), 1);
 });

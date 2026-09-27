@@ -15,11 +15,11 @@
  */
 
 import {
-  detectSetup, computeTicket, gateFromCandles, distanceToPintu, RISK_USDT, TOUCH_EXPIRY_CANDLES,
+  detectSetup, computeTicket, gateFromCandles, distanceToPintu, RISK_USDT, STALE_CANDLE_MINUTES, TOUCH_EXPIRY_CANDLES,
   type Candle, type SetupMarkers, type Side, type Ticket, type Zones,
 } from '@nusaquant/core';
 import { BinancePublicMarketDataClient, scanMarketClient } from './market-data.ts';
-import { discoverChatFromUpdates, scanAlertCandidatesShared, sendTelegram } from './alerts.ts';
+import { discoverChatFromUpdates, scanAlertCandidatesShared, sendTelegram, tiketMasihSah } from './alerts.ts';
 import { tutupDemo } from './exec-demo.ts';
 import { createWorkerSupabaseClient } from './supabase.ts';
 
@@ -391,8 +391,12 @@ export async function runDeskCycle(deps: DeskCycleDeps): Promise<DeskCycleResult
         console.error(`[desk] gagal menutup demo ${position.symbol} di testnet:`, error instanceof Error ? error.message : error);
       }
     }
-    const afterClose = [...today.filter((p) => p.id !== position.id), { ...position, status: 'CLOSED' as const, realizedPnl, closedAt }];
-    const rToday = afterClose.filter((p) => p.status === 'CLOSED').reduce((sum, p) => sum + (p.realizedPnl ?? 0), 0) / RISK_USDT;
+    // Snapshot "today" harus diperbarui setelah tiap close: bila dua posisi kena SL
+    // pada polling yang sama, pagar 2 loss wajib aktif SEBELUM membuka tiket baru.
+    const closedPosition = { ...position, status: 'CLOSED' as const, realizedPnl, closedAt };
+    const todayIndex = today.findIndex((p) => p.id === position.id);
+    if (todayIndex >= 0) today[todayIndex] = closedPosition;
+    const rToday = today.filter((p) => p.status === 'CLOSED').reduce((sum, p) => sum + (p.realizedPnl ?? 0), 0) / RISK_USDT;
     await store.journal({
       symbol: position.symbol,
       action: 'DESK_CLOSE',
@@ -405,7 +409,7 @@ export async function runDeskCycle(deps: DeskCycleDeps): Promise<DeskCycleResult
     });
     await deps.notify(buildDeskCloseText({
       symbol: position.symbol, side: position.side, outcome: evaluation.outcome,
-      r: evaluation.r, realizedPnl, tradesToday: afterClose.filter((p) => p.status === 'CLOSED').length, rToday,
+      r: evaluation.r, realizedPnl, tradesToday: today.filter((p) => p.status === 'CLOSED').length, rToday,
     }));
     result.closed += 1;
   }
@@ -413,11 +417,16 @@ export async function runDeskCycle(deps: DeskCycleDeps): Promise<DeskCycleResult
   // 2) cari tiket siap baru.
   const candidates = await scanAlertCandidatesShared(deps.market);
   result.scannedCandidates = candidates.length;
-  const ready = candidates.filter((row) => row.ticket !== null && row.ticket.actionable && row.gateAlign);
+  // Snapshot bersama dapat tertahan saat upstream gagal. Umur tiket dihitung dari
+  // waktu nyata, bukan cuma jumlah bar pada snapshot yang mungkin sudah usang.
+  const ready = candidates.filter((row) => row.ticket !== null && row.ticket.actionable
+    && row.gateAlign && tiketMasihSah(row.setup.candle2, now)
+    && row.dataAgeMin + Math.max(0, (now - row.scannedAt) / 60_000) <= STALE_CANDLE_MINUTES);
   result.readyTickets = ready.length;
 
   const openedTodayBefore = today.filter((p) => p.metadata.source === 'MEJA_PAPAN').length;
   let openedToday = openedTodayBefore;
+  const openSymbols = new Set(open.map((p) => p.symbol));
 
   for (const candidate of ready) {
     const ticket = candidate.ticket as Ticket;
@@ -425,8 +434,7 @@ export async function runDeskCycle(deps: DeskCycleDeps): Promise<DeskCycleResult
     const alreadyToday = today.some((p) => p.metadata.setupKey === setupKey);
     if (alreadyToday) continue;
 
-    const openSymbols = [...open.map((p) => p.symbol)];
-    const guards = deskGuards({ openedToday, consecutiveLosses: consecutiveLossesOf(today), openSymbols, symbol: candidate.symbol }, limits);
+    const guards = deskGuards({ openedToday, consecutiveLosses: consecutiveLossesOf(today), openSymbols: [...openSymbols], symbol: candidate.symbol }, limits);
     if (!guards.canOpen) {
       result.skipped.push({ symbol: candidate.symbol, reason: guards.reason ?? 'ditolak pagar' });
       if (guards.reason && !announced.has(guards.reason)) {
@@ -472,7 +480,8 @@ export async function runDeskCycle(deps: DeskCycleDeps): Promise<DeskCycleResult
       symbol: candidate.symbol, side: candidate.side, entry: ticket.entry, stop: ticket.stop,
       target: ticket.target, sizeCoin: ticket.sizeCoin, processScore: score,
     }));
-    openSymbols.push(candidate.symbol);
+    openSymbols.add(candidate.symbol);
+    today.push(position);
     openedToday += 1;
     result.opened += 1;
   }

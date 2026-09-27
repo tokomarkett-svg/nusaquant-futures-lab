@@ -180,7 +180,11 @@ export function collectAlertsForCandidate(
   const mode = options.mode ?? resolveAlertMode();
 
   // Bel pintu hanya dikirim kalau gate sudah searah (aturan: gate dulu, baru pintu).
-  if (mode === 'semua' && candidate.gateAlign && candidate.setup.x !== null && candidate.setup.candle1 === null && candidate.setup.staleBars !== null && candidate.setup.staleBars <= bellAgeBars) {
+  // Cache/putus koneksi dapat membuat staleBars kecil walaupun X sudah berjam-jam lalu.
+  // Bel hanya untuk X dari candle tertutup yang benar-benar masih baru.
+  const xSegar = candidate.setup.x !== null && Date.now() >= candidate.setup.x + 900_000
+    && Date.now() <= candidate.setup.x + (bellAgeBars + 1) * 900_000;
+  if (mode === 'semua' && candidate.gateAlign && xSegar && candidate.setup.candle1 === null && candidate.setup.staleBars !== null && candidate.setup.staleBars <= bellAgeBars) {
     const key = `${candidate.symbol}:${candidate.side}:X:${candidate.setup.x}`;
     if (!store.has(key)) messages.push({ key, kind: 'X', text: buildBellText(candidate) });
   }
@@ -319,11 +323,12 @@ const LEVERAGED = /(UP|DOWN|BULL|BEAR)USDT$/;
 const CONCURRENCY = 5;
 const MAX_CANDIDATES = 600; // PINDAI SEMUA: semua koin USDT yang lolos gerbang vol/range (permintaan pemilik 25/9)
 
-export type AlertScanRow = AlertCandidate & { rangePct: number; quoteVolume: number; dataAgeMin: number };
+export type AlertScanRow = AlertCandidate & { rangePct: number; quoteVolume: number; dataAgeMin: number; scannedAt: number };
 
 /** Pindai pasar dengan aturan yang sama seperti papan web. */
 export async function scanAlertCandidates(client: BinancePublicMarketDataClient, limit = MAX_CANDIDATES): Promise<AlertScanRow[]> {
   const tickers = await client.get24hTickerDetails();
+  const tickerMarket = client.marketUsed?.() ?? 'FUTURES';
   const liquid = tickers.filter((t) => t.symbol.endsWith('USDT') && !t.symbol.includes('_') && !EXCLUDED.test(t.symbol) && !LEVERAGED.test(t.symbol) && t.quoteVolume >= MIN_QUOTE_VOLUME);
   const withZones = liquid
     .map((ticker) => ({ ticker, zones: computeZones(ticker) }))
@@ -343,27 +348,23 @@ export async function scanAlertCandidates(client: BinancePublicMarketDataClient,
     const enriched = await Promise.all(slice.map(async ({ ticker, zones }) => {
       try {
         const [m15, h1] = await Promise.all([
-          client.getKlines({ symbol: ticker.symbol, interval: '15m', limit: 140 }),
-          client.getKlines({ symbol: ticker.symbol, interval: '1h', limit: 130 }),
+          client.getKlines({ symbol: ticker.symbol, interval: '15m', limit: 140, market: tickerMarket }),
+          client.getKlines({ symbol: ticker.symbol, interval: '1h', limit: 130, market: tickerMarket }),
         ]);
         const newest = m15.at(-1)?.time ?? 0;
         const dataAgeMin = (now - (newest + 900_000)) / 60_000;
-        if (m15.length < 20 || h1.length < 99 || dataAgeMin > STALE_CANDLE_MINUTES) return null;
+        const h1AgeMin = (now - ((h1.at(-1)?.time ?? 0) + 3_600_000)) / 60_000;
+        // 1H normal boleh berumur <60 menit; >75 berarti candle penentu gate
+        // belum diperbarui. Jangan ambil keputusan baru memakai gate lama.
+        if (m15.length < 20 || h1.length < 99 || dataAgeMin > STALE_CANDLE_MINUTES || h1AgeMin > 75) return null;
         const { gate } = gateFromCandles(h1);
-        const distLong = distanceToPintu(zones, 'LONG', ticker.last);
-        const distShort = distanceToPintu(zones, 'SHORT', ticker.last);
-        const insideLong = ticker.last <= zones.long.pintu && ticker.last >= zones.long.batal;
-        const insideShort = ticker.last >= zones.short.pintu && ticker.last <= zones.short.batal;
-        const side: Side = insideLong || (Math.abs(distLong) <= Math.abs(distShort) && distLong >= -0.5) ? 'LONG' : 'SHORT';
-        // LANGKAH 1 pelajaran pemilik: TENTUKAN ARAH HARI DULU.
-        // Hari NAIK = harga sekarang di atas OPEN hari ini (tengah malam WIB) → hanya LONG.
-        // Hari TURUN = di bawah open → hanya SHORT.
-        // Insiden MINA 25/9: hari turun −6% tapi mesin suruh LONG → rugi nyata. Aturan ini mencegahnya.
+        // Arah hari harus dipilih SEBELUM menghitung setup, bukan memilih sisi yang paling
+        // dekat pintu kemudian membuang koin kalau sisi itu melawan hari. Di atas open WIB
+        // hanya LONG, di bawah open WIB hanya SHORT (harga tepat open = tidak ada arah).
         const mulaiHariWib = Math.floor((now - 17 * 3_600_000) / 86_400_000) * 86_400_000 + 17 * 3_600_000;
-        const candleHariIni = m15.filter((c) => c.time >= mulaiHariWib);
-        const openHariIni = (candleHariIni[0] ?? m15[0]).open;
-        const hariNaik = ticker.last >= openHariIni;
-        if ((side === 'LONG' && !hariNaik) || (side === 'SHORT' && hariNaik)) return null;
+        const candleHariIni = m15.find((c) => c.time === mulaiHariWib);
+        if (!candleHariIni || ticker.last === candleHariIni.open) return null;
+        const side: Side = ticker.last > candleHariIni.open ? 'LONG' : 'SHORT';
         // ATURAN UNGU KETAT (pelajaran pemilik): harga harus JELAS di sisi yang benar dari garis
         // ungu (MA99) — bukan nempel di garis. Margin minimal 0,5%.
         // Insiden BANK 25/9 22:47 WIB: cuma +0,35% di atas ungu, struktur 15m masih turun → long
@@ -395,11 +396,12 @@ export async function scanAlertCandidates(client: BinancePublicMarketDataClient,
             : { pintu: zones.short.pintu, manis: zones.short.manis, batal: zones.short.batal },
           // FUTURES = pasar yang dilihat murid. SPOT = jalan darurat; notif otomatis memberi peringatan.
           // Opsional-call: klien palsu di tes boleh tidak punya marketUsed().
-          market: client.marketUsed?.() ?? 'FUTURES',
+          market: tickerMarket,
           jenis: jenisPerp(ticker.symbol),
           rangePct: zones.rangePct,
           quoteVolume: ticker.quoteVolume,
           dataAgeMin: Math.round(dataAgeMin),
+          scannedAt: now,
         };
         return row;
       } catch {
@@ -415,37 +417,45 @@ export async function scanAlertCandidates(client: BinancePublicMarketDataClient,
 // ratusan request kline per konsumen. Akibatnya IP Railway diban Binance (HTTP 418).
 // Satu hasil bersama cukup karena semua memakai rumus dan pasar yang sama.
 const SHARED_SCAN_TTL_MS = 120_000;
-let sharedScanCache: { at: number; rows: AlertScanRow[] } | null = null;
-let sharedScanInFlight: Promise<AlertScanRow[]> | null = null;
+const sharedScans = new WeakMap<BinancePublicMarketDataClient, {
+  cache?: { at: number; rows: AlertScanRow[] };
+  inFlight?: Promise<AlertScanRow[]>;
+}>();
 
 export async function scanAlertCandidatesShared(
   client: BinancePublicMarketDataClient,
   limit = MAX_CANDIDATES,
 ): Promise<AlertScanRow[]> {
-  if (sharedScanCache && Date.now() - sharedScanCache.at < SHARED_SCAN_TTL_MS) {
-    return sharedScanCache.rows.slice(0, limit);
+  let state = sharedScans.get(client);
+  if (!state) {
+    state = {};
+    sharedScans.set(client, state);
   }
-  if (!sharedScanInFlight) {
-    sharedScanInFlight = scanAlertCandidates(client, MAX_CANDIDATES)
+  if (state.cache && Date.now() - state.cache.at < SHARED_SCAN_TTL_MS) {
+    return state.cache.rows.slice(0, limit);
+  }
+  if (!state.inFlight) {
+    const scanState = state;
+    scanState.inFlight = scanAlertCandidates(client, MAX_CANDIDATES)
       .then((rows) => {
-        sharedScanCache = { at: Date.now(), rows };
+        scanState.cache = { at: Date.now(), rows };
         return rows;
       })
       .catch((error) => {
-        // Kalau upstream tersendat sesaat, snapshot terakhir lebih jujur daripada
-        // status "worker mati". Timestamp payload tetap menunjukkan umurnya.
-        if (sharedScanCache) return sharedScanCache.rows;
+        // Snapshot lama hanya untuk tampilan, TIDAK boleh dipakai untuk eksekusi:
+        // konsumen harus memeriksa umur tiket berdasarkan jam nyata.
+        if (scanState.cache) return scanState.cache.rows;
         throw error;
       })
-      .finally(() => { sharedScanInFlight = null; });
+      .finally(() => { scanState.inFlight = undefined; });
   }
-  return (await sharedScanInFlight).slice(0, limit);
+  return (await state.inFlight!).slice(0, limit);
 }
 
 export async function runAlertCycle(
   store: ReturnType<typeof createAlertStore>,
   client?: BinancePublicMarketDataClient,
-  options: { chatId?: string; mode?: AlertMode; papanUrl?: string } = {},
+  options: { chatId?: string; mode?: AlertMode; papanUrl?: string; send?: typeof sendTelegram } = {},
 ): Promise<{ scanned: number; sent: number; messages: AlertMessage[] }> {
   // Futures dulu: garis & tiket harus diukur dari pasar yang sama dengan chart murid.
   const market = client ?? scanMarketClient();
@@ -458,9 +468,13 @@ export async function runAlertCycle(
   let sent = 0;
   for (const message of messages) {
     try {
-      await sendTelegram(message.text, { chatId: options.chatId });
-      store.add(message.key);
-      sent += 1;
+      // Mode bisu/DRY RUN mengembalikan false: jangan cap "terkirim" dan jangan
+      // hilangkan kesempatan mengirim ketika konfigurasi Telegram diperbaiki.
+      const delivered = await (options.send ?? sendTelegram)(message.text, { chatId: options.chatId });
+      if (delivered) {
+        store.add(message.key);
+        sent += 1;
+      }
     } catch (error) {
       console.error('[alerts] gagal kirim', message.key, error instanceof Error ? error.message : error);
     }
@@ -516,20 +530,22 @@ export async function watchAlerts(): Promise<void> {
     console.warn('[alerts] token/chat id belum lengkap → mode DRY RUN (pesan hanya ditulis di log). Pesan sapa akan dicoba lagi setiap siklus setelah variabel diisi.');
   }
   let startupSent = false;
+  // Pertahankan klien antar polling: cooldown 418/429/451 dan fallback spot tidak
+  // di-reset tiap dua menit sehingga worker tidak terus menghantam IP yang diban.
+  const market = scanMarketClient();
   for (;;) {
     try {
       // Pesan sapa dicoba tiap siklus sampai berhasil — supaya perbaikan variabel langsung terbukti tanpa redeploy.
       if (!startupSent && hasToken) {
         try {
-          await sendTelegram(buildStartupText(), { chatId: effectiveChatId });
-          startupSent = true;
-          console.log(JSON.stringify({ alerts: true, startupMessage: 'sent', at: new Date().toISOString() }));
+          startupSent = await sendTelegram(buildStartupText(), { chatId: effectiveChatId });
+          if (startupSent) console.log(JSON.stringify({ alerts: true, startupMessage: 'sent', at: new Date().toISOString() }));
         } catch (error) {
           console.error('[alerts] gagal kirim pesan sapa:', error instanceof Error ? error.message : error);
           console.error('[alerts] diagnosa:', JSON.stringify(describeTelegramConfig()));
         }
       }
-      const result = await runAlertCycle(store, undefined, { chatId: effectiveChatId, mode });
+      const result = await runAlertCycle(store, market, { chatId: effectiveChatId, mode });
       console.log(JSON.stringify({ alerts: true, scanned: result.scanned, sent: result.sent, seen: store.size(), startupSent, at: new Date().toISOString() }));
     } catch (error) {
       console.error('[alerts]', error instanceof Error ? error.message : error);

@@ -70,3 +70,20 @@ test('error non-retryable (HTTP 400) tidak memicu fallback', async () => {
   await assert.rejects(() => client.getKlines({ symbol: 'BTCUSDT', interval: '15m' }), /HTTP 400/);
   assert.equal(calls.length, 1, 'tidak boleh mencoba mirror untuk error non-retryable');
 });
+
+test('satu scan tidak mencampur ticker futures dengan candle spot saat fapi gagal', async () => {
+  const calls: string[] = [];
+  const client = new BinancePublicMarketDataClient({
+    baseUrl: 'https://fapi.binance.com',
+    fetchImpl: (async (url: URL | string) => {
+      const href = String(url);
+      calls.push(href);
+      if (href.includes('/fapi/v1/klines')) return { ok: false, status: 451 } as Response;
+      return { ok: true, json: async () => [{ symbol: 'TESTUSDT', lastPrice: '95', highPrice: '110', lowPrice: '90', quoteVolume: '50000000' }] } as Response;
+    }) as typeof fetch,
+  });
+  const { scanAlertCandidates } = await import('./alerts.ts');
+  assert.deepEqual(await scanAlertCandidates(client), []);
+  assert.ok(calls.some((url) => url.includes('/fapi/v1/klines')));
+  assert.ok(!calls.some((url) => url.includes('/api/v3/klines')), 'dilarang menggabung klines spot dan zona futures');
+});
