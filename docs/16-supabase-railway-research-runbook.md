@@ -1,4 +1,7 @@
 # Supabase + Railway research backfill runbook
+> **DOKUMEN USANG (arsip).** NusaQuant tidak lagi memakai Supabase sejak migrasi SQLite
+> (lihat [`MIGRASI-SQLITE.md`](../MIGRASI-SQLITE.md)). Langkah di bawah ini merujuk setup lama
+> dan tidak boleh diikuti lagi.
 
 This runbook imports public research data only. It does not enable Binance private API, Testnet orders, or live orders.
 

@@ -216,7 +216,7 @@ function countTakerFlowCandles(candles: Candle[]): number {
 /**
  * Single source of truth for the full-history research evaluation.
  *
- * The async worker (Supabase) and the local research CLI (public Binance archive) both call this so
+ * The async worker (SQLite) and the local research CLI (public Binance archive) both call this so
  * a dashboard number and a local reproduction can never drift apart.
  */
 export async function evaluateResearchRun(input: ResearchRunInput): Promise<ResearchRunResult> {

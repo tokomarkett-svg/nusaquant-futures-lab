@@ -21,7 +21,7 @@ import {
 import { BinancePublicMarketDataClient, scanMarketClient } from './market-data.ts';
 import { discoverChatFromUpdates, scanAlertCandidatesShared, sendTelegram, tiketMasihSah } from './alerts.ts';
 import { tutupDemo } from './exec-demo.ts';
-import { createWorkerSupabaseClient } from './supabase.ts';
+import { getWorkerDb } from './db.ts';
 import { runtimeStatus } from './runtime-status.ts';
 
 export const DESK_SESSION_ID = process.env.DESK_SESSION_ID ?? '00000000-0000-4000-8000-000000000010';
@@ -192,7 +192,7 @@ export function buildDeskGuardText(reason: string): string {
   return [`🛑 <b>MEJA PAPAN ISTIRAHAT</b>`, reason, '', 'Pagar harian menjaga modal — bukan kerusakan, memang aturannya.'].join('\n');
 }
 
-// ---------------------------------------------------------------- store (Supabase / fake untuk tes)
+// ---------------------------------------------------------------- store (SQLite / fake untuk tes)
 
 export interface DeskStore {
   ensureSession(): Promise<void>;
@@ -226,14 +226,11 @@ function mapPosition(row: Record<string, any>): DeskPosition {
   };
 }
 
-export function createSupabaseDeskStore(client = createWorkerSupabaseClient(), sessionId = DESK_SESSION_ID): DeskStore {
-  const positions = () => client.from('paper_positions');
+/** Store paper trading meja di atas SQLite lokal. */
+export function createSqliteDeskStore(db = getWorkerDb(), sessionId = DESK_SESSION_ID): DeskStore {
   return {
     async ensureSession() {
-      const existing = await client.from('bot_sessions').select('id').eq('id', sessionId).maybeSingle();
-      if (existing.error) throw new Error(`Gagal membaca sesi meja: ${existing.error.message}`);
-      if (existing.data) return;
-      const created = await client.from('bot_sessions').insert({
+      await db.ensureBotSession({
         id: sessionId,
         name: DESK_SESSION_NAME,
         status: 'RUNNING',
@@ -242,20 +239,17 @@ export function createSupabaseDeskStore(client = createWorkerSupabaseClient(), s
         risk_fraction: RISK_USDT / 31,
         daily_loss_limit: 0.02,
       });
-      if (created.error && created.error.code !== '23505') throw new Error(`Gagal membuat sesi meja: ${created.error.message}`);
     },
     async positionsSince(dayStartIso) {
-      const result = await positions().select('*').eq('bot_session_id', sessionId).gte('opened_at', dayStartIso).order('opened_at', { ascending: true });
-      if (result.error) throw new Error(`Gagal membaca posisi meja: ${result.error.message}`);
-      return (result.data ?? []).map(mapPosition);
+      const rows = await db.listPositions(sessionId, { since: dayStartIso, orderAsc: true });
+      return rows.map(mapPosition);
     },
     async openPositions() {
-      const result = await positions().select('*').eq('bot_session_id', sessionId).eq('status', 'OPEN');
-      if (result.error) throw new Error(`Gagal membaca posisi terbuka: ${result.error.message}`);
-      return (result.data ?? []).map(mapPosition);
+      const rows = await db.listPositions(sessionId, { status: 'OPEN' });
+      return rows.map(mapPosition);
     },
     async openPosition(input) {
-      const result = await positions().insert({
+      const row = await db.insertPaperPosition({
         bot_session_id: sessionId,
         symbol: input.symbol,
         side: input.side,
@@ -266,22 +260,20 @@ export function createSupabaseDeskStore(client = createWorkerSupabaseClient(), s
         take_profit: input.target,
         opened_at: input.openedAt,
         metadata: input.metadata,
-      }).select('*').single();
-      if (result.error) throw new Error(`Gagal membuka posisi paper: ${result.error.message}`);
-      return mapPosition(result.data as Record<string, unknown>);
+      });
+      return mapPosition(row);
     },
     async closePosition(id, input) {
-      const result = await positions().update({
+      await db.updatePaperPosition(id, {
         status: 'CLOSED',
         exit_price: input.exitPrice,
         realized_pnl: input.realizedPnl,
         close_reason: input.closeReason,
         closed_at: input.closedAt,
-      }).eq('id', id);
-      if (result.error) throw new Error(`Gagal menutup posisi paper: ${result.error.message}`);
+      });
     },
     async journal(input) {
-      const result = await client.from('trade_journal').insert({
+      await db.insertJournal({
         bot_session_id: sessionId,
         symbol: input.symbol,
         action: input.action,
@@ -289,7 +281,6 @@ export function createSupabaseDeskStore(client = createWorkerSupabaseClient(), s
         quality_score: input.qualityScore,
         payload: input.payload,
       });
-      if (result.error) throw new Error(`Gagal menulis jurnal: ${result.error.message}`);
     },
   };
 }
@@ -509,7 +500,7 @@ export async function watchDesk(): Promise<void> {
   const pollMs = Math.max(Number(process.env.DESK_POLL_MS ?? 120_000), 60_000);
   let store: DeskStore;
   try {
-    store = createSupabaseDeskStore();
+    store = createSqliteDeskStore();
   } catch (error) {
     runtimeStatus.desk.lastFailureAt = new Date().toISOString();
     console.error('[desk] tidak bisa menyiapkan penyimpanan:', error instanceof Error ? error.message : error);

@@ -1,6 +1,6 @@
 import { evaluateIntelligentSignal } from '@nusaquant/core';
 import { loadMarketSnapshot } from '../lib/market';
-import SupabaseStatus from './components/SupabaseStatus';
+import DbStatus from './components/DbStatus';
 import BotControls from './components/BotControls';
 import RadarPanel from './components/RadarPanel';
 import CandleChart from './components/CandleChart';
@@ -32,7 +32,7 @@ export default async function HomePage() {
             <a className="control-btn" href="/nominasi" style={{ textDecoration: 'none' }}>Papan Nominasi →</a>
             <a className="control-btn" href="/posisi" style={{ textDecoration: 'none' }}>POSISIKU (pasca-entry) →</a>
             <a className="control-btn" href="/hp" style={{ textDecoration: 'none' }}>📱 Mode HP →</a>
-            <SupabaseStatus />
+            <DbStatus />
           </div>
         </header>
 
@@ -41,7 +41,7 @@ export default async function HomePage() {
             <div>
               <div className="eyebrow">MVP · decision layer</div>
               <h1>Trading dengan alasan, bukan tebakan.</h1>
-              <p className="lede">NusaQuant memisahkan signal engine, risk engine, dan execution. Market watch sekarang membaca candle tertutup dari Supabase; mode tetap paper trading dan belum terhubung ke dana Binance.</p>
+              <p className="lede">NusaQuant memisahkan signal engine, risk engine, dan execution. Market watch sekarang membaca candle tertutup dari database lokal SQLite; mode tetap paper trading dan belum terhubung ke dana Binance.</p>
             </div>
             <div className="hero-note"><strong>Guardrail aktif.</strong><br />No trade adalah keputusan yang sah. Bot tidak dipaksa mengirim sinyal ketika kondisi pasar tidak memenuhi aturan.</div>
           </div>

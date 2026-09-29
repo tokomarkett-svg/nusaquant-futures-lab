@@ -21,7 +21,7 @@
 | 11 | Backtest dengan fee, funding, spread, slippage | SELESAI SEBAGIAN | Runner cost-aware, temporal OOS, walk-forward, dan gross/net audit tersedia; research gate BTC/ETH masih FAIL |
 | 12 | Persistent worker dan market stream | SELESAI SEBAGIAN | REST public klines + polling worker berjalan di Railway; WebSocket belum diperlukan untuk observation MVP |
 | 13 | API start/pause/approval | SELESAI SEBAGIAN | Dashboard sudah terhubung ke paper session BTCUSDT/ETHUSDT; production smoke membutuhkan observasi berkelanjutan |
-| 14 | Supabase schema dan persistence | SELESAI SEBAGIAN | Schema, RLS, signal/paper persistence, journal, equity snapshot, dan worker restore tersedia |
+| 14 | SQLite schema dan persistence | SELESAI | Skema SQLite lokal, signal/paper persistence, journal, equity snapshot, dan worker restore tersedia |
 | 15 | Binance Futures Testnet | BELUM | Tetap dikunci sampai research dan paper gate lulus |
 | 16 | Security audit dan recovery | SELESAI SEBAGIAN | API key tetap server-only, emergency stop, stale-data guard, dan restore tersedia; review escalation belum |
 | 17 | Vercel deployment | SELESAI | Deployment dashboard berhasil; secret tetap di environment server dan tidak masuk repository |

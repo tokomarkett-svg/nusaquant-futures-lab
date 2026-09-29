@@ -15,7 +15,8 @@ export function runtimeSnapshot(market: string | null, now = new Date().toISOStr
       telegramAllowed: process.env.PMB_NOTIF === '1',
       telegramConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
       desk: process.env.RUN_DESK === 'true',
-      deskStoreConfigured: Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY),
+      // SQLite selalu tersedia (file lokal dibuat otomatis); tidak butuh kredensial.
+      deskStoreConfigured: true,
     },
     alerts: { ...runtimeStatus.alerts },
     desk: { ...runtimeStatus.desk },

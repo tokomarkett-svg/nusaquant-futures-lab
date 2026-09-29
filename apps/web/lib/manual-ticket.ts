@@ -1,5 +1,6 @@
 import { fetchTickers } from './binance';
 import type { ChrisDecision } from '@nusaquant/core';
+import { isCryptoFuturesUsdtSymbol } from '@nusaquant/db';
 
 export type ManualTicket = {
   symbol: string; side: 'LONG' | 'SHORT'; setupKey: string; expiresAt: string;
@@ -9,7 +10,7 @@ export type ManualTicket = {
 /** No MA or PMB fallback. The worker's trade-by-price decision is the ONLY source.
  * Recheck the Futures last price before returning an approvable Testnet ticket. */
 export async function manualTicket(symbol: string, side: 'LONG' | 'SHORT'): Promise<ManualTicket> {
-  if (!/^[A-Z0-9]{2,24}USDT$/.test(symbol) || (side !== 'LONG' && side !== 'SHORT')) throw new Error('Simbol/arah Futures tidak sah.');
+  if (!isCryptoFuturesUsdtSymbol(symbol) || (side !== 'LONG' && side !== 'SHORT')) throw new Error('Simbol/arah Futures tidak sah.');
   const base = (process.env.WORKER_DATA_URL ?? '').trim();
   if (!base.startsWith('https://')) throw new Error('Sumber keputusan Futures tidak dikonfigurasi.');
   const now = Date.now();

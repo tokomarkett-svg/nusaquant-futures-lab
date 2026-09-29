@@ -1,6 +1,7 @@
 import type { Candle } from '@nusaquant/core';
+import { filterCryptoFuturesUsdtSymbols } from '@nusaquant/db';
 import { BinancePublicMarketDataClient, DEFAULT_BINANCE_BASE_URL } from './market-data.ts';
-import { createWorkerSupabaseClient } from './supabase.ts';
+import { getWorkerDb } from './db.ts';
 
 // Universe pra-registrasi (docs/24): 80 perpetual likuid; fallback bila ticker 24h tak terjangkau.
 export const RADAR_UNIVERSE_FALLBACK = [
@@ -76,19 +77,21 @@ export function computeRadar(symbol: string, dailyKlines: Candle[], now: number)
 export async function resolveRadarUniverse(client: BinancePublicMarketDataClient): Promise<string[]> {
   const fromEnv = (process.env.RADAR_SYMBOLS ?? '')
     .split(',').map((item) => item.trim().toUpperCase()).filter(Boolean);
-  if (fromEnv.length > 0) return [...new Set(fromEnv)];
+  // Hanya kripto futures USDT: buang XAU/SOXL/NVDA/TSLA/dsb bila menyelinap dari feed.
+  const cryptoOnly = filterCryptoFuturesUsdtSymbols(fromEnv);
+  if (cryptoOnly.length > 0) return [...new Set(cryptoOnly)];
   try {
     const tickers = await client.get24hTickers();
     tickers.sort((a, b) => b.quoteVolume - a.quoteVolume);
     const top = tickers
       .filter((ticker) => !PEGGED.has(ticker.symbol))
-      .slice(0, 80)
       .map((ticker) => ticker.symbol);
-    if (top.length >= 20) return top;
+    const filtered = filterCryptoFuturesUsdtSymbols(top).slice(0, 80);
+    if (filtered.length >= 20) return filtered;
   } catch (error) {
     console.error('[radar] ticker 24h gagal; pakai universe fallback.', error);
   }
-  return [...RADAR_UNIVERSE_FALLBACK];
+  return filterCryptoFuturesUsdtSymbols([...RADAR_UNIVERSE_FALLBACK]);
 }
 
 export async function scanRadarOnce(client: BinancePublicMarketDataClient, universe: string[], now = Date.now()): Promise<RadarReading[]> {
@@ -109,8 +112,8 @@ export async function scanRadarOnce(client: BinancePublicMarketDataClient, unive
 
 export async function persistRadar(readings: RadarReading[]): Promise<void> {
   if (readings.length === 0) return;
-  const client = createWorkerSupabaseClient();
-  const rows = readings.map((reading) => ({
+  const db = getWorkerDb();
+  await db.upsertRadar(readings.map((reading) => ({
     symbol: reading.symbol,
     regime: reading.regime,
     day_open: reading.dayOpen,
@@ -119,10 +122,7 @@ export async function persistRadar(readings: RadarReading[]): Promise<void> {
     dist_long_pct: Number(reading.distLongPct.toFixed(4)),
     dist_short_pct: Number(reading.distShortPct.toFixed(4)),
     touched: reading.touched,
-    updated_at: new Date().toISOString(),
-  }));
-  const result = await client.from('market_radar').upsert(rows, { onConflict: 'symbol' });
-  if (result.error) throw new Error(`Gagal menyimpan radar: ${result.error.message}`);
+  })));
 }
 
 export async function watchRadar(): Promise<void> {

@@ -1,4 +1,7 @@
 # Manual entry: alarm → login web → one approval → Binance Demo
+> **DOKUMEN USANG (arsip).** NusaQuant tidak lagi memakai Supabase sejak migrasi SQLite
+> (lihat [`MIGRASI-SQLITE.md`](../MIGRASI-SQLITE.md)). Langkah di bawah ini merujuk setup lama
+> dan tidak boleh diikuti lagi.
 
 Status 27 September 2026: **mainnet/uang asli terkunci secara permanen dalam rilis ini**. Kunci `BINANCE_API_KEY`/`BINANCE_API_SECRET` (jika ada) tidak dipakai. Worker hanya mengirim request privat ke host tetap `https://testnet.binancefuture.com` memakai `BINANCE_TESTNET_API_KEY`/`BINANCE_TESTNET_API_SECRET` yang berada di Railway. `DEMO_EXECUTION_ENABLED` default off pada **kedua** layanan.
 

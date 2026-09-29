@@ -16,13 +16,13 @@ POST /api/bot/session
 
 ## Environment tambahan di Vercel
 
-Endpoint control server memakai service-role key untuk membuat dan memperbarui satu paper session. Tambahkan environment variable berikut hanya pada Vercel server project `web`:
+Endpoint control server membaca database SQLite lokal untuk membuat dan memperbarui satu paper session. Tambahkan environment variable berikut hanya pada Vercel server project `web`:
 
 ```env
-SUPABASE_SERVICE_ROLE_KEY=
+SQLITE_PATH=./data/nusaquant.db
 ```
 
-Jangan gunakan prefix `NEXT_PUBLIC_`. Key ini tidak boleh tampil di browser, GitHub, atau chat.
+Jangan gunakan prefix `NEXT_PUBLIC_`. Path database tidak boleh tampil di browser, GitHub, atau chat.
 
 ## Alur worker
 
@@ -32,7 +32,7 @@ Jika hasil memasuki tahap `WAITING_APPROVAL`, worker memperbarui session dan das
 
 ## Backtest gate
 
-Dashboard memiliki `Backtest gate` untuk BTCUSDT dan ETHUSDT. Backtest membaca candle Supabase, memakai fee, slippage, funding, risk fraction, dan asumsi konservatif saat stop serta target tersentuh pada candle yang sama. Hasil hanya laporan penelitian; tidak mengubah paper session dan tidak mengirim order.
+Dashboard memiliki `Backtest gate` untuk BTCUSDT dan ETHUSDT. Backtest membaca candle SQLite, memakai fee, slippage, funding, risk fraction, dan asumsi konservatif saat stop serta target tersentuh pada candle yang sama. Hasil hanya laporan penelitian; tidak mengubah paper session dan tidak mengirim order.
 
 Untuk memperbesar sample sebelum mengambil keputusan, worker menyediakan one-time historical backfill:
 
@@ -57,6 +57,6 @@ Atur `RESEARCH_FUNDING_START`, `RESEARCH_FUNDING_END`, dan `RESEARCH_FUNDING_SYM
 - Control dan execution hanya untuk paper session.
 - Belum mengirim order Binance.
 - Paper signal, paper order, paper position, journal, dan equity snapshot sekarang dipersistenkan melalui worker service-role; posisi terbuka dipulihkan saat worker restart.
-- Sebelum live, wajib ditambahkan Supabase Auth, user ownership, audit log, CSRF/origin protection, durable command queue, dan rekonsiliasi position state yang lebih ketat.
+- Sebelum live, wajib ditambahkan auth operator yang diperkuat, user ownership, audit log, CSRF/origin protection, durable command queue, dan rekonsiliasi position state yang lebih ketat.
 
 Jika service-role key belum ada di Vercel, dashboard akan menampilkan `Bot control API belum siap` dan tombol tidak aktif. Itu kondisi aman.

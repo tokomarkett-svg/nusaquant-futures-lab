@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { manualTicket } from '../../../../lib/manual-ticket';
 import { simbolTestnet } from '../../../../lib/testnet';
+import { isCryptoFuturesUsdtSymbol } from '@nusaquant/db';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
   }
   const symbol = typeof body?.symbol === 'string' ? body.symbol.toUpperCase() : '';
   const side = body?.side;
-  if (!/^[A-Z0-9]{2,24}USDT$/.test(symbol) || (side !== 'LONG' && side !== 'SHORT') || typeof body?.setupKey !== 'string') {
+  if (!isCryptoFuturesUsdtSymbol(symbol) || (side !== 'LONG' && side !== 'SHORT') || typeof body?.setupKey !== 'string') {
     return NextResponse.json({ ok: false, error: 'Tiket tidak sah.' }, { status: 400 });
   }
   try {

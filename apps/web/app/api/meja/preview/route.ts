@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
-import { operatorFrom } from '../../../../lib/operator';
+import { isOperatorAuthConfigured, operatorFrom, operatorNotConfigured, operatorUnauthorized } from '../../../../lib/operator';
 import { demoReadyTicket } from '../../../../lib/demo-readiness';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
-  const operator = await operatorFrom(request);
-  if (operator instanceof NextResponse) return operator;
+  if (!isOperatorAuthConfigured()) return operatorNotConfigured();
+  const operator = operatorFrom(request);
+  if (!operator) return operatorUnauthorized();
   const url = new URL(request.url);
   const symbol = (url.searchParams.get('symbol') ?? '').toUpperCase();
   const side = url.searchParams.get('side');

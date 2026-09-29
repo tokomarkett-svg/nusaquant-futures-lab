@@ -1,4 +1,5 @@
 import type { Candle } from '@nusaquant/core';
+import { isCryptoFuturesUsdtSymbol } from '@nusaquant/db';
 
 export interface MarketDataClientOptions {
   baseUrl?: string;
@@ -216,7 +217,7 @@ export class BinancePublicMarketDataClient {
     const payload = await this.fetchJson((paths) => paths.tickers, {}) as Array<{ symbol?: string; quoteVolume?: string }>;
     if (!Array.isArray(payload)) throw new Error('Binance ticker payload bukan array.');
     return payload
-      .filter((row) => typeof row.symbol === 'string' && row.symbol.endsWith('USDT'))
+      .filter((row) => typeof row.symbol === 'string' && isCryptoFuturesUsdtSymbol(row.symbol))
       .map((row) => ({ symbol: row.symbol as string, quoteVolume: Number(row.quoteVolume ?? 0) }))
       .filter((row) => Number.isFinite(row.quoteVolume) && row.quoteVolume > 0);
   }

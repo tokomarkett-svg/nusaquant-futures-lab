@@ -314,7 +314,7 @@ test('dua SL bersamaan dari database snapshot terpisah menutup meja sebelum entr
     openPositionFixture({ id: 'a', symbol: 'AAAUSDT', openedAt }),
     openPositionFixture({ id: 'b', symbol: 'BBBUSDT', openedAt }),
   ]);
-  // Supabase memetakan setiap query ke objek baru (berbeda dengan store memori yang berbagi referensi).
+  // SQLite memetakan setiap query ke objek baru (berbeda dengan store memori yang berbagi referensi).
   const originalSince = store.positionsSince.bind(store);
   const originalOpen = store.openPositions.bind(store);
   store.positionsSince = async (start) => (await originalSince(start)).map((p) => ({ ...p }));

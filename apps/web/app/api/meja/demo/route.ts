@@ -1,9 +1,10 @@
-import { createClient } from '@supabase/supabase-js';
+import { DbConflictError } from '@nusaquant/db';
 import { NextResponse } from 'next/server';
 import { RISK_USDT } from '../../../../lib/binance';
 import { manualTicket } from '../../../../lib/manual-ticket';
 import { demoReadyTicket } from '../../../../lib/demo-readiness';
-import { operatorFrom, sameOrigin } from '../../../../lib/operator';
+import { isOperatorAuthConfigured, operatorFrom, operatorNotConfigured, operatorUnauthorized, sameOrigin } from '../../../../lib/operator';
+import { getWebDb } from '../../../../lib/webdb';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -19,20 +20,19 @@ function startOfJakartaDayIso(now = Date.now()): string {
 
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return NextResponse.json({ ok: false, error: 'Asal permintaan tidak sesuai.' }, { status: 403 });
-  const operator = await operatorFrom(request);
-  if (operator instanceof NextResponse) return operator;
+  if (!isOperatorAuthConfigured()) return operatorNotConfigured();
+  const operator = operatorFrom(request);
+  if (!operator) return operatorUnauthorized();
   if (process.env.DEMO_EXECUTION_ENABLED !== '1') {
     return NextResponse.json({ ok: false, error: 'Eksekusi Demo belum diaktifkan; tidak ada order dikirim.' }, { status: 423 });
   }
   const worker = (process.env.WORKER_DATA_URL ?? '').trim().replace(/\/+$/, '');
   const token = (process.env.WORKER_EXEC_TOKEN ?? '').trim();
-  const dbUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const dbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!worker || !token || !dbUrl || !dbKey) return NextResponse.json({ ok: false, error: 'Koneksi worker/jurnal belum lengkap.' }, { status: 503 });
+  if (!worker || !token) return NextResponse.json({ ok: false, error: 'Koneksi worker/jurnal belum lengkap.' }, { status: 503 });
   if (!worker.startsWith('https://') || new URL(worker).username || new URL(worker).password) {
     return NextResponse.json({ ok: false, error: 'Alamat worker tidak aman.' }, { status: 503 });
   }
-  const client = createClient(dbUrl, dbKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const db = getWebDb();
   const body = await request.json().catch(() => null) as { symbol?: unknown; side?: unknown; setupKey?: unknown; confirm?: unknown; environment?: unknown } | null;
   const symbol = typeof body?.symbol === 'string' ? body.symbol.toUpperCase().trim() : '';
   const side = body?.side;
@@ -47,32 +47,38 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : 'Tiket tidak sah.' }, { status: 409 });
   }
 
-  const [openToday, todayRows, unresolved] = await Promise.all([
-    client.from('paper_positions').select('id,symbol').eq('bot_session_id', MEJA_SESSION_ID).eq('status', 'OPEN'),
-    client.from('paper_positions').select('metadata').eq('bot_session_id', MEJA_SESSION_ID).gte('opened_at', startOfJakartaDayIso()),
-    client.from('manual_execution_approvals').select('id').eq('mode', 'TESTNET').in('status', ['RESERVED', 'REVIEW']).limit(1),
+  const [openPositions, todayRows, unresolved] = await Promise.all([
+    db.listPositions(MEJA_SESSION_ID, { status: 'OPEN' }),
+    db.listPositions(MEJA_SESSION_ID, { since: startOfJakartaDayIso() }),
+    db.findUnresolvedApproval('TESTNET'),
   ]);
-  if (openToday.error || todayRows.error || unresolved.error) return NextResponse.json({ ok: false, error: 'Jurnal/persetujuan tidak dapat diverifikasi. Tidak ada order dikirim.' }, { status: 503 });
-  if (unresolved.data?.length) return NextResponse.json({ ok: false, error: 'Ada eksekusi Demo belum terverifikasi. Rekonsiliasi dengan Binance dahulu; order baru ditahan.' }, { status: 409 });
-  if ((openToday.data ?? []).some((r) => r.symbol === symbol)) return NextResponse.json({ ok: false, error: 'Posisi pada simbol ini sudah terbuka.' }, { status: 409 });
-  const used = (todayRows.data ?? []).filter((r) => {
-    const meta = (r.metadata ?? {}) as Record<string, unknown>;
+  if (unresolved) return NextResponse.json({ ok: false, error: 'Ada eksekusi Demo belum terverifikasi. Rekonsiliasi dengan Binance dahulu; order baru ditahan.' }, { status: 409 });
+  if (openPositions.some((r) => r.symbol === symbol)) return NextResponse.json({ ok: false, error: 'Posisi pada simbol ini sudah terbuka.' }, { status: 409 });
+  const used = todayRows.filter((r) => {
+    const meta = ((r.metadata ?? {}) as Record<string, unknown>);
     return meta.via === 'DEMO' || meta.via === 'TOMBOL';
   }).length;
   if (used >= MAX_DEMO_PER_DAY) return NextResponse.json({ ok: false, error: 'Kuota latihan harian habis.' }, { status: 409 });
 
-  // An atomic UNIQUE constraint locks each setup AND unresolved symbol across serverless instances.
-  // An ambiguous timeout is deliberately marked REVIEW and may not be retried.
-  const reserved = await client.from('manual_execution_approvals').insert({
-    mode: 'TESTNET', setup_key: ticket.setupKey, symbol, side, operator_id: operator.id, status: 'RESERVED',
-  }).select('id').single();
-  if (reserved.error || !reserved.data) return NextResponse.json({ ok: false, error: 'Tiket sudah pernah dipakai atau ledger persetujuan belum terpasang. Tidak ada order dikirim.' }, { status: 409 });
-  const id = reserved.data.id as string;
+  // Constraint UNIQUE atomik mengunci tiap setup DAN approval tak terselesaikan di mode ini.
+  // Timeout ambigu sengaja ditandai REVIEW dan tidak boleh diulang.
+  let approvalId: string;
+  try {
+    const reserved = await db.insertApproval({
+      mode: 'TESTNET', setup_key: ticket.setupKey, symbol, side, operator_id: operator.id, status: 'RESERVED',
+    });
+    approvalId = reserved.id;
+  } catch (e) {
+    if (e instanceof DbConflictError) {
+      return NextResponse.json({ ok: false, error: 'Tiket sudah pernah dipakai atau ledger persetujuan belum terpasang. Tidak ada order dikirim.' }, { status: 409 });
+    }
+    return NextResponse.json({ ok: false, error: 'Jurnal/persetujuan tidak dapat diverifikasi. Tidak ada order dikirim.' }, { status: 503 });
+  }
   const mark = async (status: 'REVIEW' | 'VERIFIED', note: string, ids?: { entryOrderId: string; slOrderId: string; tpOrderId: string }) => {
-    await client.from('manual_execution_approvals').update({
-      status, note: note.slice(0, 300), updated_at: new Date().toISOString(),
-      exchange_entry_id: ids?.entryOrderId, exchange_sl_id: ids?.slOrderId, exchange_tp_id: ids?.tpOrderId,
-    }).eq('id', id);
+    await db.updateApproval(approvalId, {
+      status, note: note.slice(0, 300),
+      exchange_entry_id: ids?.entryOrderId ?? null, exchange_sl_id: ids?.slOrderId ?? null, exchange_tp_id: ids?.tpOrderId ?? null,
+    });
   };
   type Exec = { ok?: boolean; error?: string; entryOrderId?: string; slOrderId?: string; tpOrderId?: string; qty?: string; fillPrice?: number };
   let result: Exec;
@@ -93,26 +99,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: `Order belum aman: ${result.error ?? 'SL/TP belum terverifikasi'}. Cek Binance Demo sebelum mencoba lagi.` }, { status: 502 });
   }
   const ids = { entryOrderId: result.entryOrderId, slOrderId: result.slOrderId, tpOrderId: result.tpOrderId };
-  // Ledger uses actual Binance fill; planned entry remains stored in metadata for audit.
+  // Ledger memakai fill aktual Binance; entry terencana tetap disimpan di metadata untuk audit.
   const metadata = { source: 'MEJA_PAPAN', via: 'DEMO', setupKey: ticket.setupKey, processScore: 6,
-    demoOrderIds: Object.values(ids), plannedEntry: ticket.entry, approvalId: id };
-  const inserted = await client.from('paper_positions').insert({
-    bot_session_id: MEJA_SESSION_ID, symbol, side, status: 'OPEN', quantity: Number(result.qty),
-    entry_price: result.fillPrice, stop_loss: ticket.stop, take_profit: ticket.target,
-    opened_at: new Date().toISOString(), metadata,
-  }).select('id').single();
-  if (inserted.error) {
-    // Exchange position may still exist: NEVER claim the trade succeeded or silently remove approval.
-    await mark('REVIEW', `Entry+SL/TP on exchange but journal failed: ${inserted.error.message}`, ids);
+    demoOrderIds: Object.values(ids), plannedEntry: ticket.entry, approvalId };
+  let positionId: string;
+  try {
+    const inserted = await db.insertPaperPosition({
+      bot_session_id: MEJA_SESSION_ID, symbol, side, status: 'OPEN', quantity: Number(result.qty),
+      entry_price: result.fillPrice, stop_loss: ticket.stop, take_profit: ticket.target,
+      opened_at: new Date().toISOString(), metadata,
+    });
+    positionId = inserted.id;
+  } catch (e) {
+    // Posisi di bursa mungkin sudah ada: JANGAN klaim trade berhasil atau diam-diam menghapus approval.
+    await mark('REVIEW', `Entry+SL/TP on exchange but journal failed: ${e instanceof Error ? e.message : 'unknown'}`, ids);
     return NextResponse.json({ ok: false, error: 'DARURAT: posisi Demo di bursa terlindungi, tetapi jurnal gagal. Periksa akun Demo dan meja; jangan ulangi.' }, { status: 500 });
   }
-  const journal = await client.from('trade_journal').insert({
-    bot_session_id: MEJA_SESSION_ID, paper_position_id: inserted.data.id, symbol, action: 'DESK_OPEN', reason: 'DEMO', quality_score: 6,
-    payload: { plannedEntry: ticket.entry, fillPrice: result.fillPrice, stop: ticket.stop, target: ticket.target,
-      size: result.qty, risk: RISK_USDT, via: 'DEMO', setupKey: ticket.setupKey, orders: Object.values(ids), approvalId: id },
-  });
-  if (journal.error) {
-    await mark('REVIEW', `Posisi di bursa+jurnal posisi OK; trade_journal gagal: ${journal.error.message}`, ids);
+  try {
+    await db.insertJournal({
+      bot_session_id: MEJA_SESSION_ID, paper_position_id: positionId, symbol, action: 'DESK_OPEN', reason: 'DEMO', quality_score: 6,
+      payload: { plannedEntry: ticket.entry, fillPrice: result.fillPrice, stop: ticket.stop, target: ticket.target,
+        size: result.qty, risk: RISK_USDT, via: 'DEMO', setupKey: ticket.setupKey, orders: Object.values(ids), approvalId },
+    });
+  } catch (e) {
+    await mark('REVIEW', `Posisi di bursa+jurnal posisi OK; trade_journal gagal: ${e instanceof Error ? e.message : 'unknown'}`, ids);
     return NextResponse.json({ ok: false, error: 'Posisi Demo terbuka dan terlindungi, tetapi catatan trade gagal. Periksa Meja; jangan ulangi.' }, { status: 500 });
   }
   await mark('VERIFIED', 'Entry, proteksi Algo dan jurnal tercatat.', ids);

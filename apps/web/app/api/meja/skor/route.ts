@@ -1,5 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { getWebDb } from '../../../../lib/webdb';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,23 +13,9 @@ const RISK_USDT = 0.31;
 const TARGET_TRADE = 20;
 
 export async function GET() {
-  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceRoleKey) {
-    return NextResponse.json({ ok: false, error: 'Supabase belum dikonfigurasi di server.', total: 0, target: TARGET_TRADE });
-  }
-  const client = createClient(url, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const result = await client.from('paper_positions')
-    .select('realized_pnl,close_reason,metadata')
-    .eq('bot_session_id', MEJA_SESSION_ID)
-    .eq('status', 'CLOSED')
-    .order('closed_at', { ascending: true })
-    .limit(1000);
-  if (result.error) {
-    return NextResponse.json({ ok: false, error: result.error.message, total: 0, target: TARGET_TRADE });
-  }
-  const disiplin = (result.data ?? []).filter((row) => {
-    const source = String((row.metadata as Record<string, unknown> | null)?.source ?? '');
+  const rows = await getWebDb().listPositions(MEJA_SESSION_ID, { status: 'CLOSED', orderBy: 'closed_at', orderAsc: true, limit: 1000 });
+  const disiplin = rows.filter((row) => {
+    const source = String(((row.metadata ?? {}) as Record<string, unknown>).source ?? '');
     return source === 'MEJA_PAPAN' && row.close_reason !== 'VOID-REGRESI';
   });
   const rTotal = disiplin.reduce((sum, row) => sum + Number(row.realized_pnl ?? 0), 0) / RISK_USDT;

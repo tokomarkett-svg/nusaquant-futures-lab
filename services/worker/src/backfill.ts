@@ -1,9 +1,9 @@
 import { BinancePublicMarketDataClient } from './market-data.ts';
-import { toLegacyMarketCandleRows, toMarketCandleRows } from './ingest.ts';
-import { createWorkerSupabaseClient } from './supabase.ts';
+import { toMarketCandleRows } from './ingest.ts';
+import { getWorkerDb } from './db.ts';
 
 async function backfillInterval({ symbol, interval, days }: { symbol: string; interval: string; days: number }): Promise<number> {
-  const client = createWorkerSupabaseClient();
+  const db = getWorkerDb();
   const market = new BinancePublicMarketDataClient({ baseUrl: process.env.BINANCE_BASE_URL ?? 'https://testnet.binancefuture.com' });
   const startTime = Date.now() - days * 24 * 60 * 60 * 1000;
   let endTime = Date.now();
@@ -14,17 +14,7 @@ async function backfillInterval({ symbol, interval, days }: { symbol: string; in
     const historical = candles.filter((candle) => candle.time >= startTime && candle.time <= endTime);
     if (historical.length > 0) {
       const rows = toMarketCandleRows(symbol, interval, historical);
-      let result = await client.from('market_candles').upsert(rows, {
-        onConflict: 'symbol,interval,open_time',
-        ignoreDuplicates: false,
-      });
-      if (result.error && ['42703', 'PGRST204'].includes(result.error.code ?? '')) {
-        result = await client.from('market_candles').upsert(toLegacyMarketCandleRows(rows), {
-          onConflict: 'symbol,interval,open_time',
-          ignoreDuplicates: false,
-        });
-      }
-      if (result.error) throw new Error(`Gagal backfill ${symbol} ${interval}: ${result.error.message}`);
+      await db.upsertMarketCandles(rows);
       total += rows.length;
     }
 

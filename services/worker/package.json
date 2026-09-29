@@ -19,9 +19,9 @@
   },
   "dependencies": {
     "@nusaquant/core": "0.1.0",
-    "@supabase/supabase-js": "^2.109.0",
     "fflate": "^0.8.3",
-    "tsx": "4.23.13"
+    "tsx": "4.23.13",
+    "@nusaquant/db": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "20.17.10",

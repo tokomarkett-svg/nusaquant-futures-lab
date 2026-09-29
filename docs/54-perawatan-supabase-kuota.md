@@ -1,4 +1,7 @@
 # 54 — Perawatan Supabase: kuota terlampaui, batas 27 Sep 2026
+> **DOKUMEN USANG (arsip).** NusaQuant tidak lagi memakai Supabase sejak migrasi SQLite
+> (lihat [`MIGRASI-SQLITE.md`](../MIGRASI-SQLITE.md)). Langkah di bawah ini merujuk setup lama
+> dan tidak boleh diikuti lagi.
 
 Peringatan di dashboard (26/9): *"Organization exceeded its quota in the previous billing cycle.
 Projects will be restricted from 27 Sep 2026 if your organization remains over quota."*

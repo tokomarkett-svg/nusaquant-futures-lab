@@ -20,7 +20,7 @@ import {
 /**
  * Local full-history research CLI.
  *
- * Downloads public Binance bulk data only (no API key, no Supabase) and runs the exact same
+ * Downloads public Binance bulk data only (no API key, local SQLite) and runs the exact same
  * evaluation the Railway research worker runs. Output is research-only: nothing here touches paper
  * approval, Testnet, or live orders.
  *

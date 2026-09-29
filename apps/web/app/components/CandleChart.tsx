@@ -56,7 +56,7 @@ export default function CandleChart() {
     <section style={{ background: 'var(--panel, #101614)', border: '1px solid #1f2a26', borderRadius: 14, padding: 18, marginBottom: 22 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
         <div>
-          <div style={{ fontSize: 11, letterSpacing: 2, color: '#7dd3a7', textTransform: 'uppercase' }}>Chart candle · data Supabase live</div>
+          <div style={{ fontSize: 11, letterSpacing: 2, color: '#7dd3a7', textTransform: 'uppercase' }}>Chart candle · data SQLite live</div>
           <div style={{ fontSize: 13, color: '#9fb3ab', marginTop: 4 }}>
             {last ? `${symbol} · ${interval_} · close ${Number(last.close).toPrecision(5)} · candle ${new Date(last.open_time).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB` : 'memuat…'}
           </div>

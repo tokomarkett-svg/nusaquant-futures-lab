@@ -6,6 +6,7 @@
 import { computeZones, detectSetup, computeTicket, gateFromCandles, MIN_RANGE_PCT, MIN_QUOTE_VOLUME } from '@nusaquant/core';
 import type { Candle, Side } from '@nusaquant/core';
 import { buildTicketText, buildBellText } from './alerts.ts';
+import { isCryptoFuturesUsdtSymbol } from '@nusaquant/db';
 
 const BASE = (process.env.WORKER_DATA_URL ?? 'https://nusaquantworker-production.up.railway.app').replace(/\/+$/, '');
 const WIB = 7 * 3_600_000;
@@ -28,7 +29,7 @@ async function main(): Promise<void> {
   const tickers = ((await json('/data/tickers') as Record<string, string | number>[])
     .map((r) => ({ symbol: String(r.symbol), last: Number(r.lastPrice), high: Number(r.highPrice), low: Number(r.lowPrice), quoteVolume: Number(r.quoteVolume) }))
     .filter((t) => Number.isFinite(t.last) && t.last > 0 && Number.isFinite(t.high) && Number.isFinite(t.low)))
-    .filter((t) => t.symbol.endsWith('USDT') && t.quoteVolume >= MIN_QUOTE_VOLUME)
+    .filter((t) => isCryptoFuturesUsdtSymbol(t.symbol) && t.quoteVolume >= MIN_QUOTE_VOLUME)
     .filter((t => { const r = t.high > 0 && t.low > 0 ? ((t.high - t.low) / t.low) * 100 : 0; return r >= MIN_RANGE_PCT; }))
     .sort((a, b) => b.quoteVolume - a.quoteVolume).slice(0, n);
   const temuan: { symbol: string; side: Side; teks: string; bel: string | null; jam: string }[] = [];

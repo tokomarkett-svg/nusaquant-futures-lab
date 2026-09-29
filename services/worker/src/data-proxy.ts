@@ -9,9 +9,10 @@
  */
 import http from 'node:http';
 import zlib from 'node:zlib';
+import { isCryptoFuturesUsdtSymbol } from '@nusaquant/db';
 import { bukaDemo, tutupDemo, demoReadiness, tokenSah } from './exec-demo.ts';
 import { sendTelegram, type AlertScanRow } from './alerts.ts';
-import { createSupabaseDeskStore } from './desk.ts';
+import { createSqliteDeskStore } from './desk.ts';
 import { scanMarketClient } from './market-data.ts';
 import { runtimeSnapshot } from './runtime-status.ts';
 import { championOrderMatches, championSnapshot } from './champion-live.ts';
@@ -150,7 +151,7 @@ export function createDataProxyHandler(upstreamBase = process.env.WORKER_UPSTREA
       try {
         const parsed = JSON.parse(body || '{}') as { token?: string };
         if (!tokenSah(parsed.token, process.env.EXEC_TOKEN)) return balasJson(401, { ok: false, error: 'token eksekusi salah/kosong.' });
-        const store = createSupabaseDeskStore();
+        const store = createSqliteDeskStore();
         const terbuka = await store.openPositions();
         const kini = new Date().toISOString();
         const daftar: string[] = [];
@@ -257,8 +258,14 @@ export function createDataProxyHandler(upstreamBase = process.env.WORKER_UPSTREA
 
     try {
       const payload = await fetchUpstream(upstreamBase, upstreamPath, params);
-      cache.set(cacheKey, { at: Date.now(), payload });
-      return balasJson(200, payload);
+      // Pertahanan berlapis: hanya teruskan simbol kripto futures USDT
+      // (buang XAU/SOXL/NVDA/TSLA/dsb bila upstream menyelipkannya).
+      const isArrayPayload = Array.isArray(payload);
+      const filtered = (route === '/data/tickers' || route === '/data/prices') && isArrayPayload
+        ? (payload as Array<Record<string, unknown>>).filter((row) => isCryptoFuturesUsdtSymbol(String(row.symbol ?? '')))
+        : payload;
+      cache.set(cacheKey, { at: Date.now(), payload: filtered });
+      return balasJson(200, filtered);
     } catch (error) {
       return balasJson(502, { ok: false, error: error instanceof Error ? error.message : 'gagal meneruskan ke fapi.' });
     }

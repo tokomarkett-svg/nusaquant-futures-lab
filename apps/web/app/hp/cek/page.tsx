@@ -3,7 +3,7 @@
 /**
  * CEK SISTEM (mode HP) — satu layar untuk menjawab "apakah semuanya masih jalan?".
  * Diperiksa langsung dari HP pemilik:
- *  · Papan & harga (web API)      · Supabase (via meja & skor)
+ *  · Papan & harga (web API)      · SQLite (via meja & skor)
  *  · Worker Railway (health)      · Mesin Pertarungan (aggTrades Futures)
  * Hanya MEMBACA — tidak menyentuh mesin, tidak menulis apa pun.
  */
@@ -36,8 +36,8 @@ export default function CekSistem() {
   const [items, setItems] = useState<Item[]>([
     { nama: 'Papan (web API)', status: 'cek', detail: 'memindai…' },
     { nama: 'Harga live', status: 'cek', detail: 'memuat…' },
-    { nama: 'Supabase — posisi meja', status: 'cek', detail: 'membaca…' },
-    { nama: 'Supabase — skor 20 trade', status: 'cek', detail: 'membaca…' },
+    { nama: 'SQLite — posisi meja', status: 'cek', detail: 'membaca…' },
+    { nama: 'SQLite — skor 20 trade', status: 'cek', detail: 'membaca…' },
     { nama: 'Worker Railway', status: 'cek', detail: 'memanggil…' },
     { nama: 'Mesin Pertarungan (Futures)', status: 'cek', detail: 'memindai…' },
     { nama: 'Telegram + Otak Pertarungan', status: 'cek', detail: 'memeriksa siklus…' },
@@ -67,16 +67,16 @@ export default function CekSistem() {
     const meja = await ukur('/api/meja');
     const m = meja?.json as { ok?: boolean; open?: unknown[]; today?: { trades: number } | null; error?: string } | undefined;
     hasil[2] = m?.ok ? {
-      nama: 'Supabase — posisi meja', status: 'ok',
+      nama: 'SQLite — posisi meja', status: 'ok',
       detail: `${m.open?.length ?? 0} posisi terbuka · ${m.today?.trades ?? 0} trade hari ini`,
-    } : { nama: 'Supabase — posisi meja', status: 'gagal', detail: m?.error ?? 'tidak terhubung (cek Supabase/Vercel env)' };
+    } : { nama: 'SQLite — posisi meja', status: 'gagal', detail: m?.error ?? 'tidak terhubung (cek env database/worker)' };
 
     const skor = await ukur('/api/meja/skor');
     const s = skor?.json as { ok?: boolean; total?: number; rTotal?: number; error?: string } | undefined;
     hasil[3] = s?.ok ? {
-      nama: 'Supabase — skor 20 trade', status: 'ok',
+      nama: 'SQLite — skor 20 trade', status: 'ok',
       detail: `${s.total ?? 0} trade disiplin · total ${(s.rTotal ?? 0) >= 0 ? '+' : ''}${s.rTotal ?? 0}R`,
-    } : { nama: 'Supabase — skor 20 trade', status: 'gagal', detail: s?.error ?? 'tidak terhubung' };
+    } : { nama: 'SQLite — skor 20 trade', status: 'gagal', detail: s?.error ?? 'tidak terhubung' };
 
     const worker = await ukur(`${WORKER}/health/runtime`);
     const w = worker?.json as {
@@ -150,7 +150,7 @@ export default function CekSistem() {
       ))}
 
       <div style={{ fontSize: 11, color: WARNA.muted, lineHeight: 1.6, textAlign: 'center', margin: '4px 0 10px' }}>
-        Pemeriksaan hanya MEMBACA. Kalau ada ❌: Supabase/Worker padam → cek Railway & Vercel;
+        Pemeriksaan hanya MEMBACA. Kalau ada ❌: Database/Worker padam → cek konfigurasi env;
         kalau semua ✅ tapi notif tak muncul → cek variabel PMB_NOTIF=1 di Railway.
         <br /><Link href="/hp" style={{ color: WARNA.greenDark, fontWeight: 700 }}>← kembali ke Mode HP</Link>
       </div>

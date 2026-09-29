@@ -1,4 +1,4 @@
-import { createWorkerSupabaseClient } from './supabase.ts';
+import { getWorkerDb } from './db.ts';
 import { defaultMonthRange, fetchMonthlyFunding, monthKeys } from './binance-archive.ts';
 
 const SYMBOLS = (process.env.RESEARCH_FUNDING_SYMBOLS ?? 'BTCUSDT,ETHUSDT').split(',').map((value) => value.trim().toUpperCase()).filter(Boolean);
@@ -10,7 +10,7 @@ const MONTHS = monthKeys(
 );
 
 async function main(): Promise<void> {
-  const client = createWorkerSupabaseClient();
+  const db = getWorkerDb();
   const result: Record<string, number> = {};
   for (const symbol of SYMBOLS) {
     const points = await fetchMonthlyFunding({ symbol, months: MONTHS });
@@ -27,11 +27,7 @@ async function main(): Promise<void> {
       source: 'BINANCE_BULK_ARCHIVE',
     }));
     for (let index = 0; index < rows.length; index += 500) {
-      const { error } = await client.from('market_derivatives').upsert(rows.slice(index, index + 500), {
-        onConflict: 'symbol,metric,event_time',
-        ignoreDuplicates: false,
-      });
-      if (error) throw new Error(`Upsert funding ${symbol} gagal: ${error.message}`);
+      await db.upsertDerivatives(rows.slice(index, index + 500));
     }
     result[symbol] = rows.length;
     console.log(JSON.stringify({ fundingBackfill: true, symbol, points: rows.length }));

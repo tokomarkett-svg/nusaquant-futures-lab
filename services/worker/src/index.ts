@@ -456,7 +456,7 @@ export class PaperBotEngine {
     if (this.broker.getPosition()) return this.snapshot();
     this.broker.restore(position);
     this.status = 'POSITION_OPEN';
-    this.emit('POSITION', `Paper position ${position.id} dipulihkan dari Supabase.`);
+    this.emit('POSITION', `Paper position ${position.id} dipulihkan dari database lokal.`);
     return this.snapshot();
   }
 
@@ -467,7 +467,7 @@ export class PaperBotEngine {
     const candleOpenTime = (signal.structure as IntelligentSignal['structure'] & { candle_open_time?: string }).candle_open_time;
     this.pendingSignalCandleTime = candleOpenTime ? Date.parse(candleOpenTime) : null;
     this.status = 'WAITING_APPROVAL';
-    this.emit('SIGNAL', 'Pending paper signal dipulihkan dari Supabase.');
+    this.emit('SIGNAL', 'Pending paper signal dipulihkan dari database lokal.');
     return this.snapshot();
   }
 

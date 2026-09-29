@@ -5,6 +5,8 @@
  * Logika zona/tiket berasal dari @nusaquant/core (satu sumber kebenaran dengan worker).
  */
 
+import { isCryptoFuturesUsdtSymbol } from '@nusaquant/db';
+
 /** Jembatan data futures (worker di Railway). Kosong = jatuh ke cermin spot (pendampingan lokal). */
 const WORKER_DATA_URL = (process.env.WORKER_DATA_URL ?? '').trim().replace(/\/+$/, '');
 
@@ -83,7 +85,8 @@ export async function fetchTickers(): Promise<Ticker[]> {
   const rows: Ticker[] = [];
   for (const row of payload) {
     const symbol = String(row.symbol ?? '');
-    if (!symbol.endsWith('USDT') || symbol.includes('_')) continue; // seluruh universe USDT-M; gerbang likuiditas/rumus tetap memfilter sinyal
+    // Hanya kripto futures berquote USDT; XAU/SOXL/NVDA/TSLA dkk dibuang di sini.
+    if (!isCryptoFuturesUsdtSymbol(symbol)) continue;
     const last = toNumber(row.lastPrice);
     const high = toNumber(row.highPrice);
     const low = toNumber(row.lowPrice);
@@ -100,7 +103,7 @@ export async function fetchPrices(): Promise<Record<string, number>> {
   for (const row of payload) {
     const symbol = String(row.symbol ?? '');
     const price = toNumber(row.price);
-    if (symbol.endsWith('USDT') && price > 0) out[symbol] = price;
+    if (isCryptoFuturesUsdtSymbol(symbol) && price > 0) out[symbol] = price;
   }
   return out;
 }

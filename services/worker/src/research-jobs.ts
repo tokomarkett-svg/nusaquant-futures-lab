@@ -1,43 +1,25 @@
 import type { Candle, FundingPoint, MarketMetricsPoint } from '@nusaquant/core';
+import type { MarketCandleRow, MetricRow } from '@nusaquant/db';
 import { Worker } from 'node:worker_threads';
 import { fetchDailyMetrics } from './binance-archive.ts';
 import { evaluateResearchRun } from './research-evaluation.ts';
-import { createWorkerSupabaseClient } from './supabase.ts';
+import { getWorkerDb } from './db.ts';
 
 /**
  * Async full-history research queue.
  *
- * Supabase is only the data source and the job store here. All strategy evaluation lives in
- * `research-evaluation.ts` so the local research CLI produces identical numbers.
+ * SQLite lokal adalah sumber data dan job store di sini. Semua evaluasi strategi
+ * tinggal di `research-evaluation.ts` supaya CLI riset lokal menghasilkan angka identik.
  */
 
-type CandleRow = {
-  open_time: string;
-  open: number | string;
-  high: number | string;
-  low: number | string;
-  close: number | string;
-  volume: number | string;
-  quote_volume?: number | string | null;
-  taker_buy_volume?: number | string | null;
-  taker_buy_quote_volume?: number | string | null;
-  trade_count?: number | string | null;
-};
+type CandleRow = MarketCandleRow;
 
 type FundingRow = {
   event_time: string;
-  funding_rate: number | string;
+  funding_rate: number | null;
 };
 
-type MetricsRow = {
-  event_time: string;
-  open_interest: number | string;
-  open_interest_value: number | string;
-  top_trader_long_short_ratio: number | string;
-  top_trader_long_short_position_ratio: number | string;
-  long_short_ratio: number | string;
-  taker_long_short_volume_ratio: number | string;
-};
+type MetricsRow = MetricRow;
 
 export type ResearchJob = {
   id: string;
@@ -67,27 +49,10 @@ function toCandle(row: CandleRow): Candle {
 }
 
 async function readAllCandles(symbol: string, interval: string): Promise<Candle[]> {
-  const client = createWorkerSupabaseClient();
+  const db = getWorkerDb();
   const rows: CandleRow[] = [];
   for (let offset = 0; offset < MAX_CANDLES; offset += PAGE_SIZE) {
-    let result = await client
-      .from('market_candles')
-      .select('open_time,open,high,low,close,volume,quote_volume,taker_buy_volume,taker_buy_quote_volume,trade_count')
-      .eq('symbol', symbol)
-      .eq('interval', interval)
-      .order('open_time', { ascending: true })
-      .range(offset, offset + PAGE_SIZE - 1);
-    if (result.error && ['42703', 'PGRST204'].includes(result.error.code ?? '')) {
-      result = await client
-        .from('market_candles')
-        .select('open_time,open,high,low,close,volume')
-        .eq('symbol', symbol)
-        .eq('interval', interval)
-        .order('open_time', { ascending: true })
-        .range(offset, offset + PAGE_SIZE - 1) as unknown as typeof result;
-    }
-    if (result.error) throw new Error(`Query ${symbol} ${interval} gagal: ${result.error.message}`);
-    const page = (result.data ?? []) as CandleRow[];
+    const page = await db.candlesPage(symbol, interval, offset, PAGE_SIZE, true);
     rows.push(...page);
     if (page.length < PAGE_SIZE) break;
   }
@@ -107,17 +72,10 @@ function toMetricPoint(row: MetricsRow): MarketMetricsPoint {
 }
 
 async function readMetricsTable(symbol: string): Promise<{ available: boolean; points: MarketMetricsPoint[] }> {
-  const client = createWorkerSupabaseClient();
+  const db = getWorkerDb();
   const rows: MetricsRow[] = [];
   for (let offset = 0; offset < MAX_METRICS_ROWS; offset += PAGE_SIZE) {
-    const result = await client
-      .from('market_metrics')
-      .select('event_time,open_interest,open_interest_value,top_trader_long_short_ratio,top_trader_long_short_position_ratio,long_short_ratio,taker_long_short_volume_ratio')
-      .eq('symbol', symbol)
-      .order('event_time', { ascending: true })
-      .range(offset, offset + PAGE_SIZE - 1);
-    if (result.error) return { available: false, points: [] };
-    const page = (result.data ?? []) as MetricsRow[];
+    const page = await db.metricsPage(symbol, offset, PAGE_SIZE);
     rows.push(...page);
     if (page.length < PAGE_SIZE) break;
   }
@@ -153,33 +111,26 @@ async function readAllMetrics(symbol: string, startTime?: number, endTime?: numb
 }
 
 async function readAllFunding(symbol: string): Promise<FundingPoint[]> {
-  const client = createWorkerSupabaseClient();
+  const db = getWorkerDb();
   const rows: FundingRow[] = [];
   for (let offset = 0; offset < MAX_CANDLES; offset += PAGE_SIZE) {
-    const result = await client
-      .from('market_derivatives')
-      .select('event_time,funding_rate')
-      .eq('symbol', symbol)
-      .eq('metric', 'FUNDING_RATE')
-      .order('event_time', { ascending: true })
-      .range(offset, offset + PAGE_SIZE - 1);
-    if (result.error) {
-      console.warn(`[research] funding table belum tersedia untuk ${symbol}; funding candidate akan berstatus MISSING_DATA: ${result.error.message}`);
-      return [];
-    }
-    const page = (result.data ?? []) as FundingRow[];
+    const page = await db.fundingPage(symbol, offset, PAGE_SIZE);
     rows.push(...page);
     if (page.length < PAGE_SIZE) break;
   }
   return rows
-    .map((row) => ({ time: Date.parse(row.event_time), fundingRate: Number(row.funding_rate) }))
+    .map((row) => ({
+      time: Date.parse(row.event_time),
+      fundingRate: row.funding_rate === null ? Number.NaN : Number(row.funding_rate),
+    }))
     .filter((row) => Number.isFinite(row.time) && Number.isFinite(row.fundingRate));
 }
 
-async function updateJob(id: string, patch: Record<string, unknown>): Promise<void> {
-  const client = createWorkerSupabaseClient();
-  const { error } = await client.from('research_backtest_jobs').update(patch).eq('id', id);
-  if (error) throw new Error(`Update research job gagal: ${error.message}`);
+async function updateJob(id: string, patch: {
+  status?: string; progress?: number; started_at?: string | null;
+  completed_at?: string | null; result?: unknown; error?: string | null;
+}): Promise<void> {
+  await getWorkerDb().updateResearchJob(id, patch);
 }
 
 export async function runResearchJob(job: ResearchJob): Promise<void> {
@@ -239,29 +190,13 @@ export async function runResearchJob(job: ResearchJob): Promise<void> {
 
 export async function processNextResearchJob(): Promise<boolean> {
   if (activeResearchWorker) return false;
-  const client = createWorkerSupabaseClient();
-  const result = await client
-    .from('research_backtest_jobs')
-    .select('id,symbol,status')
-    .in('status', ['QUEUED', 'RUNNING'])
-    .order('requested_at', { ascending: true })
-    .limit(1)
-    .maybeSingle<ResearchJob>();
-  if (result.error) throw new Error(`Baca research queue gagal: ${result.error.message}`);
-  if (!result.data) return false;
-
-  const claimed = await client
-    .from('research_backtest_jobs')
-    .update({ status: 'RUNNING', progress: 1, started_at: new Date().toISOString() })
-    .eq('id', result.data.id)
-    .eq('status', result.data.status)
-    .select('id,symbol,status')
-    .maybeSingle<ResearchJob>();
-  if (claimed.error) throw new Error(`Claim research job gagal: ${claimed.error.message}`);
-  if (!claimed.data) return false;
+  const db = getWorkerDb();
+  const claimed = await db.claimNextResearchJob();
+  if (!claimed) return false;
+  await db.updateResearchJob(claimed.id, { progress: 1 });
 
   const worker = new Worker(new URL('./research-runner.ts', import.meta.url), {
-    workerData: claimed.data,
+    workerData: { id: claimed.id, symbol: claimed.symbol, status: claimed.status },
     execArgv: process.execArgv,
   });
   activeResearchWorker = worker;

@@ -1,5 +1,5 @@
 import { unzipSync } from 'fflate';
-import { createWorkerSupabaseClient } from './supabase.ts';
+import { getWorkerDb } from './db.ts';
 
 const BASE_URL = process.env.RESEARCH_METRICS_ARCHIVE_BASE_URL ?? 'https://data.binance.vision/data/futures/um/daily/metrics';
 const SYMBOLS = (process.env.RESEARCH_METRICS_SYMBOLS ?? 'BTCUSDT,ETHUSDT').split(',').map((value) => value.trim().toUpperCase()).filter(Boolean);
@@ -61,7 +61,7 @@ async function downloadDay(symbol: string, day: string): Promise<MetricRow[]> {
 }
 
 async function main(): Promise<void> {
-  const client = createWorkerSupabaseClient();
+  const db = getWorkerDb();
   const days = dateKeys();
   const counts: Record<string, number> = {};
   for (const symbol of SYMBOLS) {
@@ -73,11 +73,7 @@ async function main(): Promise<void> {
     }
     const ordered = [...rows.values()].sort((left, right) => left.event_time.localeCompare(right.event_time));
     for (let index = 0; index < ordered.length; index += CHUNK_SIZE) {
-      const { error } = await client.from('market_metrics').upsert(ordered.slice(index, index + CHUNK_SIZE), {
-        onConflict: 'symbol,event_time',
-        ignoreDuplicates: false,
-      });
-      if (error) throw new Error(`Upsert metrics ${symbol} gagal: ${error.message}`);
+      await db.upsertMetrics(ordered.slice(index, index + CHUNK_SIZE));
     }
     counts[symbol] = ordered.length;
     console.log(JSON.stringify({ metricsBackfill: true, symbol, points: ordered.length }));

@@ -1,6 +1,6 @@
 /**
  * Latihan kering meja paper: menjalankan SATU siklus penuh ke pasar live,
- * tetapi menulis ke memori — bukan ke Supabase. Tidak mengirim Telegram.
+ * tetapi menulis ke memori — bukan ke database. Tidak mengirim Telegram.
  *
  * Pakai: npm run desk:dry --workspace @nusaquant/worker
  */

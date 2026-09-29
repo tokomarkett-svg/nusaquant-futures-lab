@@ -1,7 +1,8 @@
 import type { Candle } from '@nusaquant/core';
+import type { MarketCandleInput } from '@nusaquant/db';
 import { BinancePublicMarketDataClient, DEFAULT_BINANCE_BASE_URL } from './market-data.ts';
 import { PaperSessionController, resolveBotSessionIds } from './session-control.ts';
-import { createWorkerSupabaseClient } from './supabase.ts';
+import { getWorkerDb } from './db.ts';
 import { watchResearchJobs } from './research-jobs.ts';
 import { watchRadar } from './radar.ts';
 import { watchChampion } from './champion-live.ts';
@@ -24,11 +25,7 @@ export interface MarketCandleRow {
   source: string;
 }
 
-export function toLegacyMarketCandleRows(rows: MarketCandleRow[]): Array<Omit<MarketCandleRow, 'quote_volume' | 'taker_buy_volume' | 'taker_buy_quote_volume' | 'trade_count'>> {
-  return rows.map(({ quote_volume: _quoteVolume, taker_buy_volume: _takerBuyVolume, taker_buy_quote_volume: _takerBuyQuoteVolume, trade_count: _tradeCount, ...legacy }) => legacy);
-}
-
-export function toMarketCandleRows(symbol: string, interval: string, candles: Candle[]): MarketCandleRow[] {
+export function toMarketCandleRows(symbol: string, interval: string, candles: Candle[]): MarketCandleInput[] {
   return candles.map((candle) => ({
     symbol: symbol.toUpperCase(),
     interval,
@@ -58,7 +55,7 @@ export async function ingestSymbol({
   limit?: number;
   market?: BinancePublicMarketDataClient;
 }): Promise<Record<string, number>> {
-  const client = createWorkerSupabaseClient();
+  const db = getWorkerDb();
   const source = market ?? new BinancePublicMarketDataClient({ baseUrl: process.env.BINANCE_BASE_URL ?? DEFAULT_BINANCE_BASE_URL });
   const counts: Record<string, number> = {};
 
@@ -66,36 +63,18 @@ export async function ingestSymbol({
     const candles = await source.getKlines({ symbol, interval, limit, closedOnly: true });
 
     // Jangan kirim ulang ratusan/ribuan candle yang sama setiap siklus. Selain boros
-    // egress dan log Supabase, upsert duplikat tidak memberi informasi baru. Tetap
+    // egress dan tulis disk, upsert duplikat tidak memberi informasi baru. Tetap
     // ambil jendela catch-up dari Binance, tetapi tulis hanya candle setelah data
     // terakhir di database. Rumus dan isi candle sama persis.
-    const latest = await client.from('market_candles')
-      .select('open_time')
-      .eq('symbol', symbol.toUpperCase())
-      .eq('interval', interval)
-      .order('open_time', { ascending: false })
-      .limit(1)
-      .maybeSingle<{ open_time: string }>();
-    if (latest.error) throw new Error(`Gagal membaca candle terakhir ${symbol} ${interval}: ${latest.error.message}`);
-    const latestMs = latest.data ? Date.parse(latest.data.open_time) : Number.NEGATIVE_INFINITY;
+    const latestOpenTime = await db.latestCandleOpenTime(symbol.toUpperCase(), interval);
+    const latestMs = latestOpenTime ? Date.parse(latestOpenTime) : Number.NEGATIVE_INFINITY;
     const rows = toMarketCandleRows(symbol, interval, candles.filter((candle) => candle.time > latestMs));
     if (rows.length === 0) {
       counts[interval] = 0;
       continue;
     }
 
-    let result = await client.from('market_candles').upsert(rows, {
-      onConflict: 'symbol,interval,open_time',
-      ignoreDuplicates: false,
-    });
-    if (result.error && ['42703', 'PGRST204'].includes(result.error.code ?? '')) {
-      result = await client.from('market_candles').upsert(toLegacyMarketCandleRows(rows), {
-        onConflict: 'symbol,interval,open_time',
-        ignoreDuplicates: false,
-      });
-    }
-    if (result.error) throw new Error(`Gagal menyimpan ${symbol} ${interval}: ${result.error.message}`);
-    counts[interval] = rows.length;
+    counts[interval] = await db.upsertMarketCandles(rows);
   }
 
   return counts;
@@ -114,7 +93,7 @@ async function main(): Promise<void> {
 
 async function watchIngestion(): Promise<void> {
   // Candle terkecil 15 menit; polling 5 menit menangkap penutupan baru tanpa
-  // menghantam Supabase setiap menit. ALERT/MEJA PMB tetap punya loop tersendiri.
+  // menulis database setiap menit. ALERT/MEJA PMB tetap punya loop tersendiri.
   const intervalMs = Math.max(Number(process.env.INGEST_INTERVAL_MS ?? 300_000), 60_000);
   for (;;) {
     try {

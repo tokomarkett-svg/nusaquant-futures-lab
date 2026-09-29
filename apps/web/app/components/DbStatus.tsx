@@ -6,19 +6,19 @@ type HealthState = {
   ok: boolean;
   configured: boolean;
   message: string;
-  rows?: number;
+  candles?: number;
 };
 
-export default function SupabaseStatus() {
+export default function DbStatus() {
   const [state, setState] = useState<HealthState>({
     ok: false,
     configured: false,
-    message: 'Memeriksa koneksi database…',
+    message: 'Memeriksa database lokal…',
   });
 
   useEffect(() => {
     let active = true;
-    fetch('/api/health/supabase', { cache: 'no-store' })
+    fetch('/api/health/db', { cache: 'no-store' })
       .then(async (response) => {
         const payload = await response.json() as HealthState;
         if (active) setState(payload);
@@ -32,7 +32,7 @@ export default function SupabaseStatus() {
   return (
     <div className={`health-badge ${state.ok ? 'health-connected' : 'health-pending'}`} title={state.message}>
       <span className={`health-dot ${state.ok ? '' : 'health-dot-pending'}`} />
-      {state.ok ? `Supabase connected · ${state.rows ?? 0} candles` : state.configured ? 'Supabase query error' : 'Supabase pending'}
+      {state.ok ? `SQLite connected · ${state.candles ?? 0} candle` : state.configured ? 'SQLite query error' : 'SQLite pending'}
     </div>
   );
 }

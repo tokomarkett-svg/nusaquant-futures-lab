@@ -1,6 +1,7 @@
 import { runBacktest, runTemporalValidation, runWalkForwardValidation, type Candle } from '@nusaquant/core';
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { MarketCandleRow } from '@nusaquant/db';
 import { NextResponse } from 'next/server';
+import { getWebDb } from '../../../lib/webdb';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -12,16 +13,7 @@ const PAGE_SIZE = 1000;
 const MAX_ENTRY_CANDLES = 4_500;
 const MAX_HIGHER_CANDLES = 1_500;
 
-type CandleRow = {
-  open_time: string;
-  open: number | string;
-  high: number | string;
-  low: number | string;
-  close: number | string;
-  volume: number | string;
-};
-
-function toCandle(row: CandleRow): Candle {
+function toCandle(row: MarketCandleRow): Candle {
   return {
     time: Date.parse(row.open_time),
     open: Number(row.open),
@@ -56,22 +48,15 @@ function reportSummary(report: ReturnType<typeof runBacktest>, periodCandles: Ca
   } as const;
 }
 
-async function readCandles(supabase: SupabaseClient, symbol: string, interval: string, maxCandles: number): Promise<CandleRow[]> {
-  const rows: CandleRow[] = [];
+async function readCandles(symbol: string, interval: string, maxCandles: number): Promise<MarketCandleRow[]> {
+  const db = getWebDb();
+  const rows: MarketCandleRow[] = [];
   for (let offset = 0; offset < maxCandles; offset += PAGE_SIZE) {
-    const result = await supabase
-      .from('market_candles')
-      .select('open_time,open,high,low,close,volume')
-      .eq('symbol', symbol)
-      .eq('interval', interval)
-      .order('open_time', { ascending: false })
-      .range(offset, offset + PAGE_SIZE - 1);
-    if (result.error) throw new Error(result.error.message);
-    const page = (result.data ?? []) as CandleRow[];
+    const page = await db.candlesPage(symbol, interval, offset, PAGE_SIZE, true);
     rows.push(...page);
     if (page.length < PAGE_SIZE) break;
   }
-  return rows.reverse();
+  return rows;
 }
 
 export async function POST(request: Request) {
@@ -79,18 +64,12 @@ export async function POST(request: Request) {
   const symbol = body.symbol?.toUpperCase() ?? 'BTCUSDT';
   if (!SYMBOLS.has(symbol)) return NextResponse.json({ ok: false, error: 'Symbol backtest belum tersedia.' }, { status: 400 });
 
-  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
-  // API route runs server-side; never expose this key to the browser.
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return NextResponse.json({ ok: false, error: 'Supabase server environment belum dikonfigurasi.' }, { status: 503 });
-
-  const supabase = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
   let higherTimeframe: Candle[];
   let entryTimeframe: Candle[];
   try {
     const [higherRows, entryRows] = await Promise.all([
-      readCandles(supabase, symbol, '1h', MAX_HIGHER_CANDLES),
-      readCandles(supabase, symbol, '15m', MAX_ENTRY_CANDLES),
+      readCandles(symbol, '1h', MAX_HIGHER_CANDLES),
+      readCandles(symbol, '15m', MAX_ENTRY_CANDLES),
     ]);
     higherTimeframe = higherRows.map(toCandle);
     entryTimeframe = entryRows.map(toCandle);

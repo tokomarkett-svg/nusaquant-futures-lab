@@ -1,88 +1,25 @@
-# Supabase Setup
+# Pengaturan Database (dulu: Supabase Setup)
 
-## Status
+> **Dokumen ini sudah tidak berlaku.** NusaQuant tidak lagi memakai Supabase.
+> Database sekarang adalah **SQLite lokal** — satu file, tanpa akun cloud, tanpa kredensial.
+> Lihat panduan lengkap: [`MIGRASI-SQLITE.md`](../MIGRASI-SQLITE.md).
 
-Supabase repository integration saja belum otomatis menghubungkan aplikasi ke database. Kita tetap perlu membuat project database, menjalankan migration, lalu memasukkan environment variables ke deployment.
+## Yang menggantikan langkah Supabase lama
 
-## 1. Buat atau pilih project Supabase
+| Dulu (Supabase) | Sekarang (SQLite) |
+|---|---|
+| Buat project di dashboard Supabase | Tidak perlu — file dibuat otomatis |
+| Jalankan migration SQL di SQL Editor | Skema dibuat otomatis saat aplikasi pertama berjalan (`packages/db/src/schema.sql`) |
+| `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` | `SQLITE_PATH=./data/nusaquant.db` (opsional; ini default-nya) |
+| Supabase Auth (magic link / OTP) | Auth operator lokal: `OPERATOR_PASSWORD_HASH` + `OPERATOR_SESSION_SECRET` |
+| Backup via dashboard | Salin file `nusaquant.db`, `nusaquant.db-wal`, `nusaquant.db-shm` |
 
-Pastikan project berada di akun yang benar. Jangan memakai database production untuk pengujian pertama jika belum ada backup.
+Folder `supabase/migrations/` dipertahankan sebagai arsip referensi skema Postgres lama.
 
-## 2. Jalankan migration
+## Membuat hash kata sandi operator
 
-Buka:
-
-```text
-Supabase Dashboard → SQL Editor → New query
+```bash
+npm run hash-password --workspace @nusaquant/db
 ```
 
-Salin isi file berikut dan jalankan:
-
-```text
-supabase/migrations/20260909000000_initial_schema.sql
-```
-
-Setelah selesai, cek menu **Table Editor**. Tabel minimum yang harus terlihat:
-
-- `bot_sessions`
-- `market_candles`
-- `market_plans`
-- `opportunity_windows`
-- `signal_evaluations`
-- `paper_orders`
-- `paper_positions`
-- `trade_journal`
-- `equity_snapshots`
-
-## 3. Environment variables
-
-Dari Supabase:
-
-```text
-Project Settings → Data API
-```
-
-Siapkan nilai berikut di Vercel Environment Variables dan worker hosting:
-
-```env
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
-```
-
-`SUPABASE_SERVICE_ROLE_KEY` hanya boleh berada di worker/server. Jangan memakai prefix `NEXT_PUBLIC_` untuk service role key.
-
-## 4. RLS
-
-Migration mengaktifkan Row Level Security.
-
-- Browser memakai user session dan hanya boleh membaca data milik user.
-- Worker memakai service-role key di server.
-- Market candles boleh dibaca umum karena bukan data rahasia, tetapi insert sebaiknya dilakukan oleh worker.
-
-Jika aplikasi belum memiliki login, jangan membuka policy write publik. Tambahkan Supabase Auth sebelum menyimpan data user.
-
-## 5. Verifikasi
-
-Setelah migration:
-
-1. cek tidak ada error SQL;
-2. cek RLS aktif;
-3. buat satu user Auth untuk pengujian;
-4. masukkan env vars ke Vercel Preview terlebih dahulu;
-5. jangan memasukkan API key Binance pada tahap ini;
-6. jalankan health check database dari server, bukan dari browser dengan service role.
-
-## 6. Setelah database siap
-
-Urutan implementasi:
-
-```text
-DB health check
-→ candle ingestion
-→ signal persistence
-→ paper order persistence
-→ start/pause/approve command
-→ dashboard reads real paper state
-```
+Tempel hasilnya ke `OPERATOR_PASSWORD_HASH`. Jangan menaruh kata sandi mentah di file mana pun.

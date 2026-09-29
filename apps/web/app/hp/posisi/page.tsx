@@ -94,7 +94,7 @@ export default function PosisiHp() {
         <div className="hp-card hp-empty">
           <span className="hp-empty-icon" aria-hidden="true">◫</span>
           <b>{data ? 'Tidak ada posisi berjalan' : 'Memuat posisi paper…'}</b>
-          <p>{data ? 'Meja hanya membuka posisi saat tiket sah dan pagar risiko terpenuhi.' : 'Menunggu data meja dari Supabase.'}</p>
+          <p>{data ? 'Meja hanya membuka posisi saat tiket sah dan pagar risiko terpenuhi.' : 'Menunggu data meja dari database lokal.'}</p>
         </div>
       )}
 

@@ -110,7 +110,7 @@ export default function MarketIntelligence({ items, source }: { items: MarketIte
     <div className="market-intelligence-grid">
       <section className="panel">
         <div className="panel-header">
-          <div><div className="panel-title">Market watch</div><div className="panel-kicker">{source === 'SUPABASE' ? 'Supabase candles · closed data' : 'Menunggu market candles'}</div></div>
+          <div><div className="panel-title">Market watch</div><div className="panel-kicker">{source === 'SQLITE' ? 'SQLite candles · closed data' : 'Menunggu market candles'}</div></div>
           <div className="panel-tag">15M / 1H</div>
         </div>
         <div className="market-list">{items.map((item) => <MarketRow item={item} key={item.symbol} />)}</div>
@@ -120,7 +120,7 @@ export default function MarketIntelligence({ items, source }: { items: MarketIte
             <polyline className="chart-area" points={`0,100 ${chartPoints(selectedItem.candles)} 500,100`} />
             <polyline className="chart-line" points={chartPoints(selectedItem.candles)} />
           </svg>
-          <div className="chart-legend"><span>{selectedItem.candles.length} closed candles</span><span>{source === 'SUPABASE' ? 'Supabase data' : 'Waiting for data'}</span></div>
+          <div className="chart-legend"><span>{selectedItem.candles.length} closed candles</span><span>{source === 'SQLITE' ? 'SQLite data' : 'Waiting for data'}</span></div>
         </div>
       </section>
       <div>

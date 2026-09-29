@@ -1,0 +1,25 @@
+{
+  "dependencies": {
+    "better-sqlite3": "^12.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.10",
+    "tsx": "4.23.13",
+    "typescript": "5.7.2"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "name": "@nusaquant/db",
+  "private": true,
+  "scripts": {
+    "hash-password": "node --import tsx src/hash-password.ts",
+    "test": "node --import tsx --test src/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "embed-schema": "node scripts/embed-schema.mjs"
+  },
+  "type": "module",
+  "types": "./src/index.ts",
+  "version": "0.1.0"
+}

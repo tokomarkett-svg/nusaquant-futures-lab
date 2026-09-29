@@ -1,6 +1,7 @@
 import type { Candle, IntelligentSignal } from '@nusaquant/core';
+import type { BotSessionRow, MarketCandleRow, PaperPositionRow, SignalEvaluationRow } from '@nusaquant/db';
 import { PaperBotEngine, type BotStatus, type ExecutionMode, type PaperPosition, type PaperStrategy, type WorkerSnapshot } from './index.ts';
-import { createWorkerSupabaseClient } from './supabase.ts';
+import { getWorkerDb } from './db.ts';
 
 export function resolvePaperStrategy(raw: string | undefined): PaperStrategy {
   return raw === 'WILLIAMS_VOLATILITY_BREAKOUT' ? 'WILLIAMS_VOLATILITY_BREAKOUT' : 'BASELINE_INTELLIGENCE';
@@ -27,7 +28,7 @@ export function resolveBotSessionIds(configured?: string): string[] {
   const extra = (configured ?? '').split(',').map((id) => id.trim()).filter(Boolean);
   // BTC + ETH adalah baseline aman. Sesi ADA/ZEC/UNI/RUNE hanya dijalankan bila
   // disebut eksplisit di BOT_SESSION_IDS; sebelumnya keenam sesi selalu dipoll
-  // walau env hanya berisi dua, sehingga kuota Supabase habis tanpa manfaat.
+  // walau env hanya berisi dua, sehingga database ditulis tanpa manfaat.
   return [...new Set([DEFAULT_BOT_SESSION_ID, ETH_BOT_SESSION_ID, ...extra])];
 }
 
@@ -47,51 +48,11 @@ type SessionRecord = {
   updated_at: string;
 };
 
-type CandleRow = {
-  open_time: string;
-  open: number | string;
-  high: number | string;
-  low: number | string;
-  close: number | string;
-  volume: number | string;
-  quote_volume?: number | string | null;
-  taker_buy_volume?: number | string | null;
-  taker_buy_quote_volume?: number | string | null;
-  trade_count?: number | string | null;
-};
+type CandleRow = MarketCandleRow;
 
-type StoredPosition = {
-  id: string;
-  symbol: string;
-  side: 'LONG' | 'SHORT';
-  quantity: number | string;
-  entry_price: number | string;
-  stop_loss: number | string;
-  take_profit: number | string;
-  opened_at: string;
-  metadata: Record<string, unknown> | null;
-};
+type StoredPosition = PaperPositionRow;
 
-type StoredSignal = {
-  id: string;
-  decision: 'LONG' | 'SHORT' | 'NO_TRADE';
-  candidate: 'LONG' | 'SHORT' | 'NO_TRADE';
-  stage: 'TRIGGERED' | 'SETUP' | 'NO_TRADE';
-  timing: 'ENTER_NOW' | 'WAIT_CONFIRMATION' | 'NO_TRADE';
-  regime: string;
-  quality_score: number;
-  entry: number | null;
-  trigger_price: number | null;
-  stop_loss: number | null;
-  take_profit: number | null;
-  quantity: number;
-  risk_amount: number;
-  risk_reward: number | null;
-  evidence: IntelligentSignal['evidence'];
-  blockers: string[];
-  patterns: IntelligentSignal['patterns'];
-  structure: IntelligentSignal['structure'] & { candle_open_time?: string };
-};
+type StoredSignal = SignalEvaluationRow;
 
 export function desiredStatusAction(status: BotStatus): 'START' | 'PAUSE' | 'EMERGENCY' | 'APPROVE' | 'IDLE' {
   if (status === 'POSITION_OPEN') return 'APPROVE';
@@ -117,33 +78,35 @@ function mapCandle(row: CandleRow): Candle {
 }
 
 function mapStoredPosition(row: StoredPosition): PaperPosition {
-  const engineId = typeof row.metadata?.engine_position_id === 'string'
-    ? row.metadata.engine_position_id
+  const metadata = (row.metadata ?? {}) as Record<string, unknown>;
+  const engineId = typeof metadata.engine_position_id === 'string'
+    ? metadata.engine_position_id
     : `db-${row.id}`;
   return {
     id: engineId,
     symbol: row.symbol,
-    side: row.side,
+    side: row.side === 'SHORT' ? 'SHORT' : 'LONG',
     entry: Number(row.entry_price),
     quantity: Number(row.quantity),
     stopLoss: Number(row.stop_loss),
     takeProfit: Number(row.take_profit),
     openedAt: row.opened_at,
-    riskAmount: typeof row.metadata?.risk_amount === 'number' ? row.metadata.risk_amount : undefined,
-    entryCosts: typeof row.metadata?.entry_costs === 'number' ? row.metadata.entry_costs : undefined,
-    totalCosts: typeof row.metadata?.total_costs === 'number' ? row.metadata.total_costs : undefined,
-    barsHeld: typeof row.metadata?.bars_held === 'number' ? row.metadata.bars_held : undefined,
+    riskAmount: typeof metadata.risk_amount === 'number' ? metadata.risk_amount : undefined,
+    entryCosts: typeof metadata.entry_costs === 'number' ? metadata.entry_costs : undefined,
+    totalCosts: typeof metadata.total_costs === 'number' ? metadata.total_costs : undefined,
+    barsHeld: typeof metadata.bars_held === 'number' ? metadata.bars_held : undefined,
   };
 }
 
 function mapStoredSignal(row: StoredSignal): IntelligentSignal {
+  const structure = (row.structure ?? {}) as IntelligentSignal['structure'] & { candle_open_time?: string };
   return {
-    decision: row.decision,
-    candidate: row.candidate,
-    stage: row.stage,
-    timing: row.timing,
+    decision: row.decision as IntelligentSignal['decision'],
+    candidate: row.candidate as IntelligentSignal['candidate'],
+    stage: row.stage as IntelligentSignal['stage'],
+    timing: row.timing as IntelligentSignal['timing'],
     regime: row.regime as IntelligentSignal['regime'],
-    qualityScore: row.quality_score,
+    qualityScore: Number(row.quality_score),
     scoreMax: 100,
     entry: row.entry,
     triggerPrice: row.trigger_price,
@@ -153,16 +116,28 @@ function mapStoredSignal(row: StoredSignal): IntelligentSignal {
     riskAmount: Number(row.risk_amount),
     riskReward: row.risk_reward,
     maxChaseDistance: null,
-    patterns: row.patterns ?? [],
-    structure: row.structure,
-    evidence: row.evidence ?? [],
-    blockers: row.blockers ?? [],
+    patterns: (row.patterns ?? []) as IntelligentSignal['patterns'],
+    structure,
+    evidence: (row.evidence ?? []) as IntelligentSignal['evidence'],
+    blockers: (row.blockers ?? []) as string[],
     explanation: 'Signal dipulihkan dari signal_evaluations untuk paper approval.',
   };
 }
 
+function toSessionRecord(row: BotSessionRow): SessionRecord {
+  return {
+    id: row.id,
+    status: row.status as BotStatus,
+    mode: row.mode as SessionRecord['mode'],
+    symbol: row.symbol,
+    risk_fraction: row.risk_fraction,
+    daily_loss_limit: row.daily_loss_limit,
+    updated_at: row.updated_at,
+  };
+}
+
 export class PaperSessionController {
-  private readonly client = createWorkerSupabaseClient();
+  private readonly db = getWorkerDb();
   private readonly sessionId: string;
 
   constructor(sessionId = process.env.BOT_SESSION_ID ?? DEFAULT_BOT_SESSION_ID) {
@@ -182,17 +157,13 @@ export class PaperSessionController {
 
   async sync(): Promise<WorkerSnapshot | null> {
     const sessionId = this.sessionId;
-    const { data, error } = await this.client
-      .from('bot_sessions')
-      .select('id,status,mode,symbol,risk_fraction,daily_loss_limit,updated_at')
-      .eq('id', sessionId)
-      .maybeSingle<SessionRecord>();
+    const stored = await this.db.getBotSession(sessionId);
 
-    if (error) throw new Error(`Gagal membaca bot session: ${error.message}`);
-    if (!data) {
+    if (!stored) {
       this.logOnce(`Session ${sessionId} belum dibuat; worker tetap mengumpulkan market data.`);
       return null;
     }
+    const data = toSessionRecord(stored);
 
     if (data.mode !== 'PAPER_APPROVAL' && data.mode !== 'PAPER_AUTO' && data.mode !== 'OBSERVATION') {
       this.logState(data.status, 'Mode non-paper ditolak oleh worker; belum ada live/testnet execution.');
@@ -264,35 +235,22 @@ export class PaperSessionController {
       entryIntervalMs: strategy === 'WILLIAMS_VOLATILITY_BREAKOUT' ? 60 * 60 * 1000 : 15 * 60 * 1000,
     });
 
-    const openPosition = await this.client
-      .from('paper_positions')
-      .select('id,symbol,side,quantity,entry_price,stop_loss,take_profit,opened_at,metadata')
-      .eq('bot_session_id', sessionId)
-      .eq('symbol', session.symbol)
-      .eq('status', 'OPEN')
-      .maybeSingle<StoredPosition>();
-    if (openPosition.error) throw new Error(`Gagal membaca paper position: ${openPosition.error.message}`);
-    if (openPosition.data) {
-      const restored = mapStoredPosition(openPosition.data);
+    const openPosition = await this.db.getOpenPosition(sessionId, session.symbol);
+    if (openPosition) {
+      const restored = mapStoredPosition(openPosition);
       this.engine.restorePosition(restored);
       this.lastPersistedOpenId = restored.id;
     }
 
-    if ((session.status === 'WAITING_APPROVAL' || session.status === 'POSITION_OPEN') && !openPosition.data) {
-      const pending = await this.client
-        .from('signal_evaluations')
-        .select('id,decision,candidate,stage,timing,regime,quality_score,entry,trigger_price,stop_loss,take_profit,quantity,risk_amount,risk_reward,evidence,blockers,patterns,structure')
-        .eq('bot_session_id', sessionId)
-        .eq('symbol', session.symbol)
-        .in('decision', ['LONG', 'SHORT'])
-        .eq('stage', 'TRIGGERED')
-        .order('evaluated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle<StoredSignal>();
-      if (pending.error) throw new Error(`Gagal membaca pending signal: ${pending.error.message}`);
-      if (pending.data) {
-        this.lastSignalId = pending.data.id;
-        this.engine.restorePendingSignal(mapStoredSignal(pending.data));
+    if ((session.status === 'WAITING_APPROVAL' || session.status === 'POSITION_OPEN') && !openPosition) {
+      const pending = await this.db.latestSignal(sessionId, {
+        symbol: session.symbol,
+        stage: 'TRIGGERED',
+        decisionIn: ['LONG', 'SHORT'],
+      });
+      if (pending) {
+        this.lastSignalId = pending.id;
+        this.engine.restorePendingSignal(mapStoredSignal(pending));
       }
     }
   }
@@ -304,16 +262,8 @@ export class PaperSessionController {
     // Cek satu timestamp dulu. Versi lama mengunduh 500–1.200 candle pada SETIAP
     // poll 10 detik, lalu baru menyadari candle belum berubah. Riwayat penuh kini
     // hanya dibaca sekali ketika benar-benar ada candle baru.
-    const newest = await this.client.from('market_candles')
-      .select('open_time')
-      .eq('symbol', session.symbol)
-      .eq('interval', entryInterval)
-      .order('open_time', { ascending: false })
-      .limit(1)
-      .maybeSingle<{ open_time: string }>();
-    if (newest.error) throw new Error(`Gagal membaca candle terbaru: ${newest.error.message}`);
-    const latestRow = newest.data;
-    if (!latestRow) return current;
+    const latestOpenTime = await this.db.latestCandleOpenTime(session.symbol, entryInterval);
+    if (!latestOpenTime) return current;
     const defaultMaxAge = strategy === 'WILLIAMS_VOLATILITY_BREAKOUT'
       ? WILLIAMS_MARKET_DATA_MAX_AGE_MS
       : DEFAULT_MARKET_DATA_MAX_AGE_MS;
@@ -321,55 +271,42 @@ export class PaperSessionController {
     const maxAgeMs = Number.isFinite(configuredMaxAge) && configuredMaxAge >= defaultMaxAge
       ? configuredMaxAge
       : defaultMaxAge;
-    if (!isFreshMarketCandle(latestRow.open_time, Date.now(), maxAgeMs)) {
-      if (this.lastStaleMarketCandleTime !== latestRow.open_time) {
+    if (!isFreshMarketCandle(latestOpenTime, Date.now(), maxAgeMs)) {
+      if (this.lastStaleMarketCandleTime !== latestOpenTime) {
         console.error(JSON.stringify({
           control: true,
           staleMarketData: true,
           sessionId,
           symbol: session.symbol,
-          latestCandle: latestRow.open_time,
+          latestCandle: latestOpenTime,
           maxAgeMs,
           at: new Date().toISOString(),
         }));
-        this.lastStaleMarketCandleTime = latestRow.open_time;
+        this.lastStaleMarketCandleTime = latestOpenTime;
       }
       return current;
     }
     this.lastStaleMarketCandleTime = null;
-    if (this.lastEvaluatedCandleTime === latestRow.open_time) return current;
+    if (this.lastEvaluatedCandleTime === latestOpenTime) return current;
 
-    const latestPersisted = await this.client
-      .from('signal_evaluations')
-      .select('structure')
-      .eq('bot_session_id', sessionId)
-      .eq('symbol', session.symbol)
-      .eq('timeframe', entryInterval)
-      .order('evaluated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (latestPersisted.error) throw new Error(`Gagal membaca signal terakhir: ${latestPersisted.error.message}`);
-    const persistedCandleTime = (latestPersisted.data?.structure as { candle_open_time?: string } | null)?.candle_open_time;
-    if (persistedCandleTime === latestRow.open_time) {
-      this.lastEvaluatedCandleTime = latestRow.open_time;
+    const persistedStructure = await this.db.latestSignalStructure(sessionId, session.symbol, entryInterval);
+    const persistedCandleTime = (persistedStructure as { candle_open_time?: string } | null)?.candle_open_time;
+    if (persistedCandleTime === latestOpenTime) {
+      this.lastEvaluatedCandleTime = latestOpenTime;
       return current;
     }
 
-    const [higherResult, entryResult] = await Promise.all([
-      this.client.from('market_candles').select('open_time,open,high,low,close,volume').eq('symbol', session.symbol).eq('interval', '1h').order('open_time', { ascending: false }).limit(500),
-      this.client.from('market_candles').select('open_time,open,high,low,close,volume').eq('symbol', session.symbol).eq('interval', entryInterval).order('open_time', { ascending: false }).limit(entryLimit),
+    const [higherRows, entryRows] = await Promise.all([
+      this.db.latestCandles(session.symbol, '1h', 500),
+      this.db.latestCandles(session.symbol, entryInterval, entryLimit),
     ]);
-    if (higherResult.error) throw new Error(`Gagal membaca candle 1h: ${higherResult.error.message}`);
-    if (entryResult.error) throw new Error(`Gagal membaca candle ${entryInterval}: ${entryResult.error.message}`);
-    const higherRows = (higherResult.data ?? []) as CandleRow[];
-    const entryRows = (entryResult.data ?? []) as CandleRow[];
     const higherTimeframe = higherRows.reverse().map(mapCandle);
     const entryTimeframe = entryRows.reverse().map(mapCandle);
     const snapshot = this.engine?.onClosedCandle({ higherTimeframe, entryTimeframe }) ?? current;
     const signal = snapshot.latestSignal;
     if (!signal) return snapshot;
 
-    const inserted = await this.client.from('signal_evaluations').insert({
+    const signalId = await this.db.insertSignalEvaluation({
       bot_session_id: sessionId,
       symbol: session.symbol,
       timeframe: entryInterval,
@@ -390,17 +327,16 @@ export class PaperSessionController {
       evidence: signal.evidence,
       blockers: signal.blockers,
       patterns: signal.patterns,
-      structure: { ...signal.structure, candle_open_time: latestRow.open_time },
-    }).select('id').single();
-    if (inserted.error) throw new Error(`Gagal menyimpan signal evaluation: ${inserted.error.message}`);
+      structure: { ...signal.structure, candle_open_time: latestOpenTime },
+    });
 
-    this.lastSignalId = inserted.data.id;
-    this.lastEvaluatedCandleTime = latestRow.open_time;
+    this.lastSignalId = signalId;
+    this.lastEvaluatedCandleTime = latestOpenTime;
     console.log(JSON.stringify({
       signal: true,
       sessionId,
       symbol: session.symbol,
-      candle: latestRow.open_time,
+      candle: latestOpenTime,
       decision: signal.decision,
       stage: signal.stage,
       qualityScore: signal.qualityScore,
@@ -410,40 +346,26 @@ export class PaperSessionController {
   }
 
   private async markLatestPrice(session: SessionRecord, current: WorkerSnapshot): Promise<WorkerSnapshot> {
-    const latest = await this.client
-      .from('market_candles')
-      .select('high,low,close,open_time')
-      .eq('symbol', session.symbol)
-      .eq('interval', '15m')
-      .order('open_time', { ascending: false })
-      .limit(1)
-      .maybeSingle<{ high: number | string; low: number | string; close: number | string; open_time: string }>();
-    if (latest.error) throw new Error(`Gagal membaca harga paper position: ${latest.error.message}`);
-    if (!latest.data) return current;
+    const rows = await this.db.latestCandles(session.symbol, '15m', 1);
+    const latest = rows[0];
+    if (!latest) return current;
     // Satu candle hanya boleh dihitung sekali. Pemrosesan ulang tiap poll dapat
     // menambah barsHeld dan memicu time-exit paper terlalu cepat.
-    if (this.lastMarkedCandleTime === latest.data.open_time) return current;
-    this.lastMarkedCandleTime = latest.data.open_time;
+    if (this.lastMarkedCandleTime === latest.open_time) return current;
+    this.lastMarkedCandleTime = latest.open_time;
     return this.engine?.onCandle({
-      high: Number(latest.data.high),
-      low: Number(latest.data.low),
-      close: Number(latest.data.close),
-      now: new Date(latest.data.open_time),
+      high: Number(latest.high),
+      low: Number(latest.low),
+      close: Number(latest.close),
+      now: new Date(latest.open_time),
     }) ?? current;
   }
 
   private async persistPaperState(sessionId: string, session: SessionRecord, snapshot: WorkerSnapshot): Promise<void> {
     if (snapshot.position && snapshot.position.id !== this.lastPersistedOpenId) {
-      const existing = await this.client
-        .from('paper_positions')
-        .select('id')
-        .eq('bot_session_id', sessionId)
-        .eq('symbol', session.symbol)
-        .eq('status', 'OPEN')
-        .maybeSingle();
-      if (existing.error) throw new Error(`Gagal membaca paper position aktif: ${existing.error.message}`);
-      if (!existing.data) {
-        const order = await this.client.from('paper_orders').upsert({
+      const existing = await this.db.getOpenPosition(sessionId, session.symbol);
+      if (!existing) {
+        await this.db.upsertPaperOrder({
           bot_session_id: sessionId,
           signal_id: this.lastSignalId,
           client_order_id: snapshot.position.id,
@@ -455,10 +377,9 @@ export class PaperSessionController {
           requested_price: snapshot.position.entry,
           filled_price: snapshot.position.entry,
           metadata: { mode: snapshot.mode, source: 'PAPER_APPROVAL', estimated_entry_costs: snapshot.position.entryCosts ?? 0 },
-        }, { onConflict: 'client_order_id', ignoreDuplicates: true });
-        if (order.error) throw new Error(`Gagal menyimpan paper order: ${order.error.message}`);
+        });
 
-        const position = await this.client.from('paper_positions').insert({
+        await this.db.insertPaperPosition({
           bot_session_id: sessionId,
           symbol: snapshot.position.symbol,
           side: snapshot.position.side,
@@ -475,7 +396,6 @@ export class PaperSessionController {
             entry_costs: snapshot.position.entryCosts ?? 0,
           },
         });
-        if (position.error) throw new Error(`Gagal menyimpan paper position: ${position.error.message}`);
         await this.writeJournal(sessionId, snapshot.position.symbol, 'PAPER_OPEN', 'Paper approval disetujui dan position dibuat.', snapshot);
       }
       this.lastPersistedOpenId = snapshot.position.id;
@@ -484,26 +404,19 @@ export class PaperSessionController {
     const closed = snapshot.lastClosedPosition;
     const closedIsNew = Boolean(closed && closed.id !== this.lastPersistedClosedId);
     if (closed && closedIsNew) {
-      const update = await this.client
-        .from('paper_positions')
-        .update({
-          status: 'CLOSED',
-          exit_price: closed.exit,
-          realized_pnl: closed.realizedPnl,
-          close_reason: closed.closeReason,
-          closed_at: closed.closedAt,
-          metadata: {
-            engine_position_id: closed.id,
-            risk_amount: closed.riskAmount ?? null,
-            entry_costs: closed.entryCosts ?? 0,
-            total_costs: closed.totalCosts ?? 0,
-            bars_held: closed.barsHeld ?? null,
-          },
-        })
-        .eq('bot_session_id', sessionId)
-        .eq('symbol', session.symbol)
-        .eq('status', 'OPEN');
-      if (update.error) throw new Error(`Gagal menutup paper position: ${update.error.message}`);
+      await this.db.closeOpenPosition(sessionId, session.symbol, {
+        exit_price: closed.exit,
+        realized_pnl: closed.realizedPnl,
+        close_reason: closed.closeReason,
+        closed_at: closed.closedAt,
+        metadata: {
+          engine_position_id: closed.id,
+          risk_amount: closed.riskAmount ?? null,
+          entry_costs: closed.entryCosts ?? 0,
+          total_costs: closed.totalCosts ?? 0,
+          bars_held: closed.barsHeld ?? null,
+        },
+      });
       await this.writeJournal(sessionId, closed.symbol, 'PAPER_CLOSE', `${closed.closeReason ?? 'EXIT'} pada ${closed.exit}.`, snapshot);
       this.lastPersistedClosedId = closed.id;
       this.lastPersistedOpenId = null;
@@ -513,7 +426,7 @@ export class PaperSessionController {
     // Grafik equity cukup satu titik per candle 15m. Penutupan baru tetap disimpan
     // segera; posisi closed lama tidak lagi menyebabkan insert pada setiap poll.
     if (now - this.lastEquitySnapshotAt >= 15 * 60_000 || closedIsNew) {
-      const equity = await this.client.from('equity_snapshots').insert({
+      await this.db.insertEquitySnapshot({
         bot_session_id: sessionId,
         equity: snapshot.equity,
         realized_pnl: snapshot.realizedPnl,
@@ -521,13 +434,12 @@ export class PaperSessionController {
         drawdown: 0,
         daily_loss: Math.max(0, -snapshot.dailyRealizedPnl),
       });
-      if (equity.error) throw new Error(`Gagal menyimpan equity snapshot: ${equity.error.message}`);
       this.lastEquitySnapshotAt = now;
     }
   }
 
   private async writeJournal(sessionId: string, symbol: string, action: string, reason: string, snapshot: WorkerSnapshot): Promise<void> {
-    const { error } = await this.client.from('trade_journal').insert({
+    await this.db.insertJournal({
       bot_session_id: sessionId,
       symbol,
       action,
@@ -535,7 +447,6 @@ export class PaperSessionController {
       quality_score: snapshot.latestSignal?.qualityScore ?? null,
       payload: { status: snapshot.status, mode: snapshot.mode, position: snapshot.position, lastClosedPosition: snapshot.lastClosedPosition },
     });
-    if (error) throw new Error(`Gagal menyimpan trade journal: ${error.message}`);
   }
 
   private async touchHeartbeat(sessionId: string): Promise<void> {
@@ -543,11 +454,7 @@ export class PaperSessionController {
     // Heartbeat operasional, bukan bagian rumus trading; lima menit cukup untuk
     // membuktikan worker hidup tanpa menulis database dua kali per menit.
     if (now - this.lastHeartbeatAt < 5 * 60_000) return;
-    const { error } = await this.client
-      .from('bot_sessions')
-      .update({ updated_at: new Date(now).toISOString() })
-      .eq('id', sessionId);
-    if (error) throw new Error(`Gagal memperbarui worker heartbeat: ${error.message}`);
+    await this.db.touchBotSession(sessionId, new Date(now).toISOString());
     this.lastHeartbeatAt = now;
   }
 
@@ -558,8 +465,7 @@ export class PaperSessionController {
     const staleApprovalRecovery = derivedStatus === 'RUNNING' && (requestedStatus === 'POSITION_OPEN' || requestedStatus === 'WAITING_APPROVAL');
     if (derivedStatus !== 'WAITING_APPROVAL' && derivedStatus !== 'POSITION_OPEN' && derivedStatus !== 'COOLDOWN' && !riskPause && !(requestedStatus === 'COOLDOWN' && derivedStatus === 'RUNNING') && !staleApprovalRecovery) return;
     if (requestedStatus === derivedStatus) return;
-    const { error } = await this.client.from('bot_sessions').update({ status: derivedStatus }).eq('id', sessionId).eq('status', requestedStatus);
-    if (error) throw new Error(`Gagal memperbarui status worker: ${error.message}`);
+    await this.db.updateBotSessionStatus(sessionId, derivedStatus, requestedStatus);
   }
 
   private logState(desired: BotStatus, message: string): void {

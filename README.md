@@ -18,7 +18,7 @@ NusaQuant Futures Lab adalah platform riset dan paper-trading untuk Binance USD�
 3. Jalankan `git status --short --branch` dan pastikan tidak ada perubahan yang hilang.
 4. Jangan mengubah threshold, stop-loss, atau rule entry untuk mempercantik metrik.
 5. Candidate yang menghasilkan nol trade harus dibaca lewat funnel di hasil riset, bukan langsung dianggap ditolak.
-6. Reproduksi riset tanpa Supabase: `npm run research:local --workspace @nusaquant/worker`.
+6. Reproduksi riset lokal: `npm run research:local --workspace @nusaquant/worker`.
 7. Jalankan seluruh validasi sebelum commit dan push.
 8. Jangan meminta atau memasukkan credential ke source code, `.env` ter-commit, log, README, atau chat.
 
@@ -29,16 +29,16 @@ NusaQuant Futures Lab adalah platform riset dan paper-trading untuk Binance USD�
 - Monorepo web, core, dan worker.
 - Dashboard Next.js di Vercel.
 - Worker paper/ingestion di Railway.
-- Supabase schema dan health check.
+- Skema SQLite dan health check.
 - Public Binance market-data adapter tanpa private API key.
 - Historical backfill satu kali sampai 365 hari; bulk archive research tersedia terpisah.
-- Backtest dengan pagination Supabase.
+- Backtest dengan pagination SQLite.
 - Cost-aware position sizing.
 - Research gate dan trade diagnostics.
 - Edge diagnostics berdasarkan side, quality score, exit reason, regime, dan periode.
 - Entry timing diagnostics berdasarkan trigger candle range/ATR, entry distance/EMA20, dan stop distance/ATR.
 - State machine paper trading dengan approval, pause, emergency stop, stop-loss, take-profit, cooldown, restore state, dan stale-approval guard.
-- Worker heartbeat, countdown candle 15M, symbol context sync, dan paper metrics yang membaca persistence Supabase.
+- Worker heartbeat, countdown candle 15M, symbol context sync, dan paper metrics yang membaca persistence SQLite.
 
 Validasi terakhir (16 September 2026):
 
@@ -66,11 +66,11 @@ Validasi terakhir (16 September 2026):
 | Historical backfill | Berhasil | One-time 365 hari via API; bulk archive research tersedia untuk periode lebih panjang |
 | Public market polling | Tersedia | REST/polling, belum WebSocket production |
 | Paper state machine | Fondasi dan test berfungsi | Approval lifecycle, stale approval, restore, cooldown, dan daily-loss guard tervalidasi |
-| Bot control API | Tersedia | Start, pause, approve, emergency; membutuhkan env Supabase server |
+| Bot control API | Tersedia | Start, pause, approve, emergency; membaca database SQLite lokal |
 | Paper P/L accounting | Implemented | Fee, slippage, funding, net realized P/L, cost metadata, dan dashboard metrics tersedia |
 | Daily-loss hard block | Implemented | Risk Governor memblokir entry dan mem-pause engine setelah limit tercapai |
 | Worker heartbeat | Implemented | Worker menyentuh `bot_sessions.updated_at`; dashboard menandai ACTIVE/STALE |
-| Paper metrics API | Implemented | Equity, realized P/L, daily loss, signal count, dan paper trades dari Supabase |
+| Paper metrics API | Implemented | Equity, realized P/L, daily loss, signal count, dan paper trades dari SQLite |
 | Testnet | Belum dimulai | Jangan diaktifkan sebelum paper dan OOS lulus |
 | Live trading | Tidak dimulai | Jangan menghubungkan private API |
 | Temporal out-of-sample | Implemented | 70/30 split tersedia di API/dashboard; BTCUSDT sudah dijalankan |
@@ -88,7 +88,7 @@ packages/core
 
 services/worker
   Public market ingestion, one-time backfill, paper bot engine,
-  Supabase session controller, position persistence
+  SQLite session controller, position persistence
 
 supabase/migrations
   bot sessions, market candles, signals, paper orders/positions,
@@ -246,8 +246,8 @@ Urutan kerja yang disepakati sekarang:
 ### Web
 
 - Target: Vercel project `web`
-- Frontend boleh memakai `NEXT_PUBLIC_SUPABASE_URL` dan `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-- Jangan pernah menaruh `SUPABASE_SERVICE_ROLE_KEY` di frontend atau repository.
+- Frontend tidak memakai kredensial database apa pun; auth operator memakai cookie sesi httpOnly.
+- Jangan pernah menaruh `OPERATOR_SESSION_SECRET` atau kata sandi mentah di frontend atau repository.
 
 ### Worker
 
@@ -266,8 +266,8 @@ npm run ingest:backfill --workspace @nusaquant/worker
 ```
 
 - Jangan menjadikan backfill sebagai start command permanen.
-- Worker memerlukan `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, dan konfigurasi session yang sesuai.
-- Full-history research worker bersifat opt-in: terapkan migration `supabase/migrations/20260915000000_research_backtest_jobs.sql`, lalu set `RUN_RESEARCH_JOBS=true` pada Railway. Jangan mengaktifkannya sebelum migration tersedia.
+- Worker memerlukan `SQLITE_PATH` (default `./data/nusaquant.db`) dan konfigurasi session yang sesuai.
+- Full-history research worker bersifat opt-in: tabel dibuat otomatis oleh SQLite, lalu set `RUN_RESEARCH_JOBS=true`. Jangan mengaktifkannya sebelum backfill data selesai.
 
 ### Environment penting
 
@@ -300,7 +300,7 @@ npm audit --omit=dev
 git diff --check
 ```
 
-Riset full-history tanpa Supabase, Railway, atau dashboard (public Binance bulk data saja):
+Riset full-history tanpa Railway atau dashboard (public Binance bulk data saja):
 
 ```bash
 npm run research:local --workspace @nusaquant/worker
@@ -341,20 +341,20 @@ git log --oneline -5
 - `packages/core/src/backtest.ts` — simulator, cost model, exit handling, temporal OOS, walk-forward, dan entry timing diagnostics.
 - `packages/core/src/backtest.test.ts` — test backtest.
 - `services/worker/src/index.ts` — paper bot state machine.
-- `services/worker/src/session-control.ts` — restore/persist paper state ke Supabase.
+- `services/worker/src/session-control.ts` — restore/persist paper state ke SQLite.
 - `services/worker/src/market-data.ts` — public Binance adapter dan polling.
 - `services/worker/src/ingest.ts` — ingestion watch.
 - `services/worker/src/backfill.ts` — one-time API historical backfill.
 - `services/worker/src/research-backfill.ts` — one-time public Binance bulk-archive research backfill.
 - `services/worker/src/funding-backfill.ts` — one-time public funding-rate history backfill.
-- `services/worker/src/research-jobs.ts` — opt-in full-history research queue worker (sumber data Supabase).
+- `services/worker/src/research-jobs.ts` — opt-in full-history research queue worker (sumber data SQLite).
 - `services/worker/src/research-evaluation.ts` — pipeline riset tunggal: gate promosi, variant list, dan evaluasi full/OOS/walk-forward.
 - `services/worker/src/binance-archive.ts` — parser arsip publik Binance (klines, fundingRate, metrics).
 - `services/worker/src/local-research.ts` — CLI riset lokal, memakai pipeline yang sama dengan worker.
 - `packages/core/src/diagnostics.ts` — funnel kondisi candidate dan distribusi threshold.
 - `apps/web/app/api/backtest/jobs/route.ts` — create/status API untuk research job async.
-- `supabase/migrations/20260909000000_initial_schema.sql` — schema/RLS.
-- `supabase/migrations/20260915000000_research_backtest_jobs.sql` — queue/result schema untuk async research.
+- `packages/db/src/schema.sql` — skema SQLite (diterjemahkan dari migration Postgres).
+- Folder `supabase/migrations/` dipertahankan sebagai arsip referensi skema Postgres lama.
 - `docs/05-bot-controls.md` — dokumentasi kontrol bot dan backfill.
 
 ## Ringkasan Historis Commit
