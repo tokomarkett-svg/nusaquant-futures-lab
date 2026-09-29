@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NusaQuant Terminal — Prototipe</title>
+<style>
+/* Tema sadar terang/gelap: host boleh menimpa variabel --hatch-widget-* ;
+   nilai di bawah ini hanya fallback. */
+:root{
+  --hatch-widget-bg:#0b0e11;
+  --hatch-widget-surface:#14181e;
+  --hatch-widget-text:#e8ebee;
+  --hatch-widget-muted:#8a94a3;
+  --hatch-widget-border:#232b35;
+  --hatch-widget-accent:#f0b90b;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --hatch-widget-bg:#eef1f5;
+    --hatch-widget-surface:#ffffff;
+    --hatch-widget-text:#1b1f24;
+    --hatch-widget-muted:#6d7684;
+    --hatch-widget-border:#dfe3e9;
+    --hatch-widget-accent:#a67c00;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--hatch-widget-bg);
+  color:var(--hatch-widget-text);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:14px;line-height:1.45;
+}
+.app{max-width:1560px;margin:0 auto;padding:10px;display:flex;flex-direction:column;gap:10px;min-height:100vh}
+.panel{background:var(--hatch-widget-surface);border:1px solid var(--hatch-widget-border);border-radius:10px;padding:12px}
+.panel-title{font-weight:700;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--hatch-widget-muted);margin:2px 0 10px}
+.up{color:#26a69a}.down{color:#ef5350}
+.empty{color:var(--hatch-widget-muted);font-size:13px;padding:10px;text-align:center}
+
+/* ---- topbar ---- */
+.topbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--hatch-widget-surface);border:1px solid var(--hatch-widget-border);border-radius:10px;padding:10px 14px}
+.brand{font-weight:800;letter-spacing:.08em;font-size:15px;white-space:nowrap}
+.brand span{color:var(--hatch-widget-accent)}
+.tb-sym{display:flex;align-items:baseline;gap:10px;font-size:16px;font-weight:700}
+.tb-price{font-variant-numeric:tabular-nums}
+.pct{font-weight:700;font-variant-numeric:tabular-nums}
+.tb-right{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.badge{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid var(--hatch-widget-accent);color:var(--hatch-widget-accent);white-space:nowrap}
+.badge.spot{border-color:#ef5350;color:#ef5350}
+.status{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid var(--hatch-widget-border);white-space:nowrap}
+.status .dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}
+.status.live{color:#0ecb81}
+.status.connecting{color:#f0b90b}
+.tb-bal{font-size:13px;color:var(--hatch-widget-muted);white-space:nowrap}
+.tb-bal b{color:var(--hatch-widget-text);font-variant-numeric:tabular-nums}
+
+/* ---- layout utama ---- */
+.layout{display:grid;grid-template-columns:290px minmax(0,1fr) 300px;gap:10px;align-items:start}
+@media (max-width:1100px){
+  .layout{grid-template-columns:minmax(0,1fr)}
+  .chart-panel{order:1}
+  .trade-panel{order:2}
+  .coinlist-panel{order:3}
+}
+
+/* ---- daftar koin ---- */
+.search{width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--hatch-widget-border);background:var(--hatch-widget-bg);color:var(--hatch-widget-text);margin-bottom:8px;font-size:13px}
+.search::placeholder{color:var(--hatch-widget-muted)}
+.coin-list{max-height:540px;overflow-y:auto;display:flex;flex-direction:column;min-width:0}
+.coin-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:7px 8px;border-radius:6px;cursor:pointer;font-variant-numeric:tabular-nums}
+.coin-row:hover{background:var(--hatch-widget-bg)}
+.coin-row.active{background:var(--hatch-widget-bg);box-shadow:inset 2px 0 0 var(--hatch-widget-accent)}
+.coin-sym{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.coin-quote{color:var(--hatch-widget-muted);font-weight:400;font-size:11px}
+.coin-price{text-align:right}
+.coin-pct{text-align:right;min-width:66px;font-weight:600}
+
+/* ---- chart ---- */
+.chart-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.tf-group{display:flex;gap:4px;flex-wrap:wrap}
+.tf-btn{border:1px solid var(--hatch-widget-border);background:transparent;color:var(--hatch-widget-muted);border-radius:6px;padding:5px 11px;font-size:12px;font-weight:700;cursor:pointer}
+.tf-btn:hover{color:var(--hatch-widget-text)}
+.tf-btn.active{color:var(--hatch-widget-accent);border-color:var(--hatch-widget-accent)}
+.chart-sym{font-weight:800;letter-spacing:.04em}
+.chart-wrap{position:relative;min-width:0}
+#chart{width:100%;height:460px}
+.chart-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--hatch-widget-muted);background:var(--hatch-widget-surface);border-radius:6px;text-align:center;padding:20px}
+.chart-overlay[hidden]{display:none}
+
+/* ---- panel trade ---- */
+.paper-badge{font-size:10px;font-weight:800;background:var(--hatch-widget-accent);color:var(--hatch-widget-bg);border-radius:4px;padding:2px 6px;vertical-align:middle;letter-spacing:.05em}
+.trade-price{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:16px;font-weight:700;margin-bottom:10px;font-variant-numeric:tabular-nums}
+.fld-label{display:block;font-size:12px;color:var(--hatch-widget-muted);margin:0 0 4px}
+.amt{width:100%;padding:9px 10px;border-radius:8px;border:1px solid var(--hatch-widget-border);background:var(--hatch-widget-bg);color:var(--hatch-widget-text);font-size:14px;font-variant-numeric:tabular-nums}
+.trade-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+.btn-trade{border:0;border-radius:8px;padding:12px 8px;font-weight:800;font-size:14px;cursor:pointer;letter-spacing:.03em}
+.btn-trade.buy{background:#0ecb81;color:#06231a}
+.btn-trade.sell{background:#f6465d;color:#2b0a0e}
+.btn-trade:active{transform:translateY(1px)}
+.btn-trade:disabled{opacity:.5;cursor:not-allowed}
+.hint{font-size:12px;color:var(--hatch-widget-muted);margin:0 0 4px;min-height:18px}
+#positions{display:flex;flex-direction:column;gap:8px;max-height:270px;overflow-y:auto;margin-bottom:6px}
+.pos{border:1px solid var(--hatch-widget-border);border-radius:8px;padding:8px 10px;font-size:13px}
+.pos-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.pos-sym{font-weight:800}
+.pos-side{font-size:11px;font-weight:800;padding:2px 8px;border-radius:4px}
+.pos-side.long{background:rgba(14,203,129,.15);color:#0ecb81}
+.pos-side.short{background:rgba(246,70,93,.15);color:#f6465d}
+.btn-close{margin-left:auto;border:1px solid var(--hatch-widget-border);background:transparent;color:var(--hatch-widget-text);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer}
+.btn-close:hover{border-color:#ef5350;color:#ef5350}
+.pos-row{display:flex;justify-content:space-between;font-variant-numeric:tabular-nums;color:var(--hatch-widget-muted);padding:1px 0}
+.pos-row span:last-child{color:var(--hatch-widget-text)}
+.balance{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
+.balance small{font-size:13px;font-weight:400;color:var(--hatch-widget-muted)}
+.memnote{font-size:11px;color:var(--hatch-widget-muted);margin-top:8px}
+
+/* ---- bawah: tab ---- */
+.tabs{display:flex;gap:4px;margin-bottom:10px}
+.tab{border:1px solid var(--hatch-widget-border);border-bottom:0;background:transparent;color:var(--hatch-widget-muted);border-radius:8px 8px 0 0;padding:8px 18px;font-weight:700;cursor:pointer;font-size:13px}
+.tab.active{color:var(--hatch-widget-text);box-shadow:inset 0 2px 0 var(--hatch-widget-accent)}
+.tabpage[hidden]{display:none}
+.notice{border:1px dashed var(--hatch-widget-border);border-radius:8px;padding:12px;color:var(--hatch-widget-muted);font-size:13px;margin-bottom:10px}
+.tickets{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:10px}
+.ticket{border:1px solid var(--hatch-widget-border);border-radius:8px;padding:10px 12px}
+.ticket-tag{font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--hatch-widget-accent);margin-bottom:6px}
+.ticket-head{display:flex;justify-content:space-between;align-items:baseline;font-size:14px;margin-bottom:8px;gap:8px}
+.ticket-tf{color:var(--hatch-widget-muted);font-size:12px}
+.ticket-grid{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;font-size:13px;font-variant-numeric:tabular-nums}
+.ticket-grid span{color:var(--hatch-widget-muted)}
+.ticket-meta{margin-top:8px;font-size:12px;color:var(--hatch-widget-muted)}
+.table-wrap{overflow-x:auto}
+table.hist{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums;min-width:640px}
+table.hist th,table.hist td{text-align:right;padding:8px;border-bottom:1px solid var(--hatch-widget-border);white-space:nowrap}
+table.hist th:first-child,table.hist td:first-child,
+table.hist th:nth-child(2),table.hist td:nth-child(2),
+table.hist th:nth-child(3),table.hist td:nth-child(3){text-align:left}
+table.hist th{color:var(--hatch-widget-muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+.footer{text-align:center;color:var(--hatch-widget-muted);font-size:12px;padding:6px 6px 12px}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">NUSAQUANT <span>TERMINAL</span></div>
+    <div class="tb-sym">
+      <span id="tbSym">BTCUSDT</span>
+      <span id="tbPrice" class="tb-price">—</span>
+      <span id="tbPct" class="pct">—</span>
+    </div>
+    <div class="tb-right">
+      <span id="srcBadge" class="badge">FUTURES</span>
+      <span id="connStatus" class="status connecting"><span class="dot"></span><span id="connText">MENGHUBUNGKAN</span></span>
+      <span class="tb-bal">Paper: <b id="tbBalance">10,000.00 USDT</b></span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="panel coinlist-panel">
+      <div class="panel-title">Pasar — USDT-M</div>
+      <input id="search" class="search" type="text" placeholder="Cari koin…" autocomplete="off">
+      <div id="coinList" class="coin-list"><div class="empty">Menghubungkan ke Binance…</div></div>
+    </aside>
+
+    <section class="panel chart-panel">
+      <div class="chart-toolbar">
+        <div class="tf-group">
+          <button type="button" class="tf-btn active" data-tf="1m">1m</button>
+          <button type="button" class="tf-btn" data-tf="5m">5m</button>
+          <button type="button" class="tf-btn" data-tf="15m">15m</button>
+          <button type="button" class="tf-btn" data-tf="1h">1h</button>
+          <button type="button" class="tf-btn" data-tf="4h">4h</button>
+        </div>
+        <span class="chart-sym" id="chartSym">BTCUSDT</span>
+      </div>
+      <div class="chart-wrap">
+        <div id="chart"></div>
+        <div id="chartLoading" class="chart-overlay" hidden>Memuat data…</div>
+        <div id="chartError" class="chart-overlay" hidden>Gagal memuat chart / data.<br>Periksa koneksi internet lalu muat ulang halaman.</div>
+      </div>
+    </section>
+
+    <aside class="panel trade-panel">
+      <div class="panel-title">Panel Trade <span class="paper-badge">PAPER</span></div>
+      <div class="trade-price"><span id="tpSym">BTCUSDT</span><b id="tpPrice">—</b></div>
+      <label class="fld-label" for="amt">Jumlah (USDT)</label>
+      <input id="amt" class="amt" type="number" min="0" step="any" value="100">
+      <div class="trade-btns">
+        <button type="button" id="btnLong" class="btn-trade buy">BUY / LONG</button>
+        <button type="button" id="btnShort" class="btn-trade sell">SELL / SHORT</button>
+      </div>
+      <p id="tradeHint" class="hint">BUY = LONG, SELL = SHORT di harga market saat ini.</p>
+      <div class="panel-title">Posisi Terbuka</div>
+      <div id="positions"><div class="empty">Belum ada posisi terbuka.</div></div>
+      <div class="panel-title">Saldo Paper</div>
+      <div class="balance"><b id="panelBalance">10,000.00</b> <small>USDT</small></div>
+      <div class="memnote">Simulasi — bukan uang asli. State tersimpan di memori dan hilang saat halaman di-reload.</div>
+    </aside>
+  </main>
+
+  <section class="panel bottom">
+    <div class="tabs">
+      <button type="button" class="tab active" data-tab="signals">Sinyal Bot</button>
+      <button type="button" class="tab" data-tab="history">Riwayat</button>
+    </div>
+    <div id="tab-signals" class="tabpage">
+      <div class="notice">Worker bot belum tersambung — daftar sinyal live aktif setelah VPS jalan.</div>
+      <div class="tickets">
+        <div class="ticket">
+          <div class="ticket-tag">CONTOH TAMPILAN</div>
+          <div class="ticket-head"><b>LONG — BTCUSDT</b><span class="ticket-tf">15m</span></div>
+          <div class="ticket-grid">
+            <span>Entry</span><b>67,480.00</b>
+            <span>Stop Loss</span><b class="down">66,900.00</b>
+            <span>Take Profit</span><b class="up">68,640.00</b>
+            <span>Risk / Reward</span><b>1 : 2.0</b>
+          </div>
+          <div class="ticket-meta">Pola X → C1 → C2 · Gate 1H: HIJAU · Status: MENUNGGU KONFIRMASI</div>
+        </div>
+        <div class="ticket">
+          <div class="ticket-tag">CONTOH TAMPILAN</div>
+          <div class="ticket-head"><b>SHORT — ETHUSDT</b><span class="ticket-tf">15m</span></div>
+          <div class="ticket-grid">
+            <span>Entry</span><b>3,512.40</b>
+            <span>Stop Loss</span><b class="down">3,548.00</b>
+            <span>Take Profit</span><b class="up">3,441.20</b>
+            <span>Risk / Reward</span><b>1 : 2.0</b>
+          </div>
+          <div class="ticket-meta">Pola X → C1 → C2 · Gate 1H: MERAH · Status: MENUNGGU KONFIRMASI</div>
+        </div>
+      </div>
+    </div>
+    <div id="tab-history" class="tabpage" hidden>
+      <div class="table-wrap">
+        <table class="hist">
+          <thead><tr><th>Waktu</th><th>Simbol</th><th>Side</th><th>Qty</th><th>Entry</th><th>Exit</th><th>PnL (USDT)</th></tr></thead>
+          <tbody id="histBody"><tr><td colspan="7" class="empty">Belum ada trade yang ditutup.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">Prototipe — paper trading simulasi, bukan saran finansial.</footer>
+</div>
+
+<script>
+/* NUSAQUANT TERMINAL — prototipe paper trading (simulasi, tanpa uang asli).
+   Satu file mandiri: data live dari Binance publik (tanpa API key),
+   chart dari lightweight-charts via CDN. */
+(function(){
+'use strict';
+
+/* ================= util ================= */
+function $(id){return document.getElementById(id);}
+function fmtPrice(p){
+  if(p===null||p===undefined||isNaN(p))return '—';
+  p=Number(p);
+  if(p<1)return p.toFixed(5);
+  if(p<100)return p.toFixed(3);
+  return p.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function fmtMoney(p){ /* bertanda + / - , 2 desimal */
+  if(p===null||p===undefined||isNaN(p))return '—';
+  p=Number(p);
+  return (p>=0?'+':'-')+Math.abs(p).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function fmtPlain(p){
+  if(p===null||p===undefined||isNaN(p))return '—';
+  return Number(p).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function fmtPct(x){
+  if(x===null||x===undefined||isNaN(x))return '—';
+  x=Number(x);
+  return (x>=0?'+':'')+x.toFixed(2)+'%';
+}
+function fmtTime(ts){
+  return new Date(ts).toLocaleString('id-ID',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+}
+function baseAsset(sym){return sym.slice(-4)==='USDT'?sym.slice(0,-4):sym;}
+
+/* ================= konfigurasi ================= */
+var FUTURES_WS='wss://fstream.binance.com/market';
+var SPOT_WS='wss://data-stream.binance.vision';
+var REST_URLS=[
+  'https://fapi.binance.com/fapi/v1/klines',      /* futures */
+  'https://data-api.binance.vision/api/v3/klines' /* spot (fallback) */
+];
+var LC_URLS=[
+  'https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js',
+  'https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js'
+];
+var UP='#26a69a', DOWN='#ef5350';
+
+/* ================= state (memori saja — hilang saat reload) ================= */
+var S={
+  symbol:'BTCUSDT',
+  interval:'1m',
+  prices:{},        /* sym -> {price, pct, qv} */
+  balance:10000,
+  positions:[],     /* {id, symbol, side, qty, entry, openTime} */
+  history:[],       /* posisi yang sudah ditutup */
+  wsBase:FUTURES_WS,
+  futuresFailed:false,
+  seq:1,
+  search:''
+};
+
+/* ================= chart (lightweight-charts) ================= */
+var chart=null, candleSeries=null, volSeries=null, lastBar=null, chartOk=false;
+
+function loadScript(src){
+  return new Promise(function(res,rej){
+    var s=document.createElement('script');
+    s.src=src; s.async=true;
+    s.onload=function(){res(true);};
+    s.onerror=function(){rej(new Error('gagal memuat '+src));};
+    document.head.appendChild(s);
+  });
+}
+async function ensureLC(){
+  if(window.LightweightCharts)return true;
+  for(var i=0;i<LC_URLS.length;i++){
+    try{await loadScript(LC_URLS[i]);if(window.LightweightCharts)return true;}
+    catch(e){/* coba CDN berikutnya */}
+  }
+  return false;
+}
+/* Kompatibel v3 (addCandlestickSeries) maupun v4 (addSeries): */
+function addSeriesCompat(type,opts){
+  var LC=window.LightweightCharts;
+  if(chart&&typeof chart.addSeries==='function'&&LC&&LC[type]){
+    return chart.addSeries(LC[type],opts);
+  }
+  var legacy={CandlestickSeries:'addCandlestickSeries',HistogramSeries:'addHistogramSeries'}[type];
+  return chart[legacy](opts);
+}
+function themeColors(){
+  var dt=document.documentElement.dataset.theme;
+  var dark=dt?dt==='dark':(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+  return dark
+    ?{text:'#e8ebee',grid:'rgba(232,235,238,0.07)',line:'#2a3139'}
+    :{text:'#1c2026',grid:'rgba(28,32,38,0.08)',line:'#c9cfd7'};
+}
+function applyChartTheme(){
+  if(!chart)return;
+  var c=themeColors();
+  chart.applyOptions({
+    layout:{
+      background:{type:'solid',color:'transparent'}, /* v4 */
+      backgroundColor:'transparent',                /* v3 */
+      textColor:c.text,
+      fontSize:11,
+      fontFamily:"system-ui,-apple-system,'Segoe UI',Roboto,sans-serif"
+    },
+    grid:{vertLines:{color:c.grid},horzLines:{color:c.grid}},
+    crosshair:{
+      vertLine:{color:c.line,labelBackgroundColor:c.line},
+      horzLine:{color:c.line,labelBackgroundColor:c.line}
+    }
+  });
+}
+async function initChart(){
+  var ok=await ensureLC();
+  if(!ok){$('chartLoading').hidden=true;$('chartError').hidden=false;return;}
+  chart=window.LightweightCharts.createChart($('chart'),{
+    layout:{background:{type:'solid',color:'transparent'},backgroundColor:'transparent'},
+    rightPriceScale:{borderVisible:false},
+    timeScale:{borderVisible:false,timeVisible:true,secondsVisible:false}
+  });
+  candleSeries=addSeriesCompat('CandlestickSeries',{
+    upColor:UP,downColor:DOWN,wickUpColor:UP,wickDownColor:DOWN,
+    borderVisible:false,priceLineVisible:true,lastValueVisible:true
+  });
+  volSeries=addSeriesCompat('HistogramSeries',{
+    priceScaleId:'',priceFormat:{type:'volume'},
+    lastValueVisible:false,priceLineVisible:false
+  });
+  chart.priceScale('').applyOptions({scaleMargins:{top:0.84,bottom:0}});
+  chart.priceScale('right').applyOptions({scaleMargins:{top:0.08,bottom:0.22}});
+  applyChartTheme();
+  new MutationObserver(applyChartTheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+  if(window.matchMedia){
+    var mq=window.matchMedia('(prefers-color-scheme: dark)');
+    if(mq.addEventListener)mq.addEventListener('change',applyChartTheme);
+  }
+  new ResizeObserver(function(es){
+    var r=es[0].contentRect,w=Math.floor(r.width),h=Math.floor(r.height);
+    if(w>0&&h>0){
+      if(typeof chart.resize==='function')chart.resize(w,h);
+      else chart.applyOptions({width:w,height:h});
+    }
+  }).observe($('chart'));
+  chartOk=true;
+  loadHistory();
+}
+
+/* ================= riwayat candle (REST, futures → spot) ================= */
+var histReq=0;
+async function fetchKlines(sym,interval){
+  var q='?symbol='+sym+'&interval='+interval+'&limit=300';
+  for(var i=0;i<REST_URLS.length;i++){
+    try{
+      var r=await fetch(REST_URLS[i]+q);
+      if(!r.ok)continue;
+      var d=await r.json();
+      if(Array.isArray(d)&&d.length)return d;
+    }catch(e){/* coba endpoint berikutnya */}
+  }
+  return null;
+}
+async function loadHistory(){
+  if(!chartOk)return;
+  var req=++histReq, sym=S.symbol, tf=S.interval;
+  $('chartLoading').hidden=false;
+  $('chartError').hidden=true;
+  var raw=await fetchKlines(sym,tf);
+  if(req!==histReq)return; /* keburu pindah simbol/timeframe */
+  $('chartLoading').hidden=true;
+  if(!raw||!raw.length){$('chartError').hidden=false;return;}
+  var candles=[],vols=[];
+  for(var i=0;i<raw.length;i++){
+    var k=raw[i], t=Math.floor(k[0]/1000);
+    var o=parseFloat(k[1]),h=parseFloat(k[2]),l=parseFloat(k[3]),
+        c=parseFloat(k[4]),v=parseFloat(k[5]);
+    candles.push({time:t,open:o,high:h,low:l,close:c});
+    vols.push({time:t,value:v,color:c>=o?'rgba(38,166,154,0.45)':'rgba(239,83,80,0.45)'});
+  }
+  candleSeries.setData(candles);
+  volSeries.setData(vols);
+  lastBar=candles[candles.length-1];
+  chart.timeScale().fitContent();
+}
+
+/* ================= websocket live ================= */
+var ws=null, wsOpened=false, retryMs=1000, failTimer=null, shouldRun=true, lastTickRender=0;
+
+function streamSym(){return S.symbol.toLowerCase();}
+function wsUrl(){return S.wsBase+'/stream?streams=!miniTicker@arr/'+streamSym()+'@kline_'+S.interval;}
+
+function setStatus(mode){
+  var pill=$('connStatus');
+  pill.classList.remove('live','connecting');
+  pill.classList.add(mode);
+  $('connText').textContent=(mode==='live')?'LIVE':'MENGHUBUNGKAN';
+}
+function setSourceBadge(){
+  var b=$('srcBadge');
+  if(S.wsBase===FUTURES_WS){b.textContent='FUTURES';b.classList.remove('spot');}
+  else{b.textContent='DATA SPOT — futures diblokir jaringan ini';b.classList.add('spot');}
+}
+function connectWS(){
+  if(!shouldRun)return;
+  setStatus('connecting');
+  try{ws=new WebSocket(wsUrl());}
+  catch(e){scheduleRetry();return;}
+  wsOpened=false;
+  if(S.wsBase===FUTURES_WS&&!S.futuresFailed){
+    /* futures tidak terbuka dalam ~6 detik → fallback ke spot */
+    failTimer=setTimeout(function(){try{ws.close();}catch(e){}},6000);
+  }
+  ws.onopen=function(){
+    wsOpened=true; retryMs=1000;
+    clearTimeout(failTimer);
+    setStatus('live'); setSourceBadge();
+  };
+  ws.onmessage=onWSMessage;
+  ws.onerror=function(){/* onclose yang menangani reconnect */};
+  ws.onclose=function(){
+    clearTimeout(failTimer);
+    setStatus('connecting');
+    if(!shouldRun)return;
+    if(!wsOpened&&S.wsBase===FUTURES_WS&&!S.futuresFailed){
+      /* gagal cepat di futures → langsung coba spot */
+      S.wsBase=SPOT_WS; S.futuresFailed=true; setSourceBadge();
+      retryMs=1000;
+      setTimeout(connectWS,500);
+      return;
+    }
+    scheduleRetry();
+  };
+}
+function scheduleRetry(){
+  if(!shouldRun)return;
+  var d=retryMs;
+  retryMs=Math.min(retryMs*2,30000); /* exponential backoff, maks 30 dtk */
+  setTimeout(connectWS,d);
+}
+function onWSMessage(ev){
+  var msg;
+  try{msg=JSON.parse(ev.data);}catch(e){return;}
+  var stream=msg.stream||'', data=msg.data||msg;
+  if(stream.indexOf('miniTicker@arr')>=0||Array.isArray(data)){
+    if(Array.isArray(data))updatePrices(data);
+    return;
+  }
+  var k=data&&data.k;
+  if(stream.indexOf('@kline_')>=0&&k){updateLiveCandle(k);return;}
+  if(data&&data.e==='kline'&&data.k){updateLiveCandle(data.k);}
+}
+function updatePrices(arr){
+  for(var i=0;i<arr.length;i++){
+    var t=arr[i], s=t.s;
+    if(!s||s.slice(-4)!=='USDT')continue;
+    var c=parseFloat(t.c), o=parseFloat(t.o);
+    S.prices[s]={price:c,pct:o?((c-o)/o*100):0,qv:parseFloat(t.q)||0};
+  }
+  var now=Date.now();
+  if(now-lastTickRender>800){lastTickRender=now;tickRender();}
+}
+function updateLiveCandle(k){
+  if(!chartOk||!candleSeries)return;
+  if((k.s||'').toUpperCase()!==S.symbol)return;
+  var t=Math.floor(k.t/1000);
+  var c={time:t,open:parseFloat(k.o),high:parseFloat(k.h),low:parseFloat(k.l),close:parseFloat(k.c)};
+  if(lastBar&&lastBar.time===t){
+    c.open=lastBar.open;
+    c.high=Math.max(lastBar.high,c.high);
+    c.low=Math.min(lastBar.low,c.low);
+  }
+  candleSeries.update(c);
+  volSeries.update({time:t,value:parseFloat(k.v)||0,
+    color:c.close>=c.open?'rgba(38,166,154,0.45)':'rgba(239,83,80,0.45)'});
+  lastBar=c;
+}
+
+/* ================= ganti simbol / timeframe ================= */
+function changeSymbol(sym){
+  if(sym===S.symbol)return;
+  var old=streamSym()+'@kline_'+S.interval;
+  S.symbol=sym;
+  if(ws&&ws.readyState===1){
+    ws.send(JSON.stringify({method:'UNSUBSCRIBE',params:[old],id:1}));
+    ws.send(JSON.stringify({method:'SUBSCRIBE',params:[streamSym()+'@kline_'+S.interval],id:2}));
+  }
+  $('tbSym').textContent=sym;
+  $('tpSym').textContent=sym;
+  $('chartSym').textContent=sym;
+  loadHistory();
+  tickRender();
+}
+function changeInterval(tf){
+  if(tf===S.interval)return;
+  var old=streamSym()+'@kline_'+S.interval;
+  S.interval=tf;
+  if(ws&&ws.readyState===1){
+    ws.send(JSON.stringify({method:'UNSUBSCRIBE',params:[old],id:3}));
+    ws.send(JSON.stringify({method:'SUBSCRIBE',params:[streamSym()+'@kline_'+S.interval],id:4}));
+  }
+  var btns=document.querySelectorAll('.tf-btn');
+  for(var i=0;i<btns.length;i++)btns[i].classList.toggle('active',btns[i].dataset.tf===tf);
+  lastBar=null;
+  loadHistory();
+}
+
+/* ================= paper trading (simulasi) ================= */
+function mark(sym){var p=S.prices[sym];return p?p.price:null;}
+function posPnl(pos,px){
+  var m=(px===null||px===undefined)?pos.entry:px;
+  return pos.side==='LONG'?(m-pos.entry)*pos.qty:(pos.entry-m)*pos.qty;
+}
+function openPosition(side){
+  var hint=$('tradeHint');
+  var amt=parseFloat($('amt').value);
+  if(!(amt>0)){hint.textContent='Masukkan jumlah USDT yang valid (lebih dari 0).';return;}
+  var px=mark(S.symbol);
+  if(!px){hint.textContent='Harga belum tersedia — tunggu status LIVE.';return;}
+  hint.textContent='BUY = LONG, SELL = SHORT di harga market saat ini.';
+  S.positions.push({id:S.seq++,symbol:S.symbol,side:side,qty:amt/px,entry:px,openTime:Date.now()});
+  renderPositions();
+}
+function closePosition(id){
+  for(var i=0;i<S.positions.length;i++){
+    if(S.positions[i].id===id){
+      var pos=S.positions[i];
+      var px=mark(pos.symbol);
+      if(!px)px=pos.entry;
+      var pnl=posPnl(pos,px);
+      S.balance+=pnl;
+      S.history.unshift({symbol:pos.symbol,side:pos.side,qty:pos.qty,
+        entry:pos.entry,exit:px,pnl:pnl,openTime:pos.openTime,closeTime:Date.now()});
+      S.positions.splice(i,1);
+      break;
+    }
+  }
+  renderPositions(); renderHistory(); renderBalance();
+}
+
+/* ================= render ================= */
+function tickRender(){
+  renderTopbar(); renderCoinList(); renderPositions(); renderTradePrice();
+}
+function renderTopbar(){
+  var p=S.prices[S.symbol];
+  $('tbPrice').textContent=fmtPrice(p?p.price:null);
+  var el=$('tbPct');
+  el.textContent=fmtPct(p?p.pct:null);
+  el.className='pct '+((p&&p.pct>=0)?'up':'down');
+}
+function renderTradePrice(){
+  var p=S.prices[S.symbol];
+  $('tpPrice').textContent=fmtPrice(p?p.price:null)+' USDT';
+}
+function renderBalance(){
+  var b=fmtPlain(S.balance)+' USDT';
+  $('tbBalance').textContent=b;
+  $('panelBalance').textContent=fmtPlain(S.balance);
+}
+function renderCoinList(){
+  var arr=[];
+  for(var s in S.prices){
+    if(!Object.prototype.hasOwnProperty.call(S.prices,s))continue;
+    var p=S.prices[s];
+    arr.push({s:s,price:p.price,pct:p.pct,qv:p.qv});
+  }
+  arr.sort(function(a,b){return b.qv-a.qv;});
+  var q=S.search.toUpperCase(), html='', n=0;
+  for(var i=0;i<arr.length&&n<60;i++){
+    var c=arr[i];
+    if(q&&c.s.indexOf(q)<0)continue;
+    n++;
+    html+='<div class="coin-row'+(c.s===S.symbol?' active':'')+'" data-sym="'+c.s+'">'
+      +'<span class="coin-sym">'+baseAsset(c.s)+'<span class="coin-quote">/USDT</span></span>'
+      +'<span class="coin-price">'+fmtPrice(c.price)+'</span>'
+      +'<span class="coin-pct '+((c.pct>=0)?'up':'down')+'">'+fmtPct(c.pct)+'</span>'
+      +'</div>';
+  }
+  $('coinList').innerHTML=html||'<div class="empty">Menunggu data…</div>';
+}
+function renderPositions(){
+  var box=$('positions');
+  if(!S.positions.length){box.innerHTML='<div class="empty">Belum ada posisi terbuka.</div>';return;}
+  var html='';
+  for(var i=0;i<S.positions.length;i++){
+    var pos=S.positions[i], px=mark(pos.symbol);
+    var pnl=posPnl(pos,px), base=pos.entry*pos.qty, pct=base?(pnl/base*100):0;
+    html+='<div class="pos">'
+      +'<div class="pos-head"><span class="pos-sym">'+pos.symbol+'</span>'
+      +'<span class="pos-side '+pos.side.toLowerCase()+'">'+pos.side+'</span>'
+      +'<button type="button" class="btn-close" data-id="'+pos.id+'">Tutup</button></div>'
+      +'<div class="pos-row"><span>Qty</span><span>'+pos.qty.toFixed(6)+'</span></div>'
+      +'<div class="pos-row"><span>Entry</span><span>'+fmtPrice(pos.entry)+'</span></div>'
+      +'<div class="pos-row"><span>Mark</span><span>'+fmtPrice(px===null?pos.entry:px)+'</span></div>'
+      +'<div class="pos-row"><span>PnL</span><span class="'+(pnl>=0?'up':'down')+'">'
+      +fmtMoney(pnl)+' ('+fmtPct(pct)+')</span></div>'
+      +'</div>';
+  }
+  box.innerHTML=html;
+}
+function renderHistory(){
+  var tb=$('histBody');
+  if(!S.history.length){
+    tb.innerHTML='<tr><td colspan="7" class="empty">Belum ada trade yang ditutup.</td></tr>';
+    return;
+  }
+  var html='';
+  for(var i=0;i<S.history.length;i++){
+    var h=S.history[i];
+    html+='<tr><td>'+fmtTime(h.closeTime)+'</td><td>'+h.symbol+'</td>'
+      +'<td class="'+(h.side==='LONG'?'up':'down')+'">'+h.side+'</td>'
+      +'<td>'+h.qty.toFixed(6)+'</td>'
+      +'<td>'+fmtPrice(h.entry)+'</td>'
+      +'<td>'+fmtPrice(h.exit)+'</td>'
+      +'<td class="'+(h.pnl>=0?'up':'down')+'">'+fmtMoney(h.pnl)+'</td></tr>';
+  }
+  tb.innerHTML=html;
+}
+
+/* ================= init ================= */
+function init(){
+  renderBalance();
+  var tfBtns=document.querySelectorAll('.tf-btn');
+  for(var i=0;i<tfBtns.length;i++){
+    tfBtns[i].addEventListener('click',function(){changeInterval(this.dataset.tf);});
+  }
+  $('coinList').addEventListener('click',function(e){
+    var r=e.target.closest?e.target.closest('.coin-row'):null;
+    if(r&&r.dataset.sym)changeSymbol(r.dataset.sym);
+  });
+  $('search').addEventListener('input',function(e){
+    S.search=e.target.value.trim();
+    renderCoinList();
+  });
+  $('btnLong').addEventListener('click',function(){openPosition('LONG');});
+  $('btnShort').addEventListener('click',function(){openPosition('SHORT');});
+  $('positions').addEventListener('click',function(e){
+    var b=e.target.closest?e.target.closest('.btn-close'):null;
+    if(b&&b.dataset.id)closePosition(parseInt(b.dataset.id,10));
+  });
+  var tabs=document.querySelectorAll('.tab');
+  for(var j=0;j<tabs.length;j++){
+    tabs[j].addEventListener('click',function(){
+      for(var k=0;k<tabs.length;k++)tabs[k].classList.remove('active');
+      this.classList.add('active');
+      var id=this.dataset.tab;
+      $('tab-signals').hidden=(id!=='signals');
+      $('tab-history').hidden=(id!=='history');
+    });
+  }
+  window.addEventListener('beforeunload',function(){
+    shouldRun=false;
+    try{if(ws)ws.close();}catch(e){}
+    clearTimeout(failTimer);
+  });
+  initChart();
+  connectWS();
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);
+else init();
+
+})();
+</script>
+</body>
+</html>
