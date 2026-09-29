@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NusaQuant Terminal v2 — Paper Futures</title>
+<title>NusaQuant Terminal v2.1 — Paper Futures</title>
 <style>
 :root{
   --bg:#0b0e11; --bg2:#0e1216; --panel:#12161c; --panel2:#161b22;
@@ -39,7 +39,7 @@ button{font-family:var(--font)}
 .sym-picker .caret{color:var(--muted);font-size:11px}
 .ticker{display:flex;align-items:center;gap:18px;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0}
 .ticker::-webkit-scrollbar{display:none}
-.tick{display:flex;flex-direction:column;gap:2px;white-space:nowrap;min-width:0}
+.tick{display:flex;flex-direction:column;gap:2px;white-space:nowrap;min-width:0;flex:0 0 auto}
 .tick .k{font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px}
 .tick .v{font-size:13px;font-weight:600}
 .tick .v.big{font-size:17px}
@@ -357,7 +357,7 @@ input[type=range]{width:100%;accent-color:var(--gold);height:28px;cursor:pointer
 </div>
 
 <footer class="footer">
-  NusaQuant Terminal v2 — prototipe UI untuk paper trading &amp; riset. Data harga live dari Binance publik.
+  NusaQuant Terminal v2.1 — prototipe UI untuk paper trading &amp; riset. Data harga live dari Binance publik.
   Bukan saran finansial. Trading futures berisiko tinggi; tidak ada teknik yang menjamin profit.
 </footer>
 
@@ -372,19 +372,24 @@ var REST_URLS=[
   'https://fapi.binance.com/fapi/v1/klines',
   'https://data-api.binance.vision/api/v3/klines'
 ];
-var LC_URLS=[
-  'https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js',
-  'https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js'
-];
-/* 30 simbol crypto USDT perpetual populer — crypto-only, tanpa saham/komoditas */
-var SYMBOLS=[
+var TV_JS='https://s3.tradingview.com/tv.js';
+/* mapping timeframe aplikasi -> interval TradingView */
+var TV_TF={'1m':'1','5m':'5','15m':'15','1h':'60','4h':'240','1d':'D'};
+/* Daftar fallback bila exchangeInfo Binance tidak bisa dijangkau.
+   30 simbol crypto USDT perpetual populer — crypto-only, tanpa saham/komoditas */
+var FALLBACK_SYMBOLS=[
   'BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','DOGEUSDT','ADAUSDT',
   'AVAXUSDT','LINKUSDT','TRXUSDT','DOTUSDT','LTCUSDT','BCHUSDT','NEARUSDT',
   'ATOMUSDT','ARBUSDT','OPUSDT','INJUSDT','SUIUSDT','APTUSDT','TONUSDT',
   'FILUSDT','ETCUSDT','XLMUSDT','HBARUSDT','PEPEUSDT','SHIBUSDT','POLUSDT',
   'WIFUSDT','RENDERUSDT'
 ];
-var SYMSET={}; for(var si=0;si<SYMBOLS.length;si++)SYMSET[SYMBOLS[si]]=true;
+/* SYMBOLS diisi ulang otomatis dari exchangeInfo saat halaman dimuat */
+var SYMBOLS=FALLBACK_SYMBOLS.slice();
+var SYMSET={};
+function rebuildSymset(){SYMSET={};for(var si=0;si<SYMBOLS.length;si++)SYMSET[SYMBOLS[si]]=true;}
+rebuildSymset();
+function isPlausibleSym(s){return typeof s==='string'&&/^[A-Z0-9]{2,15}USDT$/.test(s);}
 var UP='#2ebd85', DOWN='#f6465d';
 var LS_KEY='nusaquant_v2_state';
 
@@ -397,11 +402,11 @@ function loadState(){
     var s=JSON.parse(raw);
     if(typeof s.balance==='number'&&s.balance>=0)d.balance=s.balance;
     if(Array.isArray(s.positions))d.positions=s.positions.filter(function(p){
-      return p&&SYMSET[p.symbol]&&(p.side==='LONG'||p.side==='SHORT')&&p.qty>0&&p.entry>0;
+      return p&&isPlausibleSym(p.symbol)&&(p.side==='LONG'||p.side==='SHORT')&&p.qty>0&&p.entry>0;
     });
     if(Array.isArray(s.history))d.history=s.history.slice(0,200);
     if(typeof s.seq==='number')d.seq=s.seq;
-    if(SYMSET[s.symbol])d.symbol=s.symbol;
+    if(isPlausibleSym(s.symbol))d.symbol=s.symbol;
     if(typeof s.interval==='string')d.interval=s.interval;
     if(s.lev>=1&&s.lev<=50)d.lev=Math.round(s.lev);
     if(s.side==='SHORT')d.side='SHORT';
@@ -458,8 +463,10 @@ function fmtTime(ts){
   return p(d.getDate())+'/'+p(d.getMonth()+1)+' '+p(d.getHours())+':'+p(d.getMinutes());
 }
 
-/* ================= chart ================= */
-var chart=null,candleSeries=null,volSeries=null,lastBar=null,chartOk=false,posLines=[];
+/* ================= chart (widget TradingView) =================
+   Widget dihancurkan & dibuat ulang setiap ganti simbol/timeframe, sehingga
+   chart SELALU mengikuti simbol terpilih — tidak mungkin nyangkut di simbol lama. */
+var tvScriptPromise=null;
 function loadScript(src){
   return new Promise(function(res,rej){
     var s=document.createElement('script');s.src=src;s.async=true;
@@ -467,71 +474,59 @@ function loadScript(src){
     document.head.appendChild(s);
   });
 }
-async function ensureLC(){
-  if(window.LightweightCharts)return true;
-  for(var i=0;i<LC_URLS.length;i++){
-    try{await loadScript(LC_URLS[i]);if(window.LightweightCharts)return true;}
-    catch(e){}
+function ensureTV(){
+  if(window.TradingView)return Promise.resolve(true);
+  if(!tvScriptPromise){
+    tvScriptPromise=loadScript(TV_JS).then(
+      function(){return !!window.TradingView;},
+      function(){return false;}
+    );
   }
-  return false;
+  return tvScriptPromise;
 }
-function addSeriesCompat(type,opts){
-  var LC=window.LightweightCharts;
-  if(chart&&typeof chart.addSeries==='function'&&LC&&LC[type])return chart.addSeries(LC[type],opts);
-  var legacy={CandlestickSeries:'addCandlestickSeries',HistogramSeries:'addHistogramSeries'}[type];
-  return chart[legacy](opts);
-}
-function initChart(){
-  ensureLC().then(function(ok){
-    $('chartLoading').hidden=true;
-    if(!ok){$('chartError').hidden=false;return;}
-    chart=window.LightweightCharts.createChart($('chart'),{
-      layout:{background:{type:'solid',color:'transparent'},backgroundColor:'transparent',
-        textColor:'#8a94a3',fontSize:11,fontFamily:"system-ui,-apple-system,'Segoe UI',Roboto,sans-serif"},
-      grid:{vertLines:{color:'rgba(138,148,163,0.08)'},horzLines:{color:'rgba(138,148,163,0.08)'}},
-      crosshair:{vertLine:{color:'#2a323d',labelBackgroundColor:'#2a323d'},
-                 horzLine:{color:'#2a323d',labelBackgroundColor:'#2a323d'}},
-      rightPriceScale:{borderVisible:false},timeScale:{borderVisible:false,timeVisible:true,secondsVisible:false}
-    });
-    candleSeries=addSeriesCompat('CandlestickSeries',{
-      upColor:UP,downColor:DOWN,wickUpColor:UP,wickDownColor:DOWN,
-      borderVisible:false,priceLineVisible:true,lastValueVisible:true});
-    volSeries=addSeriesCompat('HistogramSeries',{priceScaleId:'',priceFormat:{type:'volume'},
-      lastValueVisible:false,priceLineVisible:false});
-    chart.priceScale('').applyOptions({scaleMargins:{top:0.86,bottom:0}});
-    chart.priceScale('right').applyOptions({scaleMargins:{top:0.06,bottom:0.24}});
-    new ResizeObserver(function(es){
-      var r=es[0].contentRect,w=Math.floor(r.width),h=Math.floor(r.height);
-      if(w>0&&h>0){
-        if(typeof chart.resize==='function')chart.resize(w,h);
-        else chart.applyOptions({width:w,height:h});
-      }
-    }).observe($('chart'));
-    chartOk=true;
-    drawPosLines();
-    loadHistory();
+var tvTimer=null;
+/* Kontrak perpetual USDT-M Binance di TradingView memakai akhiran .P */
+function tvSymbol(sym){return 'BINANCE:'+sym+'.P';}
+function buildChart(){
+  var c=$('chart');
+  c.innerHTML=''; /* hancurkan widget lama beserta iframe-nya */
+  $('chartLoading').hidden=false;
+  $('chartError').hidden=true;
+  if(tvTimer){clearTimeout(tvTimer);tvTimer=null;}
+  ensureTV().then(function(ok){
+    if(!ok){$('chartLoading').hidden=true;$('chartError').hidden=false;return;}
+    try{
+      new window.TradingView.widget({
+        container_id:'chart',
+        autosize:true,
+        symbol:tvSymbol(S.symbol),
+        interval:TV_TF[S.interval]||'15',
+        timezone:'Asia/Jakarta',
+        theme:'dark',
+        style:'1', /* candlestick */
+        locale:'id',
+        toolbar_bg:'#0b0e11',
+        backgroundColor:'rgba(11, 14, 17, 1)',
+        gridColor:'rgba(138, 148, 163, 0.08)',
+        enable_publishing:false,
+        hide_side_toolbar:false, /* toolbar gambar: trend line, fibonacci, penggaris, garis horizontal */
+        allow_symbol_change:false, /* simbol dikontrol dari daftar market aplikasi */
+        save_image:false,
+        withdateranges:true,
+        studies:['STD;SMA','STD;EMA'] /* RSI, MACD, Bollinger via menu "Indikator" */
+      });
+    }catch(e){$('chartLoading').hidden=true;$('chartError').hidden=false;return;}
+    var done=false;
+    function hide(){if(done)return;done=true;$('chartLoading').hidden=true;}
+    var iv=setInterval(function(){
+      var f=c.querySelector('iframe');
+      if(f){clearInterval(iv);f.addEventListener('load',hide);tvTimer=setTimeout(hide,9000);}
+    },250);
+    tvTimer=setTimeout(function(){clearInterval(iv);hide();},12000);
   });
 }
-function clearPosLines(){
-  for(var i=0;i<posLines.length;i++){try{candleSeries.removePriceLine(posLines[i]);}catch(e){}}
-  posLines=[];
-}
-function drawPosLines(){
-  if(!chartOk||!candleSeries)return;
-  clearPosLines();
-  for(var i=0;i<S.positions.length;i++){
-    var p=S.positions[i];
-    if(p.symbol!==S.symbol)continue;
-    var col=p.side==='LONG'?UP:DOWN;
-    posLines.push(candleSeries.createPriceLine({
-      price:p.entry,color:col,lineWidth:1,lineStyle:2,axisLabelVisible:true,
-      title:(p.side==='LONG'?'LONG':'SHORT')+' '+p.lev+'x'
-    }));
-  }
-}
 
-/* ================= REST klines ================= */
-var histReq=0;
+/* ================= REST klines (untuk tab Signals DEMO) ================= */
 async function fetchKlines(sym,interval,limit){
   var q='?symbol='+sym+'&interval='+interval+'&limit='+(limit||300);
   for(var i=0;i<REST_URLS.length;i++){
@@ -544,45 +539,10 @@ async function fetchKlines(sym,interval,limit){
   }
   return null;
 }
-async function loadHistory(){
-  if(!chartOk)return;
-  var req=++histReq,sym=S.symbol,tf=S.interval;
-  $('chartLoading').hidden=false;$('chartError').hidden=true;
-  var raw=await fetchKlines(sym,tf,300);
-  if(req!==histReq)return;
-  $('chartLoading').hidden=true;
-  if(!raw||!raw.length){$('chartError').hidden=false;return;}
-  var candles=[],vols=[];
-  for(var i=0;i<raw.length;i++){
-    var k=raw[i],t=Math.floor(k[0]/1000);
-    var o=parseFloat(k[1]),h=parseFloat(k[2]),l=parseFloat(k[3]),c=parseFloat(k[4]),v=parseFloat(k[5]);
-    candles.push({time:t,open:o,high:h,low:l,close:c});
-    vols.push({time:t,value:v,color:c>=o?'rgba(46,189,133,0.4)':'rgba(246,70,93,0.4)'});
-  }
-  candleSeries.setData(candles);volSeries.setData(vols);
-  lastBar=candles[candles.length-1];
-  chart.timeScale().fitContent();
-}
-function updateLiveCandle(k){
-  if(!chartOk||!candleSeries)return;
-  if((k.s||'').toUpperCase()!==S.symbol)return;
-  var t=Math.floor(k.t/1000);
-  var c={time:t,open:parseFloat(k.o),high:parseFloat(k.h),low:parseFloat(k.l),close:parseFloat(k.c)};
-  if(lastBar&&lastBar.time===t){
-    c.open=lastBar.open;
-    c.high=Math.max(lastBar.high,c.high);
-    c.low=Math.min(lastBar.low,c.low);
-  }
-  candleSeries.update(c);
-  volSeries.update({time:t,value:parseFloat(k.v)||0,
-    color:c.close>=c.open?'rgba(46,189,133,0.4)':'rgba(246,70,93,0.4)'});
-  lastBar=c;
-}
 
 /* ================= websocket live ================= */
 var ws=null,wsOpened=false,retryMs=1000,failTimer=null,shouldRun=true,lastTick=0;
-function streamSym(){return S.symbol.toLowerCase();}
-function wsUrl(){return S.wsBase+'/stream?streams=!miniTicker@arr/'+streamSym()+'@kline_'+S.interval;}
+function wsUrl(){return S.wsBase+'/stream?streams=!miniTicker@arr';}
 function setStatus(mode){
   var pill=$('connPill');
   pill.classList.toggle('live',mode==='live');
@@ -616,18 +576,13 @@ function scheduleRetry(){
 }
 function onWSMessage(ev){
   var msg;try{msg=JSON.parse(ev.data);}catch(e){return;}
-  var stream=msg.stream||'',data=msg.data||msg;
-  if(stream.indexOf('miniTicker@arr')>=0||Array.isArray(data)){
-    if(Array.isArray(data))updatePrices(data);return;
-  }
-  var k=data&&data.k;
-  if(stream.indexOf('@kline_')>=0&&k){updateLiveCandle(k);return;}
-  if(data&&data.e==='kline'&&data.k){updateLiveCandle(data.k);}
+  var data=msg.data||msg;
+  if(Array.isArray(data))updatePrices(data); /* !miniTicker@arr: harga semua simbol */
 }
 function updatePrices(arr){
   for(var i=0;i<arr.length;i++){
     var t=arr[i],s=t.s;
-    if(!s||!SYMSET[s])continue; /* hanya 30 simbol crypto */
+    if(!s||!SYMSET[s])continue; /* hanya simbol di daftar market (crypto USDT perp) */
     var c=parseFloat(t.c),o=parseFloat(t.o);
     S.prices[s]={price:c,pct:o?((c-o)/o*100):0,
       high:parseFloat(t.h)||c,low:parseFloat(t.l)||c,qv:parseFloat(t.q)||0};
@@ -638,30 +593,22 @@ function updatePrices(arr){
 
 /* ================= ganti simbol / timeframe ================= */
 function changeSymbol(sym){
-  if(!SYMSET[sym]||sym===S.symbol)return;
-  var old=streamSym()+'@kline_'+S.interval;
+  if(!isPlausibleSym(sym)||sym===S.symbol)return;
+  if(SYMBOLS.indexOf(sym)<0){SYMBOLS.unshift(sym);rebuildSymset();}
   S.symbol=sym;
-  if(ws&&ws.readyState===1){
-    ws.send(JSON.stringify({method:'UNSUBSCRIBE',params:[old],id:1}));
-    ws.send(JSON.stringify({method:'SUBSCRIBE',params:[streamSym()+'@kline_'+S.interval],id:2}));
-  }
   $('tbSym').textContent=sym;
   $('chartSym').textContent=sym;
   $('sigSym').textContent=sym;
-  lastBar=null;loadHistory();drawPosLines();refreshSignals();saveState();
+  buildChart(); /* widget dibuat ulang dengan simbol baru — tidak mungkin nyangkut */
+  refreshSignals();saveState();
   tickRender();
 }
 function changeInterval(tf){
   if(tf===S.interval)return;
-  var old=streamSym()+'@kline_'+S.interval;
   S.interval=tf;
-  if(ws&&ws.readyState===1){
-    ws.send(JSON.stringify({method:'UNSUBSCRIBE',params:[old],id:3}));
-    ws.send(JSON.stringify({method:'SUBSCRIBE',params:[streamSym()+'@kline_'+S.interval],id:4}));
-  }
   var btns=document.querySelectorAll('.tf-btn');
   for(var i=0;i<btns.length;i++)btns[i].classList.toggle('active',btns[i].dataset.tf===tf);
-  lastBar=null;loadHistory();saveState();
+  buildChart();saveState();
 }
 
 /* ================= paper trading ================= */
@@ -690,7 +637,7 @@ function openPosition(side){
   S.balance-=margin;
   S.positions.push({id:S.seq++,symbol:S.symbol,side:side,qty:amt/px,entry:px,lev:lev,
     margin:margin,openTime:Date.now()});
-  saveState();drawPosLines();renderAll();
+  saveState();renderAll();
   setHint(side+' <b>'+S.symbol+'</b> @ '+fmtPrice(px)+' ('+lev+'x) terbuka. Margin '+fmtPrice(margin)+' USDT terkunci.',false);
 }
 function closePosition(id){
@@ -707,7 +654,7 @@ function closePosition(id){
       break;
     }
   }
-  saveState();drawPosLines();renderAll();
+  saveState();renderAll();
 }
 
 /* estimasi liquidation sederhana (isolated, MMR 0.5%) */
@@ -834,6 +781,31 @@ function renderAll(){
   renderOrder();renderHistory();tickRender();
 }
 
+/* ================= daftar market dinamis =================
+   Saat halaman dimuat, ambil universe simbol dari Binance exchangeInfo:
+   hanya kontrak PERPETUAL, quote USDT, status TRADING (semua crypto —
+   tidak ada saham/komoditas di USDT-M futures). Harga/%/volume 24h datang
+   dari WebSocket !miniTicker@arr dan daftar diurutkan berdasar volume.
+   Jika fetch gagal (mis. API diblokir), pakai daftar fallback bawaan. */
+async function loadSymbolUniverse(){
+  try{
+    var r=await fetch('https://fapi.binance.com/fapi/v1/exchangeInfo');
+    if(!r.ok)return;
+    var d=await r.json();
+    if(!d||!Array.isArray(d.symbols))return;
+    var list=[];
+    for(var i=0;i<d.symbols.length;i++){
+      var s=d.symbols[i];
+      if(s.status==='TRADING'&&s.contractType==='PERPETUAL'&&s.quoteAsset==='USDT'&&isPlausibleSym(s.symbol))
+        list.push(s.symbol);
+    }
+    if(list.length>=20){
+      if(list.indexOf(S.symbol)<0)list.unshift(S.symbol); /* simbol tersimpan jangan hilang */
+      SYMBOLS=list;rebuildSymset();tickRender();
+    }
+  }catch(e){/* pakai daftar fallback */}
+}
+
 /* ================= sinyal DEMO (SMA crossover, dihitung di browser) ================= */
 var sigReq=0;
 function sma(vals,n){
@@ -934,8 +906,9 @@ function init(){
     clearTimeout(failTimer);
   });
   renderAll();
-  initChart();
+  buildChart();
   connectWS();
+  loadSymbolUniverse(); /* koin baru listing otomatis masuk daftar market */
   refreshSignals();
   setInterval(function(){refreshSignals();},120000);
 }
