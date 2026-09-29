@@ -43,6 +43,14 @@ button{font-family:var(--font)}
 .tick .k{font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px}
 .tick .v{font-size:13px;font-weight:600}
 .tick .v.big{font-size:17px}
+/* strip statistik high/low 12H·24H·48H — ringkas, scroll horizontal di HP */
+.hlbar{display:flex;align-items:center;gap:20px;overflow-x:auto;scrollbar-width:none;
+  padding:5px 16px;background:var(--bg2);border-bottom:1px solid var(--border);
+  font-size:12px;white-space:nowrap}
+.hlbar::-webkit-scrollbar{display:none}
+.hl{display:flex;align-items:baseline;gap:6px;flex:0 0 auto}
+.hl .k{font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px}
+.hl .v{font-size:12px;font-weight:600}
 .top-right{margin-left:auto;display:flex;align-items:center;gap:12px;white-space:nowrap}
 .balance-box{text-align:right;line-height:1.3}
 .balance-box .k{font-size:10px;color:var(--muted2)}
@@ -237,6 +245,16 @@ input[type=range]{width:100%;accent-color:var(--gold);height:28px;cursor:pointer
     <span class="pill" id="connPill"><span class="blink"></span><span id="connText">MENGHUBUNGKAN</span></span>
   </div>
 </header>
+
+<!-- ================= STATISTIK HIGH/LOW 12H·24H·48H (simbol aktif) ================= -->
+<div class="hlbar" id="hlbar" title="Tertinggi / terendah simbol aktif per periode — dari data publik Binance">
+  <span class="hl"><span class="k">12H High</span><span class="v num up" id="hl12h">—</span></span>
+  <span class="hl"><span class="k">12H Low</span><span class="v num down" id="hl12l">—</span></span>
+  <span class="hl"><span class="k">24H High</span><span class="v num up" id="hl24h">—</span></span>
+  <span class="hl"><span class="k">24H Low</span><span class="v num down" id="hl24l">—</span></span>
+  <span class="hl"><span class="k">48H High</span><span class="v num up" id="hl48h">—</span></span>
+  <span class="hl"><span class="k">48H Low</span><span class="v num down" id="hl48l">—</span></span>
+</div>
 
 <div class="layout">
   <!-- ================= MARKET LIST ================= -->
@@ -591,6 +609,39 @@ function updatePrices(arr){
   if(now-lastTick>900){lastTick=now;tickRender();}
 }
 
+/* ================= statistik high/low 12H·24H·48H (simbol aktif) ================= */
+var hlSeq=0;
+async function refreshHlStats(sym){
+  var my=++hlSeq;
+  var ids=['hl12h','hl12l','hl24h','hl24l','hl48h','hl48l'];
+  function blank(){for(var i=0;i<ids.length;i++)$(ids[i]).textContent='—';}
+  blank(); /* langsung kosongkan — jangan tampilkan angka simbol lama */
+  try{
+    var r24=await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr?symbol='+encodeURIComponent(sym));
+    if(!r24.ok)throw new Error('t24');
+    var t24=await r24.json();
+    var rk=await fetch('https://fapi.binance.com/fapi/v1/klines?symbol='+encodeURIComponent(sym)+'&interval=1h&limit=48');
+    if(!rk.ok)throw new Error('kl');
+    var kl=await rk.json();
+    if(my!==hlSeq||sym!==S.symbol)return; /* respons basi — simbol sudah diganti lagi */
+    var h12=null,l12=null,h48=null,l48=null,n=kl.length;
+    for(var i=0;i<n;i++){
+      var h=parseFloat(kl[i][2]),l=parseFloat(kl[i][3]);
+      if(!isFinite(h)||!isFinite(l))continue;
+      if(h48===null||h>h48)h48=h;
+      if(l48===null||l<l48)l48=l;
+      if(i>=n-12){if(h12===null||h>h12)h12=h;if(l12===null||l<l12)l12=l;}
+    }
+    var h24=parseFloat(t24.highPrice),l24=parseFloat(t24.lowPrice);
+    $('hl12h').textContent=fmtPrice(h12);
+    $('hl12l').textContent=fmtPrice(l12);
+    $('hl24h').textContent=fmtPrice(isFinite(h24)?h24:null);
+    $('hl24l').textContent=fmtPrice(isFinite(l24)?l24:null);
+    $('hl48h').textContent=fmtPrice(h48);
+    $('hl48l').textContent=fmtPrice(l48);
+  }catch(e){ if(my===hlSeq)blank(); /* fetch gagal — tampilkan "—", tanpa error mengganggu */ }
+}
+
 /* ================= ganti simbol / timeframe ================= */
 function changeSymbol(sym){
   if(!isPlausibleSym(sym)||sym===S.symbol)return;
@@ -600,7 +651,7 @@ function changeSymbol(sym){
   $('chartSym').textContent=sym;
   $('sigSym').textContent=sym;
   buildChart(); /* widget dibuat ulang dengan simbol baru — tidak mungkin nyangkut */
-  refreshSignals();saveState();
+  refreshSignals();refreshHlStats(sym);saveState();
   tickRender();
 }
 function changeInterval(tf){
@@ -909,7 +960,7 @@ function init(){
   buildChart();
   connectWS();
   loadSymbolUniverse(); /* koin baru listing otomatis masuk daftar market */
-  refreshSignals();
+  refreshSignals();refreshHlStats(S.symbol);
   setInterval(function(){refreshSignals();},120000);
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);
