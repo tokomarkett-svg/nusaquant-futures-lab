@@ -252,6 +252,7 @@ body{padding-bottom:66px}
 .brain-card.locked{opacity:.65}
 .brain-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .brain-id{font-size:11px;font-weight:800;padding:3px 9px;border-radius:10px;background:var(--panel2);border:1px solid var(--border);color:var(--gold)}
+.brain-ico{font-size:16px;line-height:1}
 .brain-name{font-weight:800;font-size:15px}
 .brain-active-badge{font-size:10px;font-weight:800;padding:3px 10px;border-radius:12px;letter-spacing:.5px;background:rgba(240,185,11,.15);color:var(--gold)}
 .brain-desc{font-size:12.5px;color:var(--text);margin-top:8px;line-height:1.65}
@@ -1028,6 +1029,20 @@ var BRAIN_DEFS=[
      ['Garis pintu','belum dirancang'],
      ['Garis manis','belum dirancang'],
      ['Garis batal','belum dirancang']
+   ]},
+  {id:'D',icon:'⚡',name:'Scalping',tf:'—',locked:true,
+   desc:'Entry jarak pendek, TP/SL ketat, keluar cepat. — rumus dalam tahap desain bersama.',
+   lines:[
+     ['Garis pintu','belum dirancang'],
+     ['Garis manis','belum dirancang'],
+     ['Garis batal','belum dirancang']
+   ]},
+  {id:'E',icon:'📈',name:'Long-Only',tf:'—',locked:true,
+   desc:'Hanya berburu peluang naik, tanpa short sama sekali. — rumus dalam tahap desain bersama.',
+   lines:[
+     ['Garis pintu','belum dirancang'],
+     ['Garis manis','belum dirancang'],
+     ['Garis batal','belum dirancang']
    ]}
 ];
 var BRAIN_KEY='nq_active_brain';
@@ -1040,6 +1055,7 @@ function getActiveBrain(){
   return 'A';
 }
 function setActiveBrain(id){
+  if(id!=='A'&&id!=='B')return; /* whitelist: hanya otak yang sudah jadi yang boleh aktif */
   try{localStorage.setItem(BRAIN_KEY,id);}catch(e){}
 }
 function renderBrains(){
@@ -1049,6 +1065,7 @@ function renderBrains(){
     html+='<div class="brain-card'+(isActive?' active':'')+(b.locked?' locked':'')+'">'
       +'<div class="brain-top">'
       +'<span class="brain-id">Otak '+esc(b.id)+'</span>'
+      +(b.icon?'<span class="brain-ico">'+esc(b.icon)+'</span>':'')
       +'<span class="brain-name">'+esc(b.name)+'</span>'
       +(isActive?'<span class="brain-active-badge">✓ AKTIF</span>':'')
       +'<span class="demo-badge">DEMO</span></div>'
