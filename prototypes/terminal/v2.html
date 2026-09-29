@@ -246,6 +246,24 @@ body{padding-bottom:66px}
   border-radius:8px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font)}
 .bot-btn.go{border-color:rgba(46,189,133,.5);color:var(--up)}
 .bot-btn.stop{border-color:rgba(246,70,93,.5);color:var(--down)}
+.brain-active{font-size:14px;font-weight:800;margin-top:8px;color:var(--gold)}
+.brain-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:14px;position:relative}
+.brain-card.active{border-color:rgba(240,185,11,.55);box-shadow:0 0 0 1px rgba(240,185,11,.25)}
+.brain-card.locked{opacity:.65}
+.brain-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.brain-id{font-size:11px;font-weight:800;padding:3px 9px;border-radius:10px;background:var(--panel2);border:1px solid var(--border);color:var(--gold)}
+.brain-name{font-weight:800;font-size:15px}
+.brain-active-badge{font-size:10px;font-weight:800;padding:3px 10px;border-radius:12px;letter-spacing:.5px;background:rgba(240,185,11,.15);color:var(--gold)}
+.brain-desc{font-size:12.5px;color:var(--text);margin-top:8px;line-height:1.65}
+.brain-tf{font-size:11.5px;color:var(--muted);margin-top:6px}
+.brain-lines{margin:10px 0 0;padding:10px 12px;background:var(--panel2);border:1px solid var(--border);border-radius:10px;font-size:12px;line-height:1.9;color:var(--muted)}
+.brain-lines b{color:var(--text)}
+.brain-lines .k{color:var(--gold);font-weight:700}
+.brain-status-note{font-size:11.5px;color:var(--warn,#f0b90b);margin-top:8px;line-height:1.6}
+.brain-btns{display:flex;gap:8px;margin-top:12px}
+.brain-btn{flex:1;border:1px solid rgba(240,185,11,.5);background:var(--panel2);color:var(--gold);border-radius:10px;padding:10px;font-weight:700;cursor:pointer;font-size:13px}
+.brain-btn:disabled{opacity:.45;cursor:default}
+.brain-btn.on{border-color:rgba(46,189,133,.5);color:var(--up)}
 /* modal pilih simbol */
 .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:80;display:flex;
   align-items:flex-start;justify-content:center;padding:12vh 14px 14px}
@@ -432,7 +450,7 @@ body.is-fs .fs-hint{display:block}
               <button class="btn-refresh" id="sigRefresh">↻ Hitung ulang</button>
             </div>
             <div class="sig-meta" id="sigMeta">Menunggu data…</div>
-            <div class="sig-note">
+            <div class="sig-note" id="sigNote">
               <b>Sinyal DEMO</b> — dihitung langsung di browser dari SMA(7) vs SMA(25) pada timeframe 15m.
               Ini <b>bukan saran finansial</b> dan tidak menjanjikan profit. Di NusaQuant, semua sinyal
               nantinya diuji dulu lewat paper trading sebelum dipercaya.
@@ -497,14 +515,19 @@ body.is-fs .fs-hint{display:block}
 </div>
 </div><!-- /view-futures -->
 
-<!-- ================= BOT ================= -->
+<!-- ================= BOT (daftar Otak) ================= -->
 <div class="view" id="view-bot">
   <div class="bot-list">
     <div class="card">
-      <h4>ⓘ Mode Demo</h4>
-      <div class="sub" style="line-height:1.7">Kontrol bot asli (jalan 24/7 di VPS) aktif setelah VPS jalan. Di bawah ini hanya simulasi tampilan — tombol Start/Pause tidak menjalankan bot sungguhan, hanya mengubah status demo.</div>
+      <h4>🧠 Otak Bot</h4>
+      <div class="brain-active" id="brainActiveLabel">Otak aktif: …</div>
+      <div class="sub" style="line-height:1.7">Pilih satu otak untuk sesi ini — otak yang aktif menentukan rumus sinyal &amp; garis entry di tab Futures. Pilihan tersimpan di browser ini.</div>
     </div>
-    <div id="botCards"></div>
+    <div id="brainCards"></div>
+    <div class="card">
+      <h4>ⓘ Satu sesi, satu otak</h4>
+      <div class="sub" style="line-height:1.7">Tiap pengguna punya sesi sendiri — pilihan otak, saldo, dan posisi tidak tercampur antar pengguna. (Implementasi backend penuh menyusul di VPS; prototipe ini single-user.)<br><br>Mengganti otak <b>tidak menghapus</b> posisi paper yang sedang terbuka — posisi tetap milik sesi ini.</div>
+    </div>
   </div>
 </div>
 
@@ -555,7 +578,7 @@ body.is-fs .fs-hint{display:block}
 <div class="fs-hint" id="fsHint">Putar HP ke landscape untuk chart lebih besar</div>
 
 <footer class="footer">
-  NusaQuant Terminal v2.3 — prototipe aplikasi paper trading &amp; riset. Data harga live dari Binance publik.
+  NusaQuant Terminal v2.4 — prototipe aplikasi paper trading &amp; riset. Data harga live dari Binance publik.
   Bukan saran finansial. Trading futures berisiko tinggi; tidak ada teknik yang menjamin profit.
 </footer>
 
@@ -593,7 +616,7 @@ var LS_KEY='nusaquant_v2_state';
 
 /* ================= state (tersimpan di localStorage) ================= */
 function loadState(){
-  var d={symbol:'BTCUSDT',interval:'1m',balance:10000,positions:[],history:[],seq:1,lev:10,side:'LONG',bots:{BTCUSDT:'IDLE',ETHUSDT:'IDLE'}};
+  var d={symbol:'BTCUSDT',interval:'1m',balance:10000,positions:[],history:[],seq:1,lev:10,side:'LONG'};
   try{
     var raw=localStorage.getItem(LS_KEY);
     if(!raw)return d;
@@ -608,14 +631,6 @@ function loadState(){
     if(typeof s.interval==='string')d.interval=s.interval;
     if(s.lev>=1&&s.lev<=50)d.lev=Math.round(s.lev);
     if(s.side==='SHORT')d.side='SHORT';
-    if(s.bots&&typeof s.bots==='object'){
-      d.bots={};
-      for(var bk in s.bots){
-        if(isPlausibleSym(bk)&&(s.bots[bk]==='RUNNING'||s.bots[bk]==='IDLE'))d.bots[bk]=s.bots[bk];
-      }
-      if(!d.bots.BTCUSDT)d.bots.BTCUSDT='IDLE';
-      if(!d.bots.ETHUSDT)d.bots.ETHUSDT='IDLE';
-    }
   }catch(e){/* state korup -> pakai default */}
   return d;
 }
@@ -628,7 +643,7 @@ function saveState(){
     try{
       localStorage.setItem(LS_KEY,JSON.stringify({
         symbol:S.symbol,interval:S.interval,balance:S.balance,
-        positions:S.positions,history:S.history,seq:S.seq,lev:S.lev,side:S.side,bots:S.bots
+        positions:S.positions,history:S.history,seq:S.seq,lev:S.lev,side:S.side
       }));
     }catch(e){/* storage penuh / privat */}
   },250);
@@ -988,27 +1003,84 @@ function renderBeranda(){
   $('homeMargin').textContent=fmtPrice(marginUsed())+' USDT';
   $('homePosCount').textContent=S.positions.length;
 }
-var BOT_DEFS=[
-  {sym:'BTCUSDT',strat:'BASELINE_INTELLIGENCE'},
-  {sym:'ETHUSDT',strat:'BASELINE_INTELLIGENCE'}
+/* ================= Otak bot (daftar strategi yang bisa dipilih) =================
+   Tiap otak = satu "rumus" independen untuk garis pintu / garis manis /
+   garis batal. Pilihan tersimpan per sesi di localStorage (nq_active_brain)
+   sehingga tiap pengguna punya otaknya sendiri. */
+var BRAIN_DEFS=[
+  {id:'A',name:'Baseline Intelligence',tf:'15m',
+   desc:'Mengikuti tren: entry searah momentum dengan filter regime pasar. Cocok untuk pasar yang sedang trending; kurang cocok saat sideways.',
+   lines:[
+     ['Garis pintu','ditentukan rumus otak ini — versi demo: persilangan SMA(7) vs SMA(25)'],
+     ['Garis manis','ditentukan rumus otak ini — versi demo: ikut arah tren sampai sinyal berbalik'],
+     ['Garis batal','ditentukan rumus otak ini — versi demo: tren patah (SMA pendek kembali menyilang)']
+   ]},
+  {id:'B',name:'Williams Volatility Breakout',tf:'1h',
+   desc:'Entry saat harga menembus batas rentang volatilitas (Donchian channel 20). Butuh riwayat data lebih panjang; cocok saat volatilitas meledak.',
+   lines:[
+     ['Garis pintu','ditentukan rumus otak ini — versi demo: breakout di atas/bawah Donchian(20)'],
+     ['Garis manis','ditentukan rumus otak ini — versi demo: target dari lebar rentang channel'],
+     ['Garis batal','ditentukan rumus otak ini — versi demo: harga kembali masuk ke dalam channel']
+   ]},
+  {id:'C',name:'Slot Cadangan',tf:'—',locked:true,
+   desc:'Rumus dalam tahap desain bersama. Slot ini terkunci sampai rumusnya selesai dirancang dan lolos uji paper trading.',
+   lines:[
+     ['Garis pintu','belum dirancang'],
+     ['Garis manis','belum dirancang'],
+     ['Garis batal','belum dirancang']
+   ]}
 ];
-function renderBot(){
-  var html='';
-  for(var i=0;i<BOT_DEFS.length;i++){
-    var b=BOT_DEFS[i],st=S.bots[b.sym]||'IDLE',running=st==='RUNNING';
-    html+='<div class="bot-card"><div class="bot-top">'
-      +'<span class="bot-name">'+esc(b.sym)+'</span>'
-      +'<span class="bot-status '+(running?'running':'idle')+'">'+st+'</span>'
+var BRAIN_KEY='nq_active_brain';
+function brainDef(id){
+  for(var i=0;i<BRAIN_DEFS.length;i++)if(BRAIN_DEFS[i].id===id)return BRAIN_DEFS[i];
+  return BRAIN_DEFS[0];
+}
+function getActiveBrain(){
+  try{var b=localStorage.getItem(BRAIN_KEY);if(b==='A'||b==='B')return b;}catch(e){}
+  return 'A';
+}
+function setActiveBrain(id){
+  try{localStorage.setItem(BRAIN_KEY,id);}catch(e){}
+}
+function renderBrains(){
+  var active=getActiveBrain(),html='';
+  for(var i=0;i<BRAIN_DEFS.length;i++){
+    var b=BRAIN_DEFS[i],isActive=(b.id===active);
+    html+='<div class="brain-card'+(isActive?' active':'')+(b.locked?' locked':'')+'">'
+      +'<div class="brain-top">'
+      +'<span class="brain-id">Otak '+esc(b.id)+'</span>'
+      +'<span class="brain-name">'+esc(b.name)+'</span>'
+      +(isActive?'<span class="brain-active-badge">✓ AKTIF</span>':'')
       +'<span class="demo-badge">DEMO</span></div>'
-      +'<div class="bot-meta">Strategi: '+esc(b.strat)+' (paper)<br>'
-      +'Status asli terakhir: — (bot asli jalan 24/7 setelah VPS aktif)</div>'
-      +'<div class="bot-btns">'
-      +(running
-        ?'<button class="bot-btn stop" data-bot="'+b.sym+'" data-act="pause">⏸ Pause (demo)</button>'
-        :'<button class="bot-btn go" data-bot="'+b.sym+'" data-act="start">▶ Start (demo)</button>')
-      +'</div></div>';
+      +'<div class="brain-desc">'+esc(b.desc)+'</div>'
+      +'<div class="brain-tf">Timeframe sinyal: <b class="num">'+esc(b.tf)+'</b></div>'
+      +'<div class="brain-lines">'
+      +'<div><span class="k">Garis pintu</span> — <b>'+esc(b.lines[0][1])+'</b></div>'
+      +'<div><span class="k">Garis manis</span> — <b>'+esc(b.lines[1][1])+'</b></div>'
+      +'<div><span class="k">Garis batal</span> — <b>'+esc(b.lines[2][1])+'</b></div></div>'
+      +'<div class="brain-status-note">⚠ Status: dalam pengujian — belum terbukti, uji di paper trading dulu. Rumus final dirancang bersama setelah UI selesai.</div>'
+      +'<div class="brain-btns">';
+    if(b.locked){
+      html+='<button class="brain-btn" disabled>🔒 Terkunci — segera hadir</button>';
+    }else if(isActive){
+      html+='<button class="brain-btn on" disabled>✓ Otak ini sedang dipakai</button>';
+    }else{
+      html+='<button class="brain-btn" data-brain="'+b.id+'">Pakai Otak ini</button>';
+    }
+    html+='</div></div>';
   }
-  $('botCards').innerHTML=html;
+  $('brainCards').innerHTML=html;
+  var ab=brainDef(active);
+  $('brainActiveLabel').textContent='Otak aktif: '+ab.id+' — '+ab.name;
+}
+function switchBrain(id){
+  var b=brainDef(id);
+  if(b.locked)return;
+  if(confirm('Ganti otak aktif ke Otak '+b.id+' ('+b.name+')?\n\nPosisi paper yang terbuka TIDAK dihapus — tetap milik sesi ini.')){
+    setActiveBrain(id);
+    renderBrains();
+    refreshSignals();
+  }
 }
 function histRows(){
   if(!S.history.length)return '<tr><td colspan="7" class="empty">Belum ada trade yang ditutup.</td></tr>';
@@ -1065,7 +1137,7 @@ function renderOrder(){
   $('sideShort').classList.toggle('active',S.side==='SHORT');
 }
 function tickRender(){
-  renderTopbar();renderMarket();renderPositions();updateEstimates();renderBeranda();renderBot();renderAset();
+  renderTopbar();renderMarket();renderPositions();updateEstimates();renderBeranda();renderAset();
 }
 function renderAll(){
   renderOrder();renderHistory();tickRender();
@@ -1096,7 +1168,10 @@ async function loadSymbolUniverse(){
   }catch(e){/* pakai daftar fallback */}
 }
 
-/* ================= sinyal DEMO (SMA crossover, dihitung di browser) ================= */
+/* ================= sinyal DEMO mengikuti otak aktif =================
+   Otak A = persilangan SMA (tren), Otak B = breakout Donchian channel 20
+   (volatilitas). Keduanya dihitung di browser dari data klines Binance yang
+   sama — bedanya murni logika rumus. */
 var sigReq=0;
 function sma(vals,n){
   var out=[];
@@ -1106,7 +1181,20 @@ function sma(vals,n){
   }
   return out;
 }
-async function refreshSignals(){
+function setSigNote(brain){
+  var bd=brainDef(brain);
+  $('sigNote').innerHTML='<b>Sinyal DEMO</b> — dihitung langsung di browser oleh <b>Otak '+esc(bd.id)+' ('+esc(bd.name)+')</b> '
+    +'dari '+(brain==='B'?'breakout Donchian(20) pada timeframe 1h':'SMA(7) vs SMA(25) pada timeframe 15m')
+    +'. Ini <b>bukan saran finansial</b> dan tidak menjanjikan profit. Di NusaQuant, semua sinyal '
+    +'nantinya diuji dulu lewat paper trading sebelum dipercaya.';
+}
+function refreshSignals(){
+  var brain=getActiveBrain();
+  setSigNote(brain);
+  if(brain==='B')return refreshSignalsB();
+  return refreshSignalsA();
+}
+async function refreshSignalsA(){
   var req=++sigReq,sym=S.symbol;
   $('sigVerdict').textContent='…';$('sigVerdict').className='sig-verdict flat';
   $('sigMeta').textContent='Menghitung dari data 15m…';
@@ -1131,9 +1219,41 @@ async function refreshSignals(){
   else{verdict='NETRAL';cls='flat';desc='Kedua rata-rata sejajar — tidak ada arah jelas.';}
   var v=$('sigVerdict');v.textContent=verdict+' (DEMO)';v.className='sig-verdict '+cls;
   $('sigMeta').innerHTML=esc(sym)+' · 15m · SMA(7) <b class="num">'+fmtPrice(a7)+'</b> vs SMA(25) <b class="num">'+fmtPrice(a25)+'</b><br>'
-    +esc(desc)+'<br>Diperbarui: '+fmtTime(Date.now());
+    +esc(desc)+'<br>Dihasilkan oleh <b>Otak A</b> · Diperbarui: '+fmtTime(Date.now());
   $('homeSigVerdict').textContent=verdict+' (DEMO)';
-  $('homeSigMeta').textContent=sym+' · 15m · '+desc;
+  $('homeSigMeta').textContent=sym+' · Otak A · '+desc;
+}
+async function refreshSignalsB(){
+  var req=++sigReq,sym=S.symbol;
+  $('sigVerdict').textContent='…';$('sigVerdict').className='sig-verdict flat';
+  $('sigMeta').textContent='Menghitung dari data 1h…';
+  var raw=await fetchKlines(sym,'1h',25);
+  if(req!==sigReq)return;
+  if(!raw||raw.length<22){
+    $('sigMeta').textContent='Data belum cukup — coba lagi nanti.';
+    $('homeSigVerdict').textContent='—';
+    $('homeSigMeta').textContent='Data belum cukup — coba lagi nanti.';
+    return;
+  }
+  var highs=[],lows=[],closes=[];
+  for(var i=0;i<raw.length-1;i++){
+    highs.push(parseFloat(raw[i][2]));lows.push(parseFloat(raw[i][3]));closes.push(parseFloat(raw[i][4]));
+  }
+  var N=20,dcH=-Infinity,dcL=Infinity;
+  for(var j=closes.length-N-1;j<closes.length-1;j++){
+    if(highs[j]>dcH)dcH=highs[j];
+    if(lows[j]<dcL)dcL=lows[j];
+  }
+  var last=closes[closes.length-1];
+  var verdict,cls,desc;
+  if(last>dcH){verdict='LONG BREAKOUT';cls='bull';desc='Harga menembus batas atas Donchian(20). Volatilitas meledak ke atas.';}
+  else if(last<dcL){verdict='SHORT BREAKOUT';cls='bear';desc='Harga menembus batas bawah Donchian(20). Volatilitas meledak ke bawah.';}
+  else{verdict='DALAM CHANNEL';cls='flat';desc='Harga masih di dalam rentang Donchian(20) — belum ada breakout.';}
+  var v=$('sigVerdict');v.textContent=verdict+' (DEMO)';v.className='sig-verdict '+cls;
+  $('sigMeta').innerHTML=esc(sym)+' · 1h · Donchian(20) atas <b class="num">'+fmtPrice(dcH)+'</b> vs bawah <b class="num">'+fmtPrice(dcL)+'</b><br>'
+    +esc(desc)+'<br>Dihasilkan oleh <b>Otak B</b> · Diperbarui: '+fmtTime(Date.now());
+  $('homeSigVerdict').textContent=verdict+' (DEMO)';
+  $('homeSigMeta').textContent=sym+' · Otak B · '+desc;
 }
 
 /* ================= berita crypto (feed RSS gratis, tanpa API key) ================= */
@@ -1321,11 +1441,9 @@ function init(){
   for(var nbi=0;nbi<nb.length;nbi++){
     (function(b){b.addEventListener('click',function(){showView(b.dataset.view);});})(nb[nbi]);
   }
-  $('botCards').addEventListener('click',function(e){
-    var b=e.target.closest?e.target.closest('[data-bot]'):null;
-    if(!b)return;
-    S.bots[b.dataset.bot]=(b.dataset.act==='start')?'RUNNING':'IDLE';
-    saveState();renderBot();
+  $('brainCards').addEventListener('click',function(e){
+    var b=e.target.closest?e.target.closest('[data-brain]'):null;
+    if(b&&b.dataset.brain)switchBrain(b.dataset.brain);
   });
   $('fsBtn').addEventListener('click',toggleFS);
   $('fsClose').addEventListener('click',toggleFS);
@@ -1335,6 +1453,7 @@ function init(){
   $('homeGoFutures').addEventListener('click',function(){showView('futures');});
   $('homeGoSignals').addEventListener('click',function(){showView('futures');});
   renderAll();
+  renderBrains();
   showView('beranda');
   buildChart();
   connectWS();
